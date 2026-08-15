@@ -37,6 +37,17 @@ const CL = [];
  * within reach of a hip is that leg's, and how far below decides how much it
  * moves. Ambiguity only arises between the two legs on the same side, and they
  * are far enough apart in x that nearest-hip wins cleanly.
+ *
+ * This takes a *vertex*, never a triangle, and that is the whole point. Deciding
+ * per triangle — from its centre, say — lets one physical corner come out
+ * weighted 0.44 in one face and 0 in the face next to it, because the two
+ * triangles classified differently. The corner then swings in one and stays put
+ * in the other, and the surface splits along that edge. Those are the triangles
+ * that looked static: they were not failing to move, they were being held still
+ * by a neighbour that disagreed about them.
+ *
+ * Keyed on position, a shared corner gets one answer no matter how many faces
+ * meet there, so there is nothing to disagree about.
  */
 function skinFor(x, y, z) {
   if (y >= BELLY) return null;
@@ -52,6 +63,9 @@ function skinFor(x, y, z) {
   return best;
 }
 
+/** How far down its limb a vertex sits: 0 at the belly, 1 at full stretch. */
+const weightAt = (y) => Math.min(Math.max((BELLY - y) / LEG_LEN, 0), 1);
+
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 for (let i = 0; i < MESH_P.length; i += 9) {
@@ -63,21 +77,19 @@ for (let i = 0; i < MESH_P.length; i += 9) {
   const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
   const L = Math.hypot(n[0], n[1], n[2]) || 1;
 
-  // Which leg is one decision for the whole triangle — a face cannot be rooted
-  // at two different hips — but it is taken from the triangle's *lowest* corner,
-  // not its centre.
-  //
-  // Centre-based leaves a static collar at the top of every leg: the ring of
-  // faces where leg meets body has its centre just above the belly line, so the
-  // whole face is thrown out even though most of it is well down the limb. Those
-  // are the four triangles per leg that sat still while everything under them
-  // swung. Taking the lowest corner claims that ring for the leg, and the
-  // per-vertex weight below still pins its upper edge to the body, so it flexes
-  // instead of tearing.
-  const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3;
-  const cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3;
-  const lowest = Math.min(tri[0][1], tri[1][1], tri[2][1]);
-  const leg = skinFor(cx, lowest, cz);
+  // Each corner is classified on its own, then the face is rooted at whichever
+  // hip its most-committed corner belongs to. A face can only carry one root —
+  // it is a single attribute — but the *weights* stay per corner, and a corner
+  // belonging to no leg keeps weight 0, so it sits still regardless of the root
+  // the face happens to carry. Corners shared with the body therefore stay
+  // welded to it while the rest of the face swings, which is the flex the
+  // shader's smoothstep is there to produce.
+  const legs = tri.map((v) => skinFor(v[0], v[1], v[2]));
+  let lead = -1;
+  for (let k = 0; k < 3; k++) {
+    if (legs[k] && (lead < 0 || weightAt(tri[k][1]) > weightAt(tri[lead][1]))) lead = k;
+  }
+  const leg = lead < 0 ? null : legs[lead];
   const root = leg ? [leg[0], BELLY, leg[1]] : [0, 0, 0];
   const skin = leg ? [0, leg[2], 0.55, 0.9 * leg[3]] : [0, 0, 0, 0];
 
@@ -85,8 +97,9 @@ for (let i = 0; i < MESH_P.length; i += 9) {
     P.push(tri[k][0] - root[0], tri[k][1] - root[1], tri[k][2] - root[2]);
     NR.push(n[0] / L, n[1] / L, n[2] / L);
     RT.push(root[0], root[1], root[2]);
-    // How far down the limb this vertex sits — the weight the shader scales by.
-    const t = leg ? Math.min(Math.max((BELLY - tri[k][1]) / LEG_LEN, 0), 1) : 0;
+    // How far down the limb this corner sits — the weight the shader scales by.
+    // Read from the corner itself, so every face meeting here agrees.
+    const t = legs[k] ? weightAt(tri[k][1]) : 0;
     SK.push(t, skin[1], skin[2], skin[3]);
     const ci = (i / 3) * 4 + k * 4;
     CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], MESH_C[ci + 3]);
@@ -94,6 +107,44 @@ for (let i = 0; i < MESH_P.length; i += 9) {
 }
 
 const idx = new Uint16Array(P.length / 3).map((_, i) => i);
+
+// ── Orbit camera ────────────────────────────────────────────────────────────
+// Drag to turn it over. Left as globals so the debug inspector, when built in,
+// can cast the same ray this camera is looking down.
+let YAW = 0.6;
+let PITCH = 0.22;
+let TIME = 0;
+let VP = null;
+const TARGET = [0, 1.02, 0];
+const DIST = 3.6;
+let dragging = false;
+let lastX = 0;
+let lastY = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointerup', () => (dragging = false));
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  YAW -= (e.clientX - lastX) * 0.01;
+  // Clamped short of the poles: at exactly overhead the up vector and the view
+  // direction line up and the view matrix has no way to decide which way is up.
+  PITCH = Math.min(Math.max(PITCH + (e.clientY - lastY) * 0.008, -1.4), 1.4);
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+
+function eyePos() {
+  const c = Math.cos(PITCH);
+  return [
+    TARGET[0] + DIST * c * Math.sin(YAW),
+    TARGET[1] + DIST * Math.sin(PITCH),
+    TARGET[2] + DIST * c * Math.cos(YAW),
+  ];
+}
 
 bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
   const prog = bmProgram(Unicorn[0], {
@@ -112,9 +163,11 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
 
   const u = new Float32Array(Unicorn[3] / 4);
   bmLoop((t) => {
-    const view = bmLook([1.9, 1.5, 3.1], [0, 1.02, 0], [0, 1, 0]);
+    TIME = t;
+    const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
     const proj = bmPersp(1, canvas.width / canvas.height, 0.1, 50);
-    u.set(bmMul(proj, bmMul(view, bmRotY(t * 0.5))), 0); // uViewProj
+    VP = bmMul(proj, view);
+    u.set(VP, 0); // uViewProj
     u[16] = t; // uTime
     bmUniforms(prog, u);
     bmDraw(prog);

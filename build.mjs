@@ -52,7 +52,11 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
     process.exit(1);
   }
 }
-const combined = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/game.js']
+// The inspector is appended only for `npm run debug`, so it cannot creep into a
+// release: the file simply is not in the program that gets minified.
+const sources = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/game.js'];
+if (process.env.DEBUG) sources.push('src/debug.js');
+const combined = sources
   .map((f) => readFileSync(join(root, f), 'utf8'))
   .join('\n');
 const rawPath = join(dist, 'raw.js');

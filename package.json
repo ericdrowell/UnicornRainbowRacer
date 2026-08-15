@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs && npx serve dist"
+    "dev": "node build.mjs && npx serve dist",
+    "debug": "DEBUG=1 BUDGET=999999 node build.mjs && open dist/index.html"
   },
   "devDependencies": {
     "brometal": "^0.17.0",
