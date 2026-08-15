@@ -11,7 +11,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const dist = join(root, 'dist');
-const LIMIT = 13312; // js13k: 13 * 1024
+// js13k: 13 * 1024. Overridable so a work-in-progress can be looked at before
+// it fits — `BUDGET=200000 npm run build` reports the real number without the
+// gate stopping the build.
+const LIMIT = Number(process.env.BUDGET || 13312);
 
 /** Path to a specific brometal CLI. Unset means the installed one. */
 const CLI = process.env.BROMETAL_CLI;
@@ -49,7 +52,7 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
     process.exit(1);
   }
 }
-const combined = ['dist/brometal.js', 'dist/shaders.js', 'src/game.js']
+const combined = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/game.js']
   .map((f) => readFileSync(join(root, f), 'utf8'))
   .join('\n');
 const rawPath = join(dist, 'raw.js');
