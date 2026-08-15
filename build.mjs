@@ -56,9 +56,30 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 // release: the file simply is not in the program that gets minified.
 const sources = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/game.js'];
 if (process.env.DEBUG) sources.push('src/debug.js');
-const combined = sources
+let combined = sources
   .map((f) => readFileSync(join(root, f), 'utf8'))
   .join('\n');
+
+// Two changes the inspector needs and the release must never have. Flying the
+// camera inside the model shows nothing with back faces culled — the inside of
+// a surface is exactly what gets thrown away — and a 0.1 near plane clips
+// through walls that are barely thicker than that.
+//
+// Patched here, in the concatenated source, rather than behind a runtime flag
+// in game.js: a flag would cost bytes in every release to serve a build that
+// never ships. The trade is that the debug build no longer renders quite like
+// the real one, so each patch is announced rather than applied quietly, and the
+// overlay says on screen that back faces are being drawn.
+if (process.env.DEBUG) {
+  for (const [from, to, why] of [
+    ['cull: 1', 'cull: 0', 'back faces drawn'],
+    ['0.1, 50)', '0.004, 50)', 'near plane 0.1 -> 0.004'],
+  ]) {
+    if (!combined.includes(from)) throw new Error(`debug patch failed: no "${from}" in the sources`);
+    combined = combined.replace(from, to);
+    console.log(`  debug patch  ${why}`);
+  }
+}
 const rawPath = join(dist, 'raw.js');
 writeFileSync(rawPath, combined);
 

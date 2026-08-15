@@ -101,6 +101,78 @@
     return t > 1e-4 ? t : null;
   }
 
+  // ── Free flight ─────────────────────────────────────────────────────────────
+  // WASD to move, drag to look, space and Q for up and down, shift to hurry, R
+  // to drop back to the orbit.
+  //
+  // The orbit camera is anchored to a fixed target at a fixed distance, so it
+  // can circle the model but never enter it — and geometry sealed inside cannot
+  // be judged from outside. game.js keeps its camera in a reassignable function
+  // and a mutable target, so flight lives entirely in this file and the release
+  // carries none of it.
+  const orbitEye = eyePos;
+  const POS = [0, 0, 0];
+  const held = new Set();
+  let flying = false;
+
+  /** Which way the camera looks — the orbit's own eye-to-target direction. */
+  const forward = () => {
+    const c = Math.cos(PITCH);
+    return [-c * Math.sin(YAW), -Math.sin(PITCH), -c * Math.cos(YAW)];
+  };
+
+  const KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'ShiftLeft'];
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyR') {
+      flying = false;
+      eyePos = orbitEye;
+      TARGET[0] = 0;
+      TARGET[1] = 1.02;
+      TARGET[2] = 0;
+      return;
+    }
+    if (!KEYS.includes(e.code)) return;
+    if (!flying) {
+      // Start from wherever the orbit had you, so entering flight does not jump.
+      const p = orbitEye();
+      for (let i = 0; i < 3; i++) POS[i] = p[i];
+      flying = true;
+      eyePos = () => POS;
+    }
+    held.add(e.code);
+    e.preventDefault(); // space scrolls the page otherwise
+  });
+  addEventListener('keyup', (e) => held.delete(e.code));
+  // Without this a key held while the window loses focus never gets its keyup,
+  // and the camera drifts off on its own.
+  addEventListener('blur', () => held.clear());
+
+  function fly(dt) {
+    const f = forward();
+    const r = [-f[2], 0, f[0]];
+    const rl = Math.hypot(r[0], r[2]) || 1;
+    r[0] /= rl;
+    r[2] /= rl;
+    const s = (held.has('ShiftLeft') ? 5.5 : 1.4) * dt;
+    const go = (v, k) => {
+      for (let i = 0; i < 3; i++) POS[i] += v[i] * k;
+    };
+    if (held.has('KeyW')) go(f, s);
+    if (held.has('KeyS')) go(f, -s);
+    if (held.has('KeyD')) go(r, s);
+    if (held.has('KeyA')) go(r, -s);
+    if (held.has('Space') || held.has('KeyE')) POS[1] += s;
+    if (held.has('KeyQ')) POS[1] -= s;
+    for (let i = 0; i < 3; i++) TARGET[i] = POS[i] + f[i];
+  }
+
+  const hud = document.createElement('div');
+  hud.style.cssText =
+    'position:fixed;left:10px;top:10px;z-index:11;pointer-events:none;padding:7px 10px;' +
+    'background:rgba(12,12,20,.82);border:1px solid #3a3a52;border-radius:6px;' +
+    'color:#c9cde0;font:11px/1.6 ui-monospace,Menlo,monospace;white-space:pre';
+  document.body.appendChild(hud);
+
   let picked = -1;
   // Hung off window so the picker can be driven from a script — checking that a
   // hit really is under the cursor is exactly the kind of thing worth asserting
@@ -166,8 +238,23 @@
     tip.style.top = e.clientY + 14 + 'px';
   });
 
-  (function draw() {
+  let last = 0;
+  (function draw(ts = 0) {
     requestAnimationFrame(draw);
+    // Clamped: after a tab has been in the background the first delta is huge,
+    // and unclamped it launches the camera somewhere unrecoverable.
+    const dt = last ? Math.min((ts - last) / 1000, 0.1) : 0;
+    last = ts;
+    if (flying) fly(dt);
+
+    hud.textContent =
+      (flying
+        ? `fly    x ${POS[0].toFixed(2)}  y ${POS[1].toFixed(2)}  z ${POS[2].toFixed(2)}`
+        : 'orbit  — press W to fly') +
+      '\nWASD move · space/Q up down · shift fast' +
+      '\ndrag look · R back to orbit' +
+      '\nback faces drawn (debug build)';
+
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (picked < 0 || !VP) return;
     const v = picked * 3;
