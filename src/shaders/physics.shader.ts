@@ -97,11 +97,20 @@ export const Physics = shader({
     uAspect: 'float',
     uRings: 'float',
     uWidth: 'float',
+    /**
+     * Track distance to the track shader's own along-coordinate. game.js stretches
+     * that coordinate so a lap holds a whole number of pattern periods, and the
+     * unicorn has to land in the same space to be lit by the right panel.
+     *
+     * The eighth float in a block that was already padded to eight, so it costs
+     * nothing to send.
+     */
+    uPattern: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [1, 1, 1],
 
-  compute({ uState, uTrack, uDt, uThrottle, uSteer, uJump, uAspect, uRings, uWidth }, id) {
+  compute({ uState, uTrack, uDt, uThrottle, uSteer, uJump, uAspect, uRings, uWidth, uPattern }, id) {
     // A tab left in the background delivers one enormous frame on return, and
     // an unclamped step of that size moves the unicorn straight through the
     // road — collision is tested at the new position, not swept to it.
@@ -432,7 +441,14 @@ export const Physics = shader({
     storageWrite(uState, 8, vec4(eye, 1));
     storageWrite(uState, 9, vec4(at, 0));
     storageWrite(uState, 10, vec4(camUp, 0));
-    storageWrite(uState, 11, vec4(courseDir, 0));
+    // The spare word on the course direction carries how far along the road the
+    // unicorn is, in the units the track shader draws in, so the model can be
+    // lit by the panel it is standing on. The two ring records either side of it
+    // carry real distances in their own spare words and the segment is already
+    // solved for, so this is an interpolation of numbers that were sitting there
+    // — no second search, and exact rather than ring index times a nominal
+    // spacing, which the rings do not actually have.
+    storageWrite(uState, 11, vec4(courseDir, mix(ca.w, cb.w, along) * uPattern));
     storageWrite(uState, 12, vec4(headingDir, 0));
   },
 });

@@ -5,6 +5,7 @@ import {
   sin,
   cos,
   abs,
+  floor,
   max,
   mix,
   sign,
@@ -204,14 +205,54 @@ export const Unicorn = shader({
     return c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
   },
 
-  fragment({}, { vNormal, vColor }) {
+  fragment({ uState, uTime }, { vNormal, vColor }) {
     // Renormalised, unlike the faceted version: skinning rotates each vertex by
     // its own amount, so along a bending leg the normals genuinely differ across
     // a face and the interpolated value is no longer unit length.
     const n = normalize(vNormal);
-    const lit = max(dot(n, normalize(vec3(0.55, 0.7, 0.85))), 0);
-    const sky = vec3(0.72, 0.78, 0.95).scale(0.6 + 0.26 * n.y);
-    const key = vec3(1, 0.97, 0.9).scale(lit * 0.72);
-    return vec4(vColor.mul(sky.add(key)), 1);
+
+    // Lit from below, by the road. There is no sky any more — the scene clears
+    // to almost black — so the ambient that used to pour blue daylight over
+    // everything would now be light arriving from an empty space, and it showed:
+    // a bright unicorn on a dark ribbon, plainly pasted on.
+    //
+    // The colour is the panel it is standing on, not an average or a guess. The
+    // physics stage leaves the distance along the road in the state buffer, and
+    // running it through the same lattice and the same hue field as the track
+    // shader arrives at the same answer, so the bounce genuinely changes as the
+    // unicorn crosses from a lavender stretch into a pink one. Column six of
+    // twelve — the middle of the road — folded into the constant as 6 * 0.5 +
+    // 1.3, because the whole model gets one colour; it is far too small to
+    // straddle a gradient worth resolving.
+    //
+    // These constants are the track shader's, repeated, and they have to match:
+    // each shader compiles to its own WGSL and the DSL has no imports inside a
+    // stage, so there is nowhere to put the one copy. Retuning the road's
+    // lattice without retuning this is a silent wrong answer, not an error —
+    // it happened once already, and the only symptom was a unicorn lit the
+    // colour of a panel some way up the track.
+    const row = floor(storageRead(uState, 11).w * 0.4456);
+    const wash = sin(row * 0.05) * 2.6 + sin(row * 0.017 + 4.3) * 1.6 + uTime * 0.35;
+    // Over halfway to white, which is much further than the road's own panels go.
+    // Bounced light is weak light: at the road's saturation the model came out
+    // painted the colour of the panel under it — a green unicorn — rather than a
+    // white one catching green off the floor, and it lost its own markings with
+    // it. Washed out this far, the tint is unmistakable and the unicorn is still
+    // the unicorn.
+    const glow = mix(
+      vec3(0.5 + 0.5 * cos(wash), 0.5 + 0.5 * cos(wash + 2.09), 0.5 + 0.5 * cos(wash + 4.19)),
+      vec3(1, 1, 1),
+      0.55,
+    );
+
+    // Strongest on the underside and falling off over the top, which is what an
+    // enormous glowing floor does. Not zero up there: the rails throw light
+    // across the whole model, and a completely unlit topline reads as a hole.
+    const bounce = glow.scale(1.05 - 0.5 * n.y);
+    // What is left of the key light, kept dim and pointed down the road so the
+    // form still reads. Warm, so it separates from the road's pastels rather
+    // than dissolving into them.
+    const key = vec3(1, 0.97, 0.9).scale(max(dot(n, normalize(vec3(0.55, 0.7, 0.85))), 0) * 0.34);
+    return vec4(vColor.mul(bounce.add(key)), 1);
   },
 });

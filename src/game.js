@@ -467,7 +467,12 @@ function syncMusic() {
 // A global because the debug build writes over it. See debug.js.
 let STATE = null;
 
-bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
+// Near black, with just enough blue in it to be a night sky rather than a hole
+// in the screen. The road is the only light source in the scene, and it is only
+// as bright as what surrounds it — the daylit sky this used to clear to was
+// within a stop of the rails, so the glowing ribbon read as a coloured floor.
+// Everything the road does now happens against nothing at all.
+bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
   STATE = bmStore(new Float32Array(52));
   const rings = bmStore(TRACK_DATA);
 
@@ -531,6 +536,7 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
     step[4] = canvas.width / canvas.height;
     step[5] = RINGS;
     step[6] = TRACK_WIDTH;
+    step[7] = PATTERN;
     JUMPED = 0;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
