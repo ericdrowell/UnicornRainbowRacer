@@ -11,6 +11,16 @@
 
 const canvas = document.getElementById('c');
 
+// Whether to build the soundtrack at all. Off while the road is being worked
+// on: half an hour of the same loop is not a good way to judge a look.
+//
+// A `const` rather than a runtime mute, because terser folds it. With this
+// false, the song, the synthesiser that renders it and the pause handling that
+// drives it are all unreachable, and `--toplevel` drops the lot — so the switch
+// costs nothing when it is off and the build gets its bytes back. Sound effects
+// are separate and keep working.
+const MUSIC_ENABLED = false;
+
 // ── Pixel grid ──────────────────────────────────────────────────────────────
 // Real pixel art rather than a blur filter: the scene is *rendered* at one pixel
 // per art pixel and then blown up by a whole number, so each art pixel lands on
@@ -162,13 +172,221 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
 
 const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 
-// ── Orbit camera ────────────────────────────────────────────────────────────
-// Drag to turn it over. Left as globals so the debug inspector, when built in,
-// can cast the same ray this camera is looking down.
-let YAW = 0.6;
-let PITCH = 0.22;
+// ── Rainbow road ────────────────────────────────────────────────────────────
+// The track is fifteen points and a width. Everything the road *is* — where it
+// banks, how finely it is tessellated, how the lighting pattern lines up with
+// itself — is derived from those here, so reshaping the course means moving a
+// point rather than editing geometry.
+//
+// TRACK is the centreline: each entry is a place the ribbon passes through, in
+// order, and the last one joins back to the first. A Catmull-Rom spline through
+// them is what makes that a usable authoring format — the curve *hits* every
+// point instead of being pulled vaguely towards it, so a point dropped at a
+// corner apex is where the road actually goes.
+//
+// The loop starts at the origin because that is where the unicorn stands: the
+// first straight runs out from under it, which is what puts the model on the
+// road rather than beside it.
+const TRACK_WIDTH = 13.5;
+const TRACK = [
+  [0, 0, 0], // start line: flat, straight, and pointing the way the unicorn does
+  [30, 1, 2],
+  [53, 5, 8], // the climb starts
+  [64, 10, 20],
+  [62, 12, 37], // long left, high and open
+  [50, 12, 59],
+  [31, 13, 84],
+  [9, 17, 103],
+  [-12, 22, 111], // over the top
+  [-31, 23, 103], // summit, 23 above the start line
+  [-48, 18, 82], // dropping away
+  [-60, 10, 54],
+  [-63, 4, 29], // the tight one, and the steepest bit of the descent
+  [-53, 2, 12],
+  [-31, 1, 3], // levelling out onto the start straight
+];
+
+/** Metres between ribbon rings. Small enough that corners read as curves. */
+const RING_SPACING = 2;
+/** Radians of camber per unit of curvature, and the ceiling on it. */
+const BANK_GAIN = 15;
+const BANK_MAX = 0.55;
+
+const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const norm = (v) => {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+};
+const dist = (a, b) => Math.hypot(...sub(a, b));
+
+/**
+ * A point on the Catmull-Rom spline between `b` and `c`, with `a` and `d` as the
+ * neighbours that set the tangents there.
+ */
+const spline = (a, b, c, d, t) =>
+  [0, 1, 2].map(
+    (k) =>
+      0.5 *
+      (2 * b[k] +
+        (c[k] - a[k]) * t +
+        (2 * a[k] - 5 * b[k] + 4 * c[k] - d[k]) * t * t +
+        (3 * b[k] - a[k] - 3 * c[k] + d[k]) * t * t * t),
+  );
+
+// Resample the control points into rings spaced by arc length rather than a
+// fixed count per segment. A fixed count would tessellate a 60-metre straight
+// and a 12-metre hairpin identically — the straight wastes triangles it has no
+// curve to spend them on, and the hairpin comes out visibly faceted.
+const CENTRE = [];
+for (let i = 0; i < TRACK.length; i++) {
+  const a = TRACK[(i + TRACK.length - 1) % TRACK.length];
+  const b = TRACK[i];
+  const c = TRACK[(i + 1) % TRACK.length];
+  const d = TRACK[(i + 2) % TRACK.length];
+  const steps = Math.max(1, Math.round(dist(b, c) / RING_SPACING));
+  // The endpoint is left off: it is the next segment's start, and emitting both
+  // would put two rings in the same place and a zero-area quad between them.
+  for (let s = 0; s < steps; s++) CENTRE.push(spline(a, b, c, d, s / steps));
+}
+
+const RINGS = CENTRE.length;
+const ring = (i) => CENTRE[(i + RINGS) % RINGS];
+
+// Central differences, so a ring's tangent is the direction the road is heading
+// *through* it rather than the direction of the segment on one side of it.
+const TAN = CENTRE.map((_, i) => norm(sub(ring(i + 1), ring(i - 1))));
+
+// Distance travelled to each ring, and the length of the whole lap. Measured
+// along the resampled polyline, which is the same thing the ribbon is built
+// from — deriving it from the control points instead would drift short on
+// corners, where the spline bulges out past the chord.
+const ALONG = [0];
+for (let i = 1; i < RINGS; i++) ALONG.push(ALONG[i - 1] + dist(ring(i), ring(i - 1)));
+const LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
+
+// How hard the road is turning at each ring, signed: positive is a left-hander.
+// The y component of the cross product of the tangents either side is the sine
+// of the heading change, and dividing by the distance between them turns that
+// into curvature — a number about the track's shape, independent of how many
+// rings were spent on it.
+let BANK = TAN.map((_, i) => {
+  const p = TAN[(i + RINGS - 1) % RINGS];
+  const n = TAN[(i + 1) % RINGS];
+  const turn = p[2] * n[0] - p[0] * n[2];
+  const span = dist(ring(i + 1), ring(i - 1));
+  return Math.min(Math.max((turn / span) * BANK_GAIN, -BANK_MAX), BANK_MAX);
+});
+
+// Catmull-Rom is only C1, so curvature — and with it the camber — *steps* at
+// every control point, and a step in camber is a crease running clean across
+// the road. Averaging each ring against its neighbours a few times spreads the
+// step over several metres, which is what a real banked corner does anyway: the
+// camber eases in on the approach instead of switching on at the apex.
+//
+// Out of place, one pass at a time. Smoothing in place would feed each ring the
+// value its neighbour was given *this* pass, which is a different filter — it
+// drags the whole profile along the direction of the loop.
+for (let pass = 0; pass < 12; pass++) {
+  BANK = BANK.map(
+    (b, i) => (BANK[(i + RINGS - 1) % RINGS] + 2 * b + BANK[(i + 1) % RINGS]) / 4,
+  );
+}
+
+// The lighting in the shader runs off distance travelled, and the track is a
+// loop, so the pattern has to come back to where it started or there is a seam
+// across the road at the start line. Scaling every distance by a hair makes the
+// lap an exact whole number of waves. A multiple of three, because the slow
+// wave is a third of the rate of the fast one and both have to close.
+const WAVES = 3 * Math.max(1, Math.round((LAP * 0.7) / (6 * Math.PI)));
+const PATTERN = (WAVES * 2 * Math.PI) / (0.7 * LAP);
+
+// Two vertices per ring, left edge then right. The ring at the start is emitted
+// a second time at the end, carrying a full lap's distance instead of zero:
+// closing the strip by wrapping the indices back to ring 0 would leave the last
+// quad interpolating the distance from LAP down to 0, cramming the entire
+// pattern into two metres of road.
+const TP = [];
+const TE = [];
+for (let i = 0; i <= RINGS; i++) {
+  const g = i % RINGS;
+  const t = TAN[g];
+  // Across the road, level with the horizon before banking. This is the one
+  // assumption the frame makes: a section going straight up has no side to
+  // speak of, so the track may climb as steeply as it likes but must not
+  // actually stand on end.
+  const side = norm(cross(t, [0, 1, 0]));
+  const up = cross(side, t);
+  const cb = Math.cos(BANK[g]);
+  const sb = Math.sin(BANK[g]);
+  // Rolled about the tangent, so the outside of a corner lifts.
+  const arm = side.map((s, k) => (s * cb + up[k] * sb) * TRACK_WIDTH * 0.5);
+  const c = CENTRE[g];
+  const v = (i < RINGS ? ALONG[i] : LAP) * PATTERN;
+  TP.push(c[0] - arm[0], c[1] - arm[1], c[2] - arm[2]);
+  TE.push(-1, v);
+  TP.push(c[0] + arm[0], c[1] + arm[1], c[2] + arm[2]);
+  TE.push(1, v);
+}
+
+// Two triangles per quad. bmIndex draws uint16, so the track has a ceiling of
+// 32k rings — about 65 km of road at this spacing.
+const TI = new Uint16Array(RINGS * 6);
+for (let i = 0; i < RINGS; i++) {
+  const a = i * 2;
+  const b = a + 2;
+  TI.set([a, b, a + 1, a + 1, b, b + 1], i * 6);
+}
+
+// The ribbon, in the form the physics stage reads it: two vec4s a ring, centre
+// with distance travelled, then tangent with camber. Everything the simulation
+// needs to know about the road — where its floor is, which way is up, where its
+// edges are — is rebuilt from those two by the same construction that built the
+// geometry, which is the only reason the unicorn stands where the road looks.
+//
+// One ring longer than there are rings. The physics reads a *segment*, ring i to
+// ring i+1, so the last ring needs a partner and its partner is the first one
+// again. Exactly the trick the ribbon itself uses for its seam quad, and for the
+// same reason: wrapping an index costs a branch in the shader, while repeating
+// twelve floats costs twelve floats.
+const TRACK_DATA = new Float32Array((RINGS + 1) * 8);
+for (let i = 0; i <= RINGS; i++) {
+  const g = i % RINGS;
+  TRACK_DATA.set(
+    [...CENTRE[g], i < RINGS ? ALONG[i] : LAP, ...TAN[g], BANK[g]],
+    i * 8,
+  );
+}
+
+// ── Driving ─────────────────────────────────────────────────────────────────
+// Keys are the one thing the GPU cannot read, so this is all the CPU still owns
+// of the simulation: which keys are down, and a latch for the one that is an
+// event rather than a state.
+const HELD = {};
+let JUMPED = 0;
+/** 1 when either key of a pair is down. */
+const held = (a, b) => (HELD[a] || HELD[b] ? 1 : 0);
+
+addEventListener('keydown', (e) => {
+  HELD[e.code] = 1;
+  // Jump is a press, not a hold. The latch is set here and cleared by the frame
+  // that spends it, so holding the key gives exactly one jump — and `repeat`
+  // keeps the key's own auto-repeat, about thirty a second, from giving more.
+  if (e.code === 'Space' && !e.repeat) JUMPED = 1;
+  // Arrows scroll the page and space pages down it, both of which move the
+  // canvas out from under the player mid-corner.
+  if (/^(Arrow|Space)/.test(e.code)) e.preventDefault();
+});
+addEventListener('keyup', (e) => (HELD[e.code] = 0));
+
+// Wall clock, for the parts of the look that drift on their own — the road's
+// scroll and the mane's colour. Everything that moves *because the unicorn is
+// moving* reads the gait out of the state buffer instead, and the gait is a
+// distance rather than a time.
 let TIME = 0;
-let VP = null;
 
 // ── Pause ───────────────────────────────────────────────────────────────────
 // Escape toggles. The frame keeps being drawn while paused — the camera still
@@ -192,46 +410,41 @@ addEventListener('keydown', (e) => {
   PAUSED = !PAUSED;
   // Suspending the context stops its clock as well, so the track holds where it
   // is instead of playing on in silence and coming back somewhere else.
-  if (PAUSED) MUSIC.suspend();
-  else MUSIC.resume();
+  // Nothing to suspend when the soundtrack is switched off.
+  if (MUSIC_ENABLED) {
+    if (PAUSED) MUSIC.suspend();
+    else MUSIC.resume();
+  }
 });
-const TARGET = [0, 1.02, 0];
-const DIST = 3.6;
-let dragging = false;
-let lastX = 0;
-let lastY = 0;
-canvas.addEventListener('pointerdown', (e) => {
-  dragging = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-  canvas.setPointerCapture(e.pointerId);
-});
-canvas.addEventListener('pointerup', () => (dragging = false));
-canvas.addEventListener('pointermove', (e) => {
-  if (!dragging) return;
-  YAW -= (e.clientX - lastX) * 0.01;
-  // Clamped short of the poles: at exactly overhead the up vector and the view
-  // direction line up and the view matrix has no way to decide which way is up.
-  PITCH = Math.min(Math.max(PITCH + (e.clientY - lastY) * 0.008, -1.4), 1.4);
-  lastX = e.clientX;
-  lastY = e.clientY;
-});
-
-function eyePos() {
-  const c = Math.cos(PITCH);
-  return [
-    TARGET[0] + DIST * c * Math.sin(YAW),
-    TARGET[1] + DIST * Math.sin(PITCH),
-    TARGET[2] + DIST * c * Math.cos(YAW),
-  ];
-}
+// The unicorn's whole existence, and the camera that watches it. Eleven vec4s:
+// four of body, four of view-projection, three the camera remembers between
+// frames so it can chase rather than snap.
+//
+// Zeroed, which is a valid opening position rather than a placeholder: the body
+// starts at the origin, which is ring zero, and every other field — heading,
+// speed, gait, the fall — genuinely starts at nothing. The camera's stored
+// "exists" flag starting at zero is what tells the first dispatch to place the
+// camera outright instead of gliding it in from the origin.
+//
+// A global because the debug build writes over it. See debug.js.
+let STATE = null;
 
 bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
+  STATE = bmStore(new Float32Array(44));
+  const rings = bmStore(TRACK_DATA);
+
+  // The simulation. One workgroup of one, dispatched once a frame: there is a
+  // single unicorn and nothing here is parallel. It is on the GPU so that the
+  // answer never has to come back — see physics.shader.ts.
+  const sim = bmCompute(Physics[0], { u: Physics[3], s: Physics[5] });
+  bmStorages(sim, STATE, rings);
+
   const prog = bmProgram(Unicorn[0], {
     a: Unicorn[1],
     i: Unicorn[2],
     u: Unicorn[3],
     t: Unicorn[4],
+    s: Unicorn[5],
     cull: 1,
   });
   bmAttr(prog, 0, new Float32Array(P));
@@ -240,18 +453,56 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
   bmAttr(prog, 3, new Float32Array(SK));
   bmAttr(prog, 4, new Float32Array(CL));
   bmIndex(prog, idx);
+  bmStorages(prog, STATE);
 
+  // Drawn without culling: the ribbon is one surface with nothing under it, and
+  // half a lap of it is above the camera on the climb, so the underside is on
+  // screen as often as the top.
+  const track = bmProgram(Track[0], {
+    a: Track[1],
+    i: Track[2],
+    u: Track[3],
+    t: Track[4],
+    s: Track[5],
+  });
+  bmAttr(track, 0, new Float32Array(TP));
+  bmAttr(track, 1, new Float32Array(TE));
+  bmIndex(track, TI);
+  bmStorages(track, STATE);
+
+  const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
   bmLoop((t) => {
-    if (prev && !PAUSED) clock += t - prev;
+    const elapsed = prev ? t - prev : 0;
     prev = t;
+    if (!PAUSED) clock += elapsed;
     TIME = clock;
-    const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
-    const proj = bmPersp(1, canvas.width / canvas.height, 0.1, 50);
-    VP = bmMul(proj, view);
-    u.set(VP, 0); // uViewProj
-    u[16] = TIME; // uTime
+
+    // A zero step is the pause. The stage still runs — the camera has to keep
+    // answering, since the window can be resized while paused and the aspect
+    // ratio is baked into the matrix it builds — but nothing integrates, so the
+    // unicorn holds exactly where it was rather than resuming somewhere else.
+    step[0] = PAUSED ? 0 : elapsed;
+    step[1] = held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown');
+    step[2] = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft');
+    step[3] = PAUSED ? 0 : JUMPED;
+    step[4] = canvas.width / canvas.height;
+    step[5] = RINGS;
+    step[6] = TRACK_WIDTH;
+    JUMPED = 0;
+    bmUniforms(sim, step);
+    // Ahead of the draws below, though they were recorded first: bmLoop submits
+    // only once this callback returns, so this frame's physics is queued before
+    // this frame's rendering and the two never disagree about where anything is.
+    bmDispatch(sim, 1);
+
+    u[0] = TIME;
     bmUniforms(prog, u);
     bmDraw(prog);
+    // The same value, but each program owns its uniform buffer — one write does
+    // not reach the other. The camera they share travels the other way, through
+    // the state buffer, and never touches the CPU at all.
+    bmUniforms(track, u);
+    bmDraw(track);
   });
 });

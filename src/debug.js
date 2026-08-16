@@ -48,16 +48,25 @@
     const s = Math.sin(a);
     return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
   };
+  // GAIT is the value this build writes into the state buffer, and the shader
+  // now reads its gait from there rather than from the clock. Zero, so the model
+  // stands still and a triangle can be pointed at and talked about — and zero
+  // *here* for the same reason, because the two definitions of where a vertex is
+  // have to agree or the highlight lands on the wrong face.
+  const GAIT = 0;
   function posed(v) {
     const t = SK[v * 4];
-    const gait = TIME * 9 + SK[v * 4 + 1];
+    const gait = GAIT + SK[v * 4 + 1];
     const hip = SK[v * 4 + 2] * Math.sin(gait) * smooth(0, 0.28, t);
     const knee = SK[v * 4 + 3] * Math.max(Math.sin(gait + 2.2), 0);
     const bend = knee * smooth(0.32, 0.56, t);
     const p = [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]];
     const a = spin([p[0], p[1] + KNEE_Y, p[2]], bend);
     const b = spin([a[0], a[1] - KNEE_Y, a[2]], hip);
-    const bob = Math.sin(TIME * 18) * 0.03;
+    const bob = Math.sin(GAIT * 2) * 0.03;
+    // No body transform: this build parks the unicorn at the origin facing +x,
+    // so model space and world space are the same thing and the ray below can
+    // be cast straight at these.
     return [b[0] + RT[v * 3], b[1] + RT[v * 3 + 1] + bob, b[2] + RT[v * 3 + 2]];
   }
 
@@ -110,22 +119,74 @@
     return t > 1e-4 ? t : null;
   }
 
+  // ── The inspector's own camera ─────────────────────────────────────────────
+  // The release has no CPU camera at all: the physics stage builds the
+  // view-projection on the GPU and writes it into the state buffer, and nothing
+  // reads it back. That is right for racing and useless for inspecting, so this
+  // build takes the buffer over.
+  //
+  // Each frame, before anything is drawn, this overwrites the whole of STATE:
+  // an identity body — origin, facing +x, +y up, gait zero — and an orbit
+  // matrix built here on the CPU. The unicorn therefore renders exactly in
+  // model space, which is what lets the picker below compare a mouse ray
+  // against `posed()` positions and be right. Let the physics keep the buffer
+  // and the model would be somewhere down the track, in a pose the CPU would
+  // have to reproduce to pick against.
+  //
+  // Writing over a storage buffer from JavaScript works because bmStore creates
+  // them COPY_DST. There is no reading one back, which is the whole reason the
+  // camera is on the GPU in the first place — but writing is free.
+  let YAW = 0.6;
+  let PITCH = 0.22;
+  let VP = null;
+  const TARGET = [0, 1.02, 0];
+  const body = new Float32Array(32);
+  body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0, /* across */ 0, 0, 1, 0]);
+
+  function camera() {
+    const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
+    // 0.004 rather than the release's 0.1, because flying the camera inside the
+    // model is the point and at 0.1 the surface clips away as you reach it.
+    const proj = bmPersp(1, canvas.width / canvas.height, 0.004, 500);
+    VP = bmMul(proj, view);
+    body.set(VP, 16);
+    bmDevice.queue.writeBuffer(STATE, 0, body);
+  }
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointerup', () => (dragging = false));
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    YAW -= (e.clientX - lastX) * 0.01;
+    // Clamped short of the poles: at exactly overhead the up vector and the view
+    // direction line up and the view matrix has no way to decide which way is up.
+    PITCH = Math.min(Math.max(PITCH + (e.clientY - lastY) * 0.008, -1.4), 1.4);
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+
   // ── Zoom ───────────────────────────────────────────────────────────────────
   // Scroll to pull the camera in towards the centre of the model or back out
-  // again. game.js orbits at a fixed distance, which is right for looking at the
-  // unicorn and no use for looking *inside* it — and geometry sealed inside
-  // cannot be judged from outside. Its eye is a reassignable function, so this
-  // lives entirely here and the release carries none of it.
-  const orbitEye = eyePos;
-  let dist = Math.hypot(...orbitEye().map((n, i) => n - TARGET[i]));
-  eyePos = () => {
+  // again. A fixed distance is right for looking at the unicorn and no use for
+  // looking *inside* it — and geometry sealed inside cannot be judged from
+  // outside.
+  let dist = 3.6;
+  function eyePos() {
     const c = Math.cos(PITCH);
     return [
       TARGET[0] + dist * c * Math.sin(YAW),
       TARGET[1] + dist * Math.sin(PITCH),
       TARGET[2] + dist * c * Math.cos(YAW),
     ];
-  };
+  }
   addEventListener(
     'wheel',
     (e) => {
@@ -134,14 +195,26 @@
       // far out and jumps clean through the model once you are close.
       //
       // The floor is well inside the unicorn — that is the point — which is why
-      // debug builds also drop the near plane to 0.004. At the release's 0.1 the
-      // surface you are trying to look at would clip away as you reached it.
+      // this build's near plane is 0.004. At the release's 0.1 the surface you
+      // are trying to look at would clip away as you reached it.
       dist = Math.min(Math.max(dist * Math.exp(e.deltaY * 0.0012), 0.04), 24);
     },
     // Explicitly not passive: listeners on wheel default to passive, and a
     // passive listener may not preventDefault, so the page would scroll too.
     { passive: false },
   );
+
+  // Take the state buffer over, immediately after the physics stage has filled
+  // it and before bmLoop submits the frame that reads it. Wrapping the global
+  // is what gets the ordering right: a separate requestAnimationFrame would
+  // race the render loop's, and writeBuffer only beats a submit it is queued
+  // ahead of. bmDispatch is a plain function declaration in the shared scope,
+  // so it can be replaced the way anything else here is.
+  const dispatch = bmDispatch;
+  bmDispatch = (prog, x, y, z) => {
+    dispatch(prog, x, y, z);
+    camera();
+  };
 
   const hud = document.createElement('div');
   hud.style.cssText =
@@ -223,7 +296,7 @@
     hud.textContent =
       `distance  ${dist.toFixed(2)}\n` +
       'scroll to zoom · drag to rotate\n' +
-      'back faces drawn · gait frozen (debug build)';
+      'back faces drawn · unicorn parked and frozen (debug build)';
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (picked < 0 || !VP) return;

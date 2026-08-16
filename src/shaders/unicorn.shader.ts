@@ -7,8 +7,10 @@ import {
   max,
   mix,
   dot,
+  cross,
   smoothstep,
   normalize,
+  storageRead,
   type Vec3,
 } from 'brometal';
 
@@ -56,11 +58,20 @@ export const Unicorn = shader({
     /** Colour, plus 1 to replace it with the flowing rainbow. */
     aColor: 'vec4',
   },
-  uniforms: { uViewProj: 'mat4', uTime: 'float' },
+  uniforms: { uTime: 'float' },
+  // Written by the physics stage, read-only here: where the body is, which way
+  // it faces, which way the road says is up, and the camera it is seen through.
+  storage: { uState: 'vec4' },
   varyings: { vNormal: 'vec3', vColor: 'vec3' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uViewProj, uTime }, v) {
-    const gait = uTime * 9 + aSkin.y;
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime }, v) {
+    const body = storageRead(uState, 0);
+    const facing = storageRead(uState, 1);
+    const normal = storageRead(uState, 2);
+    // Distance covered, not elapsed time. The legs are driven by how far the
+    // unicorn has actually gone, so they stop when it stops rather than running
+    // on the spot — which is the one thing that gives a treadmill away.
+    const gait = normal.w + aSkin.y;
     // Weighted by distance along the limb, and that is what welds it: the ring
     // shared with the barrel has t = 0, so it never moves, while everything
     // below swings freely. Rotate the leg rigidly instead and the top ring tears
@@ -79,24 +90,53 @@ export const Unicorn = shader({
     const atKnee = spin(vec3(aPos.x, aPos.y + kneeY, aPos.z), bend);
     const limb = spin(vec3(atKnee.x, atKnee.y - kneeY, atKnee.z), hip);
     // The barrel rises and falls at twice the stride, which sells a run more
-    // than the legs do.
-    const bob = sin(uTime * 18) * 0.03;
-    const world = limb.add(aRoot).add(vec3(0, bob, 0));
+    // than the legs do. Tied to the gait rather than the clock for the same
+    // reason the legs are — a standing unicorn should not be breathing hard.
+    const bob = sin(gait * 2) * 0.03;
+    const local = limb.add(aRoot).add(vec3(0, bob, 0));
 
-    v.vNormal = spin(spin(aNrm, bend), hip);
+    // Onto the track. The model is built facing +x with +y up, so its own axes
+    // map straight onto the road's: forward, the surface normal, and the third
+    // one taken as their cross product rather than read from the buffer. That
+    // keeps the basis right-handed with the model's, and a basis that quietly
+    // flips handedness mirrors the mesh and turns every face inside out.
+    const across = cross(facing.xyz, normal.xyz);
+    const world = body.xyz
+      .add(facing.xyz.scale(local.x))
+      .add(normal.xyz.scale(local.y))
+      .add(across.scale(local.z));
+
+    // The normal rides the same basis. Skipping this leaves the lighting fixed
+    // to the world while the unicorn turns under it, so the lit side stays put
+    // as the body rotates — subtle enough to look like a lighting bug and not a
+    // transform one.
+    const posed = spin(spin(aNrm, bend), hip);
+    v.vNormal = facing.xyz
+      .scale(posed.x)
+      .add(normal.xyz.scale(posed.y))
+      .add(across.scale(posed.z));
 
     // Bands run diagonally and drift, so the mane and tail flow rather than sit.
     // The multiplier is high because a mane spans barely half a unit: at a gentle
     // rate the whole thing lands inside one arc of the palette and comes out a
     // single colour with a slight gradient, which is not a rainbow.
-    const band = (world.x + world.y * 2.2) * 7 - uTime * 2.4;
+    //
+    // Measured in model space, not world. Against world coordinates the bands
+    // would sweep through the mane as the unicorn drove, at a rate set by how
+    // fast it happened to be going.
+    const band = (local.x + local.y * 2.2) * 7 - uTime * 2.4;
     const rainbow = vec3(
       0.5 + 0.5 * cos(band),
       0.5 + 0.5 * cos(band + 2.09),
       0.5 + 0.5 * cos(band + 4.19),
     );
     v.vColor = mix(aColor.xyz, rainbow, aColor.w);
-    return uViewProj.mul(vec4(world, 1));
+
+    const c0 = storageRead(uState, 4);
+    const c1 = storageRead(uState, 5);
+    const c2 = storageRead(uState, 6);
+    const c3 = storageRead(uState, 7);
+    return c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
   },
 
   fragment({}, { vNormal, vColor }) {

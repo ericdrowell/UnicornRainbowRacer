@@ -99,14 +99,15 @@ combined += '\n' + [
 if (process.env.DEBUG) {
   for (const [from, to, why] of [
     ['cull: 1', 'cull: 0', 'back faces drawn'],
-    ['0.1, 50)', '0.004, 50)', 'near plane 0.1 -> 0.004'],
-    // Frozen so a triangle can be pointed at and talked about. One line does it
-    // now that the pause work gave the game a single clock: the shader reads
-    // TIME through the uniform, and the inspector's picking replicates the same
-    // skinning on the CPU from the same TIME. Stopping it stops both, which is
-    // what keeps the highlight on the face it belongs to — two definitions of
-    // "where is this vertex" that disagree is exactly what makes a picker lie.
-    ['TIME = clock;', 'TIME = 0;', 'gait frozen'],
+    // The near plane and the pose used to be patched here too, and neither is
+    // any more. Both moved onto the GPU: the projection is built by the physics
+    // stage and the unicorn is placed by its vertex shader, so there is no
+    // longer a line in game.js to rewrite. debug.js takes the state buffer over
+    // instead — its own near plane, and a parked unicorn at the origin — which
+    // is a better arrangement anyway, because it is code that reads as code
+    // rather than a string match that breaks silently when the source is
+    // reworded. Only genuinely source-level patches belong here now.
+    ['TIME = clock;', 'TIME = 0;', 'wall clock frozen'],
   ]) {
     if (!combined.includes(from)) throw new Error(`debug patch failed: no "${from}" in the sources`);
     combined = combined.replace(from, to);

@@ -10,7 +10,7 @@
     "debug": "DEBUG=1 node build.mjs && open dist/debug.html"
   },
   "devDependencies": {
-    "brometal": "^0.17.0",
+    "brometal": "^0.17.3",
     "terser": "^5.31.0"
   },
   "dependencies": {
