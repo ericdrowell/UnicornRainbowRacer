@@ -74,11 +74,20 @@
     return 'hoof';
   }
 
+  // Where the canvas actually is on screen. It no longer fills the window: the
+  // pixel grid sizes it to a whole number of art pixels and blows it up with a
+  // transform, so its box is both offset and a different size from the viewport.
+  // getBoundingClientRect reports the box after the transform, which is exactly
+  // the region the cursor is pointing at.
+  const box = () => canvas.getBoundingClientRect();
+
   const project = (p) => {
     const w = VP[3] * p[0] + VP[7] * p[1] + VP[11] * p[2] + VP[15];
+    const r = box();
+    const d = devicePixelRatio;
     return [
-      (((VP[0] * p[0] + VP[4] * p[1] + VP[8] * p[2] + VP[12]) / w) * 0.5 + 0.5) * overlay.width,
-      (0.5 - ((VP[1] * p[0] + VP[5] * p[1] + VP[9] * p[2] + VP[13]) / w) * 0.5) * overlay.height,
+      (r.left + ((((VP[0] * p[0] + VP[4] * p[1] + VP[8] * p[2] + VP[12]) / w) * 0.5 + 0.5)) * r.width) * d,
+      (r.top + (0.5 - ((VP[1] * p[0] + VP[5] * p[1] + VP[9] * p[2] + VP[13]) / w) * 0.5) * r.height) * d,
       w,
     ];
   };
@@ -161,10 +170,13 @@
     const rl = Math.hypot(...r) || 1;
     for (let i = 0; i < 3; i++) r[i] /= rl;
     const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
-    const aspect = innerWidth / innerHeight;
+    const r0 = box();
+    // Aspect from the drawing buffer, which is what bmPersp was given — the
+    // element's box is a whole number of art pixels and can differ from it.
+    const aspect = canvas.width / canvas.height;
     const tan = Math.tan(0.5); // bmPersp is called with fov = 1 radian
-    const nx = (e.clientX / innerWidth) * 2 - 1;
-    const ny = 1 - (e.clientY / innerHeight) * 2;
+    const nx = ((e.clientX - r0.left) / r0.width) * 2 - 1;
+    const ny = 1 - ((e.clientY - r0.top) / r0.height) * 2;
     const d = f.map((_, i) => f[i] + r[i] * nx * tan * aspect + up[i] * ny * tan);
     const dl = Math.hypot(...d);
     for (let i = 0; i < 3; i++) d[i] /= dl;

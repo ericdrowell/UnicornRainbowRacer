@@ -11,6 +11,43 @@
 
 const canvas = document.getElementById('c');
 
+// ── Pixel grid ──────────────────────────────────────────────────────────────
+// Real pixel art rather than a blur filter: the scene is *rendered* at one pixel
+// per art pixel and then blown up by a whole number, so each art pixel lands on
+// an exact PIXEL x PIXEL block. Sampling a full-resolution image and quantising
+// it would give blocks too, but each would be a point sample of a sharp image —
+// blocky edges with full-resolution aliasing trapped inside them. Rendering at
+// the low resolution is what makes it read as pixel art.
+//
+// The blow-up is a CSS transform, not a second render pass. bmLoop sizes the
+// drawing buffer from the element's layout box, and a transform does not change
+// that box — so the buffer stays small while the picture fills the screen. A
+// post-process pass would cost a pipeline, a quad and a shader to arrive at the
+// same image, and this budget has 3.5 kB left in it.
+//
+// Flooring is what keeps the scaling exact. The element is sized to a whole
+// number of art pixels, so the leftover strip at the right and bottom is at most
+// PIXEL - 1 pixels of background rather than a row of half-width blocks.
+//
+// The screen's own pixel ratio has to be divided back out. bmLoop multiplies the
+// layout box by devicePixelRatio to get the buffer, so on a 2x display the same
+// box renders twice as finely and the blocks come out half the size — PIXEL
+// would mean something different on every monitor. Sizing the box by
+// PIXEL * devicePixelRatio and scaling by the same amount cancels it: one art
+// pixel is PIXEL CSS pixels everywhere, and still a whole number of real ones.
+// P toggles it, so the same scene can be compared against itself while the look
+// is still being decided. Off to start with.
+const PIXEL = 8;
+let PIXELATED = false;
+function pixelate() {
+  const step = PIXELATED ? PIXEL * devicePixelRatio : 1;
+  canvas.style.width = Math.floor(innerWidth / step) + 'px';
+  canvas.style.height = Math.floor(innerHeight / step) + 'px';
+  canvas.style.transform = 'scale(' + step + ')';
+}
+pixelate();
+addEventListener('resize', pixelate);
+
 // ── Skeleton, measured from the model ───────────────────────────────────────
 // Where each leg is, and the height its vertices start belonging to it.
 const BELLY = 0.56; // below this, a vertex is leg rather than body
@@ -146,6 +183,11 @@ let PAUSED = false;
 let clock = 0;
 let prev = 0;
 addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP') {
+    PIXELATED = !PIXELATED;
+    pixelate();
+    return;
+  }
   if (e.code !== 'Escape') return;
   PAUSED = !PAUSED;
   // Suspending the context stops its clock as well, so the track holds where it
