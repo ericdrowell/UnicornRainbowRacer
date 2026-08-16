@@ -411,24 +411,44 @@ addEventListener('keydown', (e) => {
   syncMusic();
 });
 
+// The two rendered tracks, [racing, idle], once music.js has them, and whichever
+// source is currently playing one of them. Racing plays while you drive, idle
+// while you are paused.
+let TRACKS = null;
+let PLAYING = null;
+
 /**
- * Point the audio context at whatever the game currently wants.
+ * Point the audio at whatever the game currently wants.
  *
- * Suspending stops the context's clock as well, so the track holds where it is
- * rather than playing on in silence and coming back somewhere else.
+ * Each change of state starts its track at its first note, which is why this
+ * builds a source rather than fading between two that run the whole time: a
+ * BufferSource plays once and cannot be rewound, so playing from the beginning
+ * *is* a new source. They are cheap — the buffer is the expensive part and that
+ * is rendered once at load and handed to every source that follows.
  *
- * One function rather than a suspend here and a resume there, because two
+ * The context is never suspended: pausing swaps the track rather than stopping
+ * the clock, and a suspended context would silence both. Only the browser's own
+ * autoplay lock keeps things quiet, and that lifts on the first gesture.
+ *
+ * One function rather than a decision in each place that needs one, because two
  * places deciding independently is exactly how they came to disagree. music.js
- * may not start the track until the browser has seen a gesture, so it waits for
- * the first key or click and resumes then — and that first key can be the very
- * Escape that just paused. Both handlers fire, the pause loses because it ran
- * first, and pausing the game *starts* the music. Now both ask this, and this
- * only ever answers with the state the game is actually in.
+ * may not start a track until the browser has seen a gesture, so it waits for
+ * the first key or click — and that first key can be the very Escape that just
+ * paused. Both handlers fire, and whichever ran last used to win. Now both ask
+ * this, and this only ever answers with the state the game is actually in. Both
+ * running for one Escape is harmless twice over: they agree on the track, and
+ * restarting a song that started a moment ago is the same song from the top.
  */
 function syncMusic() {
   if (!MUSIC_ENABLED) return;
-  if (PAUSED) MUSIC.suspend();
-  else MUSIC.resume();
+  MUSIC.resume();
+  if (!TRACKS) return;
+  if (PLAYING) PLAYING.stop();
+  PLAYING = MUSIC.createBufferSource();
+  PLAYING.buffer = TRACKS[PAUSED ? 1 : 0];
+  PLAYING.loop = true;
+  PLAYING.connect(MUSIC.destination);
+  PLAYING.start();
 }
 // The unicorn's whole existence, and the camera that watches it. Thirteen vec4s:
 // four of body, four of view-projection, three the camera remembers between

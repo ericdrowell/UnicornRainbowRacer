@@ -80,7 +80,8 @@ let combined = sources
 // budget that difference is a quarter of the remaining space.
 combined += '\n' + [
   readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
-  `const SONG = ${readFileSync(join(root, 'src', 'song.json'), 'utf8')};`,
+  `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'race-song.json'), 'utf8')};`,
+  `const IDLE_SONG = ${readFileSync(join(root, 'src', 'songs', 'idle-song.json'), 'utf8')};`,
   readFileSync(join(root, 'src', 'music.js'), 'utf8'),
   readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
   readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),

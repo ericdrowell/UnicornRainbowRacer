@@ -90,7 +90,7 @@ const song = {
   endPattern: PATTERNS - 1,
 };
 writeFileSync(SP + 'song.json', JSON.stringify(song));
-writeFileSync('/Users/ericrowell/workspace/UnicornRainbowRacer/src/song.json', JSON.stringify(song));
+writeFileSync('/Users/ericrowell/workspace/UnicornRainbowRacer/src/songs/intro-song.json', JSON.stringify(song));
 
 console.log('rows ' + v.rows + ' -> ' + ROWS + ' (' + PATTERNS + ' patterns)   rowLen ' + ROW_LEN + '   ' + song.songLen + 's');
 for (const [i, [name, rows]] of Object.entries(tracks).entries()) {
