@@ -34,9 +34,15 @@ if (MUSIC_ENABLED) {
     // The source is already running either way — a suspended context has a
     // stopped clock, so nothing is missed and the track begins at its first note
     // rather than partway through.
+    //
+    // Through syncMusic rather than resume, because this gesture might be the
+    // Escape that just paused the game — and unconditionally resuming here
+    // undid that pause, so the first Escape after loading started the music
+    // instead of stopping it. Asking the game what it wants gives the same
+    // answer whichever handler runs last.
     if (MUSIC.state === 'suspended') {
       const start = () => {
-        MUSIC.resume();
+        syncMusic();
         removeEventListener('pointerdown', start);
         removeEventListener('keydown', start);
       };

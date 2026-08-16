@@ -19,7 +19,7 @@ const canvas = document.getElementById('c');
 // drives it are all unreachable, and `--toplevel` drops the lot — so the switch
 // costs nothing when it is off and the build gets its bytes back. Sound effects
 // are separate and keep working.
-const MUSIC_ENABLED = false;
+const MUSIC_ENABLED = true;
 
 // ── Pixel grid ──────────────────────────────────────────────────────────────
 // Real pixel art rather than a blur filter: the scene is *rendered* at one pixel
@@ -408,14 +408,28 @@ addEventListener('keydown', (e) => {
   }
   if (e.code !== 'Escape') return;
   PAUSED = !PAUSED;
-  // Suspending the context stops its clock as well, so the track holds where it
-  // is instead of playing on in silence and coming back somewhere else.
-  // Nothing to suspend when the soundtrack is switched off.
-  if (MUSIC_ENABLED) {
-    if (PAUSED) MUSIC.suspend();
-    else MUSIC.resume();
-  }
+  syncMusic();
 });
+
+/**
+ * Point the audio context at whatever the game currently wants.
+ *
+ * Suspending stops the context's clock as well, so the track holds where it is
+ * rather than playing on in silence and coming back somewhere else.
+ *
+ * One function rather than a suspend here and a resume there, because two
+ * places deciding independently is exactly how they came to disagree. music.js
+ * may not start the track until the browser has seen a gesture, so it waits for
+ * the first key or click and resumes then — and that first key can be the very
+ * Escape that just paused. Both handlers fire, the pause loses because it ran
+ * first, and pausing the game *starts* the music. Now both ask this, and this
+ * only ever answers with the state the game is actually in.
+ */
+function syncMusic() {
+  if (!MUSIC_ENABLED) return;
+  if (PAUSED) MUSIC.suspend();
+  else MUSIC.resume();
+}
 // The unicorn's whole existence, and the camera that watches it. Thirteen vec4s:
 // four of body, four of view-projection, three the camera remembers between
 // frames so it can chase rather than snap, and two for the world directions it is
