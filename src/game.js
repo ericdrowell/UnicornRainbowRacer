@@ -187,7 +187,7 @@ const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 // The loop starts at the origin because that is where the unicorn stands: the
 // first straight runs out from under it, which is what puts the model on the
 // road rather than beside it.
-const TRACK_WIDTH = 13.5;
+const TRACK_WIDTH = 27;
 const TRACK = [
   [0, 0, 0], // start line: flat, straight, and pointing the way the unicorn does
   [30, 1, 2],
@@ -416,13 +416,14 @@ addEventListener('keydown', (e) => {
     else MUSIC.resume();
   }
 });
-// The unicorn's whole existence, and the camera that watches it. Eleven vec4s:
+// The unicorn's whole existence, and the camera that watches it. Thirteen vec4s:
 // four of body, four of view-projection, three the camera remembers between
-// frames so it can chase rather than snap.
+// frames so it can chase rather than snap, and two for the world directions it is
+// actually travelling, which is not the direction it is pointing.
 //
 // Zeroed, which is a valid opening position rather than a placeholder: the body
 // starts at the origin, which is ring zero, and every other field — heading,
-// speed, gait, the fall — genuinely starts at nothing. The camera's stored
+// course, speed, gait, the fall — genuinely starts at nothing. The camera's stored
 // "exists" flag starting at zero is what tells the first dispatch to place the
 // camera outright instead of gliding it in from the origin.
 //
@@ -430,7 +431,7 @@ addEventListener('keydown', (e) => {
 let STATE = null;
 
 bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
-  STATE = bmStore(new Float32Array(44));
+  STATE = bmStore(new Float32Array(52));
   const rings = bmStore(TRACK_DATA);
 
   // The simulation. One workgroup of one, dispatched once a frame: there is a

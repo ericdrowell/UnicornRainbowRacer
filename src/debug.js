@@ -48,22 +48,48 @@
     const s = Math.sin(a);
     return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
   };
-  // GAIT is the value this build writes into the state buffer, and the shader
-  // now reads its gait from there rather than from the clock. Zero, so the model
-  // stands still and a triangle can be pointed at and talked about — and zero
-  // *here* for the same reason, because the two definitions of where a vertex is
-  // have to agree or the highlight lands on the wrong face.
-  const GAIT = 0;
+  // ── The pose the inspector shows ───────────────────────────────────────────
+  // SPEED and GAIT are what this build writes into the state buffer, and the
+  // shader reads both from there: SPEED picks the gait, GAIT is how far through
+  // its cycle. Driven from a clock here rather than from distance travelled,
+  // because nothing is travelling — the model is parked at the origin.
+  //
+  // R runs or walks, F freezes. Frozen is what the picker wants, since a
+  // triangle you are trying to point at should hold still; running is what the
+  // animation wants. Having both is the reason this is a variable rather than
+  // the constant zero it used to be.
+  const RUN_SPEED = 20;
+  const WALK_SPEED = 2;
+  let SPEED = RUN_SPEED;
+  let MOVING = 1;
+  let GAIT = 0;
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyR') SPEED = SPEED === RUN_SPEED ? WALK_SPEED : RUN_SPEED;
+    if (e.code === 'KeyF') MOVING = 1 - MOVING;
+  });
+  /** The shader's own walk-to-run blend, on the same two thresholds. */
+  const runBlend = () => smooth(6, 15, Math.abs(SPEED));
+
+  // Everything below repeats unicorn.shader.ts in JavaScript, gait selection
+  // included. That duplication is the point: these are the positions the mouse
+  // ray is tested against, so if this and the shader ever disagree the
+  // highlight visibly slides off the face it names, which says so immediately.
   function posed(v) {
     const t = SK[v * 4];
-    const gait = GAIT + SK[v * 4 + 1];
-    const hip = SK[v * 4 + 2] * Math.sin(gait) * smooth(0, 0.28, t);
-    const knee = SK[v * 4 + 3] * Math.max(Math.sin(gait + 2.2), 0);
+    const run = runBlend();
+    // Which leg, from its hip — exactly as the vertex shader recovers it.
+    const gallop = (RT[v * 3] >= 0 ? 0 : Math.PI) + Math.sign(RT[v * 3 + 2]) * 0.2;
+    const gait = GAIT + SK[v * 4 + 1] * (1 - run) + gallop * run;
+    const hip = SK[v * 4 + 2] * (1 + 0.45 * run) * Math.sin(gait) * smooth(0, 0.28, t);
+    const knee = SK[v * 4 + 3] * (1 + 0.25 * run) * Math.max(Math.sin(gait + 2.2), 0);
     const bend = knee * smooth(0.32, 0.56, t);
     const p = [P[v * 3], P[v * 3 + 1], P[v * 3 + 2]];
     const a = spin([p[0], p[1] + KNEE_Y, p[2]], bend);
     const b = spin([a[0], a[1] - KNEE_Y, a[2]], hip);
-    const bob = Math.sin(GAIT * 2) * 0.03;
+    // Off GAIT, not off `gait`: the bob is one number for the whole model, and
+    // building it from a value carrying this leg's phase would lift each leg by
+    // a different amount.
+    const bob = Math.sin(GAIT * 2) * 0.03 * (1 - run) + Math.sin(GAIT) * 0.07 * run;
     // No body transform: this build parks the unicorn at the origin facing +x,
     // so model space and world space are the same thing and the ray below can
     // be cast straight at these.
@@ -126,12 +152,12 @@
   // build takes the buffer over.
   //
   // Each frame, before anything is drawn, this overwrites the whole of STATE:
-  // an identity body — origin, facing +x, +y up, gait zero — and an orbit
-  // matrix built here on the CPU. The unicorn therefore renders exactly in
-  // model space, which is what lets the picker below compare a mouse ray
-  // against `posed()` positions and be right. Let the physics keep the buffer
-  // and the model would be somewhere down the track, in a pose the CPU would
-  // have to reproduce to pick against.
+  // an identity body — origin, facing +x, +y up — carrying this file's own
+  // speed and gait, and an orbit matrix built here on the CPU. The unicorn
+  // therefore renders exactly in model space, which is what lets the picker
+  // below compare a mouse ray against `posed()` positions and be right. Let the
+  // physics keep the buffer and the model would be somewhere down the track, in
+  // a pose the CPU would have to reproduce to pick against.
   //
   // Writing over a storage buffer from JavaScript works because bmStore creates
   // them COPY_DST. There is no reading one back, which is the whole reason the
@@ -143,7 +169,19 @@
   const body = new Float32Array(32);
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0, /* across */ 0, 0, 1, 0]);
 
+  // The release ties the gait to distance covered, so the legs stop when the
+  // unicorn does. Nothing here covers any distance, so the inspector winds it by
+  // hand at the rate the release would reach at this speed — physics accumulates
+  // gait at speed * 0.6, and matching that is what makes the stride you watch
+  // here the stride you get on the track.
+  let lastTick = 0;
   function camera() {
+    const now = performance.now() / 1000;
+    if (lastTick) GAIT += (now - lastTick) * SPEED * 0.6 * MOVING;
+    lastTick = now;
+    body[7] = SPEED; // slot 1.w — the shader picks walk or run from this
+    body[11] = GAIT; // slot 2.w — and how far through the cycle it is
+
     const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
     // 0.004 rather than the release's 0.1, because flying the camera inside the
     // model is the point and at 0.1 the surface clips away as you reach it.
@@ -295,8 +333,10 @@
     requestAnimationFrame(draw);
     hud.textContent =
       `distance  ${dist.toFixed(2)}\n` +
+      `gait      ${SPEED === RUN_SPEED ? 'run' : 'walk'} at ${SPEED} m/s${MOVING ? '' : ' — frozen'}\n` +
       'scroll to zoom · drag to rotate\n' +
-      'back faces drawn · unicorn parked and frozen (debug build)';
+      'R walk/run · F freeze (freeze before picking)\n' +
+      'back faces drawn · unicorn parked at the origin (debug build)';
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (picked < 0 || !VP) return;

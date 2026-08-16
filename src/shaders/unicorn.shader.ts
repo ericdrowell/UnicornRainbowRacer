@@ -4,8 +4,11 @@ import {
   vec4,
   sin,
   cos,
+  abs,
   max,
   mix,
+  sign,
+  step,
   dot,
   cross,
   smoothstep,
@@ -68,19 +71,50 @@ export const Unicorn = shader({
     const body = storageRead(uState, 0);
     const facing = storageRead(uState, 1);
     const normal = storageRead(uState, 2);
-    // Distance covered, not elapsed time. The legs are driven by how far the
-    // unicorn has actually gone, so they stop when it stops rather than running
-    // on the spot — which is the one thing that gives a treadmill away.
-    const gait = normal.w + aSkin.y;
+    // ── Which gait ─────────────────────────────────────────────────────────
+    // Two of them, chosen by how fast the unicorn is actually going. `aSkin.y`
+    // carries the walk's phase for this leg, generated with the mesh; the
+    // gallop's is worked out here.
+    //
+    // Which leg this vertex belongs to comes from its own hip rather than from
+    // another attribute: front hips sit forward of the origin, hind hips
+    // behind, and the sign of z says which side. That is already in aRoot, and
+    // a fifth attribute would be twelve more bytes on every vertex to say
+    // something the model's own geometry has said all along.
+    const front = step(0, aRoot.x);
+    const side = sign(aRoot.z);
+
+    // The walk is a trot: diagonal pairs, so each leg is half a cycle from the
+    // one beside it. A gallop is the opposite — the front pair swings together
+    // and the hind pair swings together, with the two pairs half a cycle apart,
+    // which is what makes it read as bounding rather than marching.
+    //
+    // Not *quite* together, though. Perfectly matched legs read as one wide leg
+    // rather than two, so each pair is nudged a fifth of a radian either side of
+    // its beat. A real gallop has a lead leg for the same reason it looks right.
+    const gallop = mix(3.14159, 0, front) + side * 0.2;
+
+    // Blended rather than switched, and blended on the *phase*, so the legs
+    // drift into step with each other over a stride or two instead of snapping
+    // there mid-air. Everything between the two is a real intermediate gait.
+    //
+    // At rest this is exactly the walk, which is what a selection screen shows
+    // by simply not driving.
+    const run = smoothstep(6, 15, abs(facing.w));
+    const gait = normal.w + mix(aSkin.y, gallop, run);
+
     // Weighted by distance along the limb, and that is what welds it: the ring
     // shared with the barrel has t = 0, so it never moves, while everything
     // below swings freely. Rotate the leg rigidly instead and the top ring tears
     // away from the body it is part of.
-    const hip = aSkin.z * sin(gait) * smoothstep(0, 0.28, aSkin.x);
+    //
+    // A gallop reaches further than a walk, so the swing opens up with it. The
+    // knee follows, less so — it is already folding as far as the joint allows.
+    const hip = aSkin.z * (1 + 0.45 * run) * sin(gait) * smoothstep(0, 0.28, aSkin.x);
     // Knees only fold one way, so the bend is clamped to the half of the cycle
     // where the hoof is coming through — a knee bending backwards reads as a
     // broken leg immediately.
-    const knee = aSkin.w * max(sin(gait + 2.2), 0);
+    const knee = aSkin.w * (1 + 0.25 * run) * max(sin(gait + 2.2), 0);
     const bend = knee * smoothstep(0.32, 0.56, aSkin.x);
 
     // Where the knee sits below the hip, in leg units. A local const because the
@@ -89,10 +123,18 @@ export const Unicorn = shader({
     const kneeY = 0.3;
     const atKnee = spin(vec3(aPos.x, aPos.y + kneeY, aPos.z), bend);
     const limb = spin(vec3(atKnee.x, atKnee.y - kneeY, atKnee.z), hip);
-    // The barrel rises and falls at twice the stride, which sells a run more
-    // than the legs do. Tied to the gait rather than the clock for the same
-    // reason the legs are — a standing unicorn should not be breathing hard.
-    const bob = sin(gait * 2) * 0.03;
+    // The barrel rises and falls, which sells a run more than the legs do. Tied
+    // to the gait rather than the clock for the same reason the legs are — a
+    // standing unicorn should not be breathing hard.
+    //
+    // Off `normal.w`, the body's own phase, and deliberately not off `gait`:
+    // gait carries this leg's offset, so a bob built from it lifts each leg by a
+    // different amount and prises them off the barrel they are joined to. The
+    // bob has to be one number for the whole model.
+    //
+    // Twice a stride at a walk, because a trot's diagonal pairs land twice a
+    // cycle. A gallop lands once and lands harder, so it heaves once, deeper.
+    const bob = mix(sin(normal.w * 2) * 0.03, sin(normal.w) * 0.07, run);
     const local = limb.add(aRoot).add(vec3(0, bob, 0));
 
     // Onto the track. The model is built facing +x with +y up, so its own axes
