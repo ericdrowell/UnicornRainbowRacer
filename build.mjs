@@ -81,7 +81,6 @@ let combined = sources
 combined += '\n' + [
   readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
   `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'race-song.json'), 'utf8')};`,
-  `const IDLE_SONG = ${readFileSync(join(root, 'src', 'songs', 'idle-song.json'), 'utf8')};`,
   readFileSync(join(root, 'src', 'music.js'), 'utf8'),
   readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
   readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),

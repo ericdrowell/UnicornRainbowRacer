@@ -1,7 +1,6 @@
-// Music. Two Sonant-X songs, rendered once at load and looped until the game
-// asks for the other one — racing while you drive, idle while you are paused.
-// Which of them is audible is game.js's business; this file only renders them
-// and reports for duty. See syncMusic.
+// Music. One Sonant-X song, rendered once at load and looped while you drive.
+// Whether it is playing at all is game.js's business — a pause silences it —
+// so this file only renders it and reports for duty. See syncMusic.
 //
 // Sonant-X is a synthesiser, not a player: `generateSong` runs the instruments
 // through an OfflineAudioContext and hands back finished samples. That is the
@@ -24,19 +23,16 @@
 const MUSIC = MUSIC_ENABLED && new (AudioContext || webkitAudioContext)();
 
 if (MUSIC_ENABLED) {
-  Promise.all([
-    generateSong(RACE_SONG, MUSIC.sampleRate),
-    generateSong(IDLE_SONG, MUSIC.sampleRate),
-  ]).then((buffers) => {
-    TRACKS = buffers;
+  generateSong(RACE_SONG, MUSIC.sampleRate).then((buffer) => {
+    SONG = buffer;
     syncMusic();
 
     // Autoplay is not something a page gets to decide. Every current browser
     // starts an AudioContext suspended until the user has interacted with the
     // page, so "start on load" really means "start as soon as it is allowed to".
-    // The source above is already running either way — a suspended context has a
-    // stopped clock, so nothing is missed and the track begins at its first note
-    // rather than partway through.
+    // The source syncMusic just made is already running either way — a suspended
+    // context has a stopped clock, so nothing is missed and the track begins at
+    // its first note rather than partway through.
     //
     // Through syncMusic rather than resume, because this gesture might be the
     // Escape that just paused the game — and unconditionally resuming here

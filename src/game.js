@@ -411,41 +411,44 @@ addEventListener('keydown', (e) => {
   syncMusic();
 });
 
-// The two rendered tracks, [racing, idle], once music.js has them, and whichever
-// source is currently playing one of them. Racing plays while you drive, idle
-// while you are paused.
-let TRACKS = null;
+// The rendered song, once music.js has it, and the source playing it. A pause
+// is silence, so there is nothing playing to hold on to while paused. Not TRACK:
+// that is the road's centreline, further up this file — everything here shares
+// one scope, so a second TRACK is not a shadow, it is a build failure.
+let SONG = null;
 let PLAYING = null;
 
 /**
- * Point the audio at whatever the game currently wants.
+ * Point the audio at whatever the game currently wants: the song while you
+ * drive, nothing at all while you are paused.
  *
- * Each change of state starts its track at its first note, which is why this
- * builds a source rather than fading between two that run the whole time: a
- * BufferSource plays once and cannot be rewound, so playing from the beginning
- * *is* a new source. They are cheap — the buffer is the expensive part and that
- * is rendered once at load and handed to every source that follows.
- *
- * The context is never suspended: pausing swaps the track rather than stopping
- * the clock, and a suspended context would silence both. Only the browser's own
- * autoplay lock keeps things quiet, and that lifts on the first gesture.
+ * Resuming starts the song at its first note, which is why the pause stops the
+ * source outright rather than suspending the context. A BufferSource plays once
+ * and cannot be rewound, so playing from the beginning *is* a new source — and
+ * a suspended context would do the opposite, holding the playhead exactly where
+ * the pause caught it. Sources are cheap: the buffer is the expensive part, and
+ * that is rendered once at load and handed to every source that follows.
  *
  * One function rather than a decision in each place that needs one, because two
  * places deciding independently is exactly how they came to disagree. music.js
- * may not start a track until the browser has seen a gesture, so it waits for
+ * may not start the track until the browser has seen a gesture, so it waits for
  * the first key or click — and that first key can be the very Escape that just
  * paused. Both handlers fire, and whichever ran last used to win. Now both ask
  * this, and this only ever answers with the state the game is actually in. Both
- * running for one Escape is harmless twice over: they agree on the track, and
- * restarting a song that started a moment ago is the same song from the top.
+ * running for one Escape is harmless either way: paused, the second call finds
+ * nothing left to stop; playing, it restarts a song that began a moment ago,
+ * which is the same song from the top.
  */
 function syncMusic() {
   if (!MUSIC_ENABLED) return;
   MUSIC.resume();
-  if (!TRACKS) return;
-  if (PLAYING) PLAYING.stop();
+  if (PLAYING) {
+    PLAYING.stop();
+    PLAYING = null;
+  }
+  if (PAUSED || !SONG) return;
   PLAYING = MUSIC.createBufferSource();
-  PLAYING.buffer = TRACKS[PAUSED ? 1 : 0];
+  PLAYING.buffer = SONG;
   PLAYING.loop = true;
   PLAYING.connect(MUSIC.destination);
   PLAYING.start();
@@ -507,6 +510,10 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
 
   const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
+  // Gallop, always, for as long as there is a track under the hooves. Written
+  // once rather than per frame because nothing on this screen can change it; the
+  // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
+  u[1] = 1;
   bmLoop((t) => {
     const elapsed = prev ? t - prev : 0;
     prev = t;
@@ -534,9 +541,11 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
     u[0] = TIME;
     bmUniforms(prog, u);
     bmDraw(prog);
-    // The same value, but each program owns its uniform buffer — one write does
-    // not reach the other. The camera they share travels the other way, through
-    // the state buffer, and never touches the CPU at all.
+    // The same array, and the same sixteen bytes: the track reads uTime out of
+    // the front of it and never looks at the gait behind. Each program owns its
+    // uniform buffer, so one write does not reach the other — the camera they
+    // share travels the other way, through the state buffer, and never touches
+    // the CPU at all.
     bmUniforms(track, u);
     bmDraw(track);
   });

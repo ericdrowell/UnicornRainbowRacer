@@ -318,10 +318,45 @@ export const Physics = shader({
     courseDir = normalize(mix(courseDir, homeDir, lost));
     headingDir = normalize(mix(headingDir, homeDir, lost));
 
-    // Legs driven by distance covered rather than by the clock, so the gait
-    // slows with the unicorn and stops dead when it does. The rate is set so
-    // that a cruise lands near the 9 rad/s the gait was originally tuned at.
-    gait = gait + abs(speed) * dt * 0.6;
+    // Legs driven by distance covered rather than by the clock, at 0.6 rad per
+    // unit travelled, so the gait keeps pace with the unicorn — but only once it
+    // is quick. Under a floor of 20 rad/s it is the clock after all, and that is
+    // the point. Speed builds at 7.5 a second from a standing start, so a gait
+    // tied strictly to it spends the first seconds of a race barely moving its
+    // legs while the body pulls away, which reads as a unicorn being towed
+    // rather than one running. At the floor a start is by far the *fastest* the
+    // legs ever churn relative to the ground: hooves scrabbling for grip, going
+    // nowhere, trying far too hard.
+    //
+    // The floor is high enough to have swallowed the middle of the range whole.
+    // Distance only takes the reins past 33 units, better than half of top
+    // speed, so everything from a crawl to a fast cruise now runs at a flat 20
+    // and the gentle ramp of leg speed that used to fill that range is gone —
+    // deliberately. The legs read as effort, not as a speedometer; the road
+    // going past is the speedometer.
+    //
+    // The floor itself fades in over the first couple of units rather than
+    // applying from the first instant of movement, and it has to: standing still
+    // means legs that have stopped, and a plain `max` would hold them at full
+    // scramble down to a speed of nothing at all. Nothing ever reaches exactly
+    // zero to switch on — the throttle-off decay is exponential and only ever
+    // approaches it — so a hard test at zero would leave a stationary unicorn
+    // running on the spot forever. Fading over 0 to 2 puts a real stop at a real
+    // stop, and takes about a quarter second to wind up, which is over before
+    // the eye has settled on the legs.
+    //
+    // Signed, not absolute, so reversing runs the cycle backwards. Backing up
+    // with the legs still cycling forwards is a moonwalk, and it is the reverse
+    // that gives the game away: the walk the shader picks below zero would be
+    // playing in the wrong direction. Backwards has no floor either — nothing
+    // about reversing is trying hard — so it is 0.6 per unit all the way down,
+    // which tops out at a 4.2 rad/s amble.
+    //
+    // In rad/s throughout, rather than a floor in speed units multiplied into
+    // rad/s afterwards: the 20 is the number that gets tuned by watching the
+    // legs, so it is worth being the number that is written down.
+    const churn = max(abs(speed) * 0.6, 20 * smoothstep(0, 2, speed));
+    gait = gait + sign(speed) * churn * dt;
 
     // Behind and above the body, along the direction it is *travelling* —
     // `courseDir`, not the nose and not the tangent.

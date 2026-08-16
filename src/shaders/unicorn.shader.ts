@@ -61,13 +61,20 @@ export const Unicorn = shader({
     /** Colour, plus 1 to replace it with the flowing rainbow. */
     aColor: 'vec4',
   },
-  uniforms: { uTime: 'float' },
+  // uRun is which screen this is, not which gait: 1 on the track, 0 on the
+  // unicorn select screen, where the same model walks on the spot. Direction is
+  // read off the state buffer below and multiplied in, so the track still walks
+  // when it reverses — the CPU has no say in that, and does not want one.
+  //
+  // Free to carry: a uniform block is padded to sixteen bytes, so uTime alone
+  // was already reserving three float slots and uploading them every frame.
+  uniforms: { uTime: 'float', uRun: 'float' },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
   varyings: { vNormal: 'vec3', vColor: 'vec3' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun }, v) {
     const body = storageRead(uState, 0);
     const facing = storageRead(uState, 1);
     const normal = storageRead(uState, 2);
@@ -94,13 +101,29 @@ export const Unicorn = shader({
     // its beat. A real gallop has a lead leg for the same reason it looks right.
     const gallop = mix(3.14159, 0, front) + side * 0.2;
 
-    // Blended rather than switched, and blended on the *phase*, so the legs
-    // drift into step with each other over a stride or two instead of snapping
-    // there mid-air. Everything between the two is a real intermediate gait.
+    // Blended rather than switched, and blended on the *phase*, so a change of
+    // gait drifts into step over a stride or two instead of snapping there
+    // mid-air.
     //
-    // At rest this is exactly the walk, which is what a selection screen shows
-    // by simply not driving.
-    const run = smoothstep(6, 15, abs(facing.w));
+    // Forwards is always the gallop, at any speed above nothing. It used to be
+    // `smoothstep(6, 15, abs(facing.w))` — the walk below fifteen units, the
+    // gallop above — which meant the unicorn spent every corner and every start
+    // marching, and a racer that is not galloping reads as a racer that is not
+    // trying.
+    //
+    // Backwards is the walk, because nothing reverses at a gallop. The edges
+    // straddle a standstill rather than testing the sign, so the changeover
+    // spreads across the first few units of reverse instead of flipping in one
+    // frame. That matters here and nowhere else: run scales each leg's phase
+    // *offset*, so switching it outright moves four legs by up to half a cycle
+    // between one frame and the next, and they teleport rather than fall into
+    // step. Three units of reverse is a tenth of a second at the braking rate,
+    // so it still reads as immediate.
+    //
+    // uRun on the front of it is the screen, not the driving: 1 on the track and
+    // 0 on the select screen, where the unicorn walks on the spot whichever way
+    // it is nominally facing.
+    const run = uRun * smoothstep(-3, 0, facing.w);
     const gait = normal.w + mix(aSkin.y, gallop, run);
 
     // Weighted by distance along the limb, and that is what welds it: the ring
