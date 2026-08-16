@@ -31,8 +31,14 @@ function run(cmd, args, opts = {}) {
   }
 }
 
-rmSync(dist, { recursive: true, force: true });
+// The two builds write to different files and do not disturb each other, so a
+// release build cannot quietly throw away the inspector you were in the middle
+// of using. They used to share dist/index.html, and every size check silently
+// replaced the debug page with one that has no overlay — which looks exactly
+// like the feature having been removed.
+const OUT = process.env.DEBUG ? 'debug.html' : 'index.html';
 mkdirSync(dist, { recursive: true });
+rmSync(join(dist, OUT), { force: true });
 
 // 1. Shaders → dist/brometal.js + dist/shaders.js
 if (CLI) {
@@ -60,6 +66,26 @@ let combined = sources
   .map((f) => readFileSync(join(root, f), 'utf8'))
   .join('\n');
 
+// Sound. Three pieces that only make sense together, so they are assembled here
+// rather than listed above with the rest.
+//
+// sonantx ships as an ES module and everything here is concatenated into one
+// plain script, so its two `export` keywords are stripped — nothing else about
+// the file needs touching, it has no imports and no other module syntax. The
+// song is JSON on disk, which is the format Sonant-X Live exports and therefore
+// the format worth keeping it in; it becomes a literal on the way in.
+//
+// ZzFX comes in two builds and the micro one is the whole point of it: 868 bytes
+// packed against 3,458 for the full library, for the same synthesis. At this
+// budget that difference is a quarter of the remaining space.
+combined += '\n' + [
+  readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
+  `const SONG = ${readFileSync(join(root, 'src', 'song.json'), 'utf8')};`,
+  readFileSync(join(root, 'src', 'music.js'), 'utf8'),
+  readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
+  readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),
+].join('\n');
+
 // Two changes the inspector needs and the release must never have. Flying the
 // camera inside the model shows nothing with back faces culled — the inside of
 // a surface is exactly what gets thrown away — and a 0.1 near plane clips
@@ -74,6 +100,13 @@ if (process.env.DEBUG) {
   for (const [from, to, why] of [
     ['cull: 1', 'cull: 0', 'back faces drawn'],
     ['0.1, 50)', '0.004, 50)', 'near plane 0.1 -> 0.004'],
+    // Frozen so a triangle can be pointed at and talked about. One line does it
+    // now that the pause work gave the game a single clock: the shader reads
+    // TIME through the uniform, and the inspector's picking replicates the same
+    // skinning on the CPU from the same TIME. Stopping it stops both, which is
+    // what keeps the highlight on the face it belongs to — two definitions of
+    // "where is this vertex" that disagree is exactly what makes a picker lie.
+    ['TIME = clock;', 'TIME = 0;', 'gait frozen'],
   ]) {
     if (!combined.includes(from)) throw new Error(`debug patch failed: no "${from}" in the sources`);
     combined = combined.replace(from, to);
@@ -105,7 +138,18 @@ const page = readFileSync(join(root, 'src', 'index.html'), 'utf8').replace(
   // inside a string, which would end the block early and truncate the game.
   () => `<script>${readFileSync(outPath, 'utf8').replace(/<\/script/gi, '<\\/script')}</script>`,
 );
-writeFileSync(join(dist, 'index.html'), page);
+writeFileSync(join(dist, OUT), page);
+
+// The debug build is not a deliverable — it carries the inspector and has been
+// patched away from how the release renders — so it is neither zipped nor
+// measured against the budget. Reporting a number for it would only invite
+// comparing it with one that means something.
+if (process.env.DEBUG) {
+  rmSync(rawPath, { force: true });
+  rmSync(outPath, { force: true });
+  console.log(`  dist/${OUT}   ${statSync(join(dist, OUT)).size} bytes  (inspector build, not measured)`);
+  process.exit(0);
+}
 
 // 5. Zip — js13k measures the archive, not the files.
 let zipBytes = null;

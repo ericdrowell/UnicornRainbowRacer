@@ -114,6 +114,16 @@ function fan(n, k) {
 const RAYS = 48;
 const EPS = 1e-4;
 
+const eyeAt = [];
+for (let t = 0; t < count; t++) {
+  const c = C.slice(t * 12, t * 12 + 4);
+  // Dark *and* not flagged rainbow. The mane and tail are stored black with the
+  // flag set, so testing darkness alone catches the entire mane.
+  if (c[3] < 0.5 && c[0] < 0.1) for (const v of tri(t)) eyeAt.push(v);
+}
+const nearEye = (v) =>
+  v.some((p) => eyeAt.some((e) => Math.hypot(p[0] - e[0], p[1] - e[1], p[2] - e[2]) < EYE_PAD));
+
 // Everything at hoof height is kept regardless.
 //
 // The visibility test is done in the rest pose, and that is a fair assumption
@@ -126,9 +136,29 @@ const EPS = 1e-4;
 // of machinery for one known region, the ankles down are simply exempt.
 const KEEP_BELOW = 0.22;
 
+// The head keeps its surface behind the eyes, for a different reason.
+//
+// An eye is a whole sphere sunk into the head, so the head's own surface behind
+// it really is invisible and the test really does remove it. That leaves a hole
+// with nothing but the eye's front cap over it — and cap and skull are separate
+// surfaces that share no edge, so nothing holds them together. Decimation then
+// moves each independently and the cap stops covering the hole, which reads as a
+// gap at the rim with the background showing through the head.
+//
+// Keeping the skull closed under the eye costs a few faces and makes the join
+// unbreakable: the eye can sit proud, sink, or drift, and there is still solid
+// head behind it.
+const EYE_PAD = 0.07;
+
 function visible(t) {
   const v = tri(t);
   if (Math.min(v[0][1], v[1][1], v[2][1]) < KEEP_BELOW) return true;
+  // Only the *skull* around the eye is exempt, not the eye itself. The eye's own
+  // buried hemisphere is genuinely never seen and there is no reason to carry
+  // it; what has to survive is the head behind it, so there is no hole to leave
+  // uncovered.
+  const col = C.slice(t * 12, t * 12 + 4);
+  if (!(col[3] < 0.5 && col[0] < 0.1) && nearEye(v)) return true;
   const n = NRM[t];
   const c = [0, 1, 2].map((a) => (v[0][a] + v[1][a] + v[2][a]) / 3);
   // The centroid plus each corner drawn in towards it. One sample can call a

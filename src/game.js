@@ -68,8 +68,25 @@ const weightAt = (y) => Math.min(Math.max((BELLY - y) / LEG_LEN, 0), 1);
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
-for (let i = 0; i < MESH_P.length; i += 9) {
-  const tri = [0, 3, 6].map((o) => [MESH_P[i + o], MESH_P[i + o + 1], MESH_P[i + o + 2]]);
+// Twice round the mesh: once as stored, once mirrored. Only the z > 0 half of
+// the unicorn is in MESH_P, and it is the single largest thing in the budget, so
+// the other half is rebuilt here for the cost of this loop.
+//
+// The corners are read back to front on the mirrored pass. Negating one axis is
+// a reflection, and a reflection reverses winding — left alone, every mirrored
+// face would point inwards and the whole left side would be culled away.
+//
+// Nothing else has to know about any of this. The gait comes out right on its
+// own: skinFor picks a leg by position, so a mirrored vertex finds the opposite
+// hip and inherits its phase, and the diagonal trot survives without being
+// written down anywhere.
+for (let i = 0; i < MESH_P.length * 2; i += 9) {
+  const mirror = i >= MESH_P.length;
+  const j = mirror ? i - MESH_P.length : i;
+  const tri = [0, 3, 6].map((o) => {
+    const c = mirror ? 6 - o : o;
+    return [MESH_P[j + c], MESH_P[j + c + 1], mirror ? -MESH_P[j + c + 2] : MESH_P[j + c + 2]];
+  });
   // Flat normal from the winding. The STL carries its own, but recomputing costs
   // nothing here and keeps the generated mesh to bare coordinates.
   const u = sub(tri[1], tri[0]);
@@ -101,7 +118,7 @@ for (let i = 0; i < MESH_P.length; i += 9) {
     // Read from the corner itself, so every face meeting here agrees.
     const t = legs[k] ? weightAt(tri[k][1]) : 0;
     SK.push(t, skin[1], skin[2], skin[3]);
-    const ci = (i / 3) * 4 + k * 4;
+    const ci = (j / 3) * 4 + k * 4;
     CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], MESH_C[ci + 3]);
   }
 }
@@ -115,6 +132,27 @@ let YAW = 0.6;
 let PITCH = 0.22;
 let TIME = 0;
 let VP = null;
+
+// ── Pause ───────────────────────────────────────────────────────────────────
+// Escape toggles. The frame keeps being drawn while paused — the camera still
+// works, so the model can be turned over and looked at — but `clock` stops, and
+// `clock` is the only time the shader ever sees.
+//
+// That distinction is the whole trick. bmLoop hands out the wall clock, which
+// carries on regardless, so a pause that merely skips the draw leaves the gait
+// running invisibly and the legs jump to a new position the moment it resumes.
+// Accumulating elapsed time only while playing means paused really is stopped.
+let PAUSED = false;
+let clock = 0;
+let prev = 0;
+addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape') return;
+  PAUSED = !PAUSED;
+  // Suspending the context stops its clock as well, so the track holds where it
+  // is instead of playing on in silence and coming back somewhere else.
+  if (PAUSED) MUSIC.suspend();
+  else MUSIC.resume();
+});
 const TARGET = [0, 1.02, 0];
 const DIST = 3.6;
 let dragging = false;
@@ -163,12 +201,14 @@ bmInit(canvas, [0.55, 0.78, 0.96, 1]).then(() => {
 
   const u = new Float32Array(Unicorn[3] / 4);
   bmLoop((t) => {
-    TIME = t;
+    if (prev && !PAUSED) clock += t - prev;
+    prev = t;
+    TIME = clock;
     const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
     const proj = bmPersp(1, canvas.width / canvas.height, 0.1, 50);
     VP = bmMul(proj, view);
     u.set(VP, 0); // uViewProj
-    u[16] = t; // uTime
+    u[16] = TIME; // uTime
     bmUniforms(prog, u);
     bmDraw(prog);
   });
