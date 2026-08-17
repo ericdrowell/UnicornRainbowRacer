@@ -105,15 +105,44 @@ export const Track = shader({
     const inX = fract(across);
     const inY = fract(along);
 
-    // The hue field. Two waves, both slow: one turns over about every 380 metres
-    // of road, the other about every 1100 and leans across the width as it goes,
+    // The hue field. Two waves, both slow: one turns over about every 280 metres
+    // of road, the other about every 830 and leans across the width as it goes,
     // so the wash arrives diagonally rather than as bands lying square across
     // the track. Their sum swings wide enough to reach right round the wheel, so
     // no colour is missing from the road — only from any one stretch of it.
     //
     // Sampled at `row`/`col`, the panel's index, rather than at the fragment:
     // that is what makes a panel one flat colour.
-    const wash = sin(row * 0.05) * 2.6 + sin(row * 0.017 + col * 0.5 + 1.3) * 1.6 + uTime * 0.35;
+    //
+    // **Time moves the field along the road, it does not shift the palette.**
+    // Those are different things and they look nothing alike. Added on the
+    // outside — which is where it used to be — every panel on the track changes
+    // hue in lockstep and the road pulses as one surface. Added to `row`, on the
+    // inside of both waves, the pattern *travels*: each panel takes the colour
+    // its neighbour had a moment ago, and light appears to run along the ribbon
+    // while the panels themselves stay where they are.
+    //
+    // `+ uTime` and not `-` is what sends it the way it goes. A feature of the
+    // wave sits where its argument is constant, so `row + kt` holds a colour at
+    // `row = c - kt` — decreasing, back down the track, against the direction of
+    // travel. Standing still you watch it come towards you; driving, you run
+    // into it, which is the way round that reads as speed.
+    //
+    // Twelve panels a second, about twenty-seven metres of road — the light now
+    // runs backwards down the track faster than the unicorn can drive forwards
+    // over most of its range. What that means for a single panel is not the
+    // wavelength divided by the speed: the amplitudes multiply into the rate
+    // too, and a panel's hue moves at `k * (0.05 * 2.6 + 0.017 * 1.6)` radians a
+    // second at the fastest part of the swing. At this k that is a full turn
+    // round the wheel in about four seconds.
+    //
+    // It has been up and down — 4.5, halved to 2.5, then 6, now 12 — and none of
+    // them flicker, because none of them can: neighbouring panels are a fraction
+    // of a radian apart, so a panel only ever slides to a colour next door to
+    // the one it had. What the rate decides is whether the road drifts or races,
+    // not whether it strobes, which is why it takes being turned this far up.
+    const flow = row + uTime * 12;
+    const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + col * 0.5 + 1.3) * 1.6;
     // Pastel, not pigment. Glass lit from inside washes out towards white as it
     // brightens, and a saturated hue at full strength reads as paint instead.
     // Only a fifth of the way there, though: the panel's own falloff below takes
@@ -127,22 +156,24 @@ export const Track = shader({
     // invisible once the result only has to look like manufacturing tolerance.
     const lamp = 0.74 + 0.26 * fract(sin(col * 12.99 + row * 78.23) * 43758.5);
 
-    // How far into its panel a fragment is: 0 hard against a seam, 0.5 dead
+    // How far into its panel a fragment is: 0 hard against the join, 0.5 dead
     // centre. One number for all four sides, rather than a smoothstep per side
-    // multiplied together, which is both fewer instructions and the reason two
-    // separate profiles below are affordable at all.
+    // multiplied together, which is fewer instructions for the same shape.
     const depth = min(min(inX, 1 - inX), min(inY, 1 - inY));
 
-    // The light inside the pane, spread over the whole width of it. This is the
-    // one that makes the road read as illuminated rather than painted: a broad
-    // dome that blows the middle of every panel past white and lets the hue
-    // survive around the rim, which is what a lit thing behind glass looks like.
-    // A near-flat plateau with a fast rolloff — the first attempt — lights the
-    // panel evenly and lands straight back on flat coloured rectangles.
+    // The light inside the pane, and nothing darker anywhere. There is no seam
+    // term at all now and the floor sits just under full: every panel is its
+    // colour edge to edge, and this only lifts the middle of one a little
+    // further, so the surface reads as squares of light butted together rather
+    // than as panes with gaps between them.
+    //
+    // What that gives up is the glass. A dark rim is how a lit thing behind a
+    // surface announces the surface, and without one the road stops being
+    // material and becomes colour — closer to a screen than to a floor. The two
+    // numbers below are the whole switch: `0.16 + 1.25` with a
+    // `* (0.32 + 0.68 * smoothstep(0, 0.045, depth))` after it is the glass, and
+    // it is one edit back.
     const glowIn = smoothstep(0, 0.42, depth);
-    // And the join itself: a hairline, dark but never black. A wide dark gap
-    // draws a grid of grout over the road and turns lit glass into paving.
-    const seam = smoothstep(0, 0.045, depth);
 
     // Circuitry under the glass: four faint lines each way inside every panel.
     // Dim on purpose — this is the detail that says "illuminated technology"
@@ -153,19 +184,13 @@ export const Track = shader({
       smoothstep(0.46, 0.5, abs(fract(along * 4) - 0.5)),
     );
 
-    // Over 1 across the middle of a panel, and deliberately so. Everything that
-    // reads as glow in a single pass is headroom being spent: the centres clip
-    // towards white, the hue survives at the rim where the falloff brings it
-    // back under 1, and the panel ends up bright core with coloured surround —
-    // which is what a bloomed light looks like. Kept under it, the same panel is
-    // a flat coloured rectangle no matter how the seams are drawn.
-    //
-    // The floor it sits on is low on purpose. The road wants to be dark glass
-    // that happens to be full of light, not a uniformly bright surface: it is
-    // the distance between an unlit rim and a clipped centre that sells the
-    // material, and raising the floor to light the panels evenly — which the
-    // first pass did — flattens exactly that.
-    const lit = glass.scale(lamp * (0.16 + 1.25 * glowIn) * (0.32 + 0.68 * seam) + trace * 0.14);
+    // Over 1 across the middle of a panel, and deliberately so: the centres clip
+    // towards white and the hue holds everywhere else. With the floor this high
+    // the panel is essentially flat colour, and what separates one square from
+    // the next is `lamp` — the per-panel brightness — and the step in hue, not a
+    // drawn edge. Where two neighbours happen to agree on both, they merge, and
+    // the grid quietly disappears for a square or two.
+    const lit = glass.scale(lamp * (0.92 + 0.5 * glowIn) + trace * 0.14);
 
     // The rails. This is what sells it as a ribbon in space rather than a
     // painted floor — the edge is the only part of a road with nothing beyond

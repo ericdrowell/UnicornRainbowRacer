@@ -11,15 +11,29 @@
 
 const canvas = document.getElementById('c');
 
-// Whether to build the soundtrack at all. Off while the road is being worked
-// on: half an hour of the same loop is not a good way to judge a look.
+// ── Switches ────────────────────────────────────────────────────────────────
+// Everything that gets turned on and off while the game is being made, in one
+// place so none of it has to be hunted for.
 //
-// A `const` rather than a runtime mute, because terser folds it. With this
-// false, the song, the synthesiser that renders it and the pause handling that
-// drives it are all unreachable, and `--toplevel` drops the lot — so the switch
-// costs nothing when it is off and the build gets its bytes back. Sound effects
-// are separate and keep working.
-const MUSIC_ENABLED = true;
+// The two booleans are `const` rather than runtime flags because terser folds
+// them: with either false, the feature it guards becomes unreachable and
+// `--toplevel` deletes it outright, so a switch that is off costs nothing and
+// the build gets its bytes back. That is also why they cannot be flipped at
+// runtime — turning one on means a rebuild, which for a thing decided once per
+// session is the right trade at this budget.
+
+/** The soundtrack. Off while the road is being worked on: half an hour of the
+ *  same loop is not a good way to judge a look. Sound effects are separate and
+ *  keep working either way. */
+const MUSIC_ENABLED = false;
+
+/** The pixel grid. Off renders at native resolution, with the canvas filling
+ *  the window from the stylesheet. */
+const PIXELATE = false;
+
+/** Block size when PIXELATE is on, in *device* pixels — 1 is native, 8 is
+ *  chunky. P cycles it 1 to 8 at runtime; this is where it starts. */
+let PIXEL = 8;
 
 // ── Pixel grid ──────────────────────────────────────────────────────────────
 // Real pixel art rather than a blur filter: the scene is *rendered* at one pixel
@@ -39,24 +53,36 @@ const MUSIC_ENABLED = true;
 // number of art pixels, so the leftover strip at the right and bottom is at most
 // PIXEL - 1 pixels of background rather than a row of half-width blocks.
 //
-// The screen's own pixel ratio has to be divided back out. bmLoop multiplies the
-// layout box by devicePixelRatio to get the buffer, so on a 2x display the same
-// box renders twice as finely and the blocks come out half the size — PIXEL
-// would mean something different on every monitor. Sizing the box by
-// PIXEL * devicePixelRatio and scaling by the same amount cancels it: one art
-// pixel is PIXEL CSS pixels everywhere, and still a whole number of real ones.
-// P toggles it, so the same scene can be compared against itself while the look
-// is still being decided. Off to start with.
-const PIXEL = 8;
-let PIXELATED = false;
+// **PIXEL is a multiplier, and the block it makes is PIXEL by PIXEL real device
+// pixels — 1 is native, 2 is 2x2, 3 is 3x3.** That falls out of bmLoop sizing
+// the buffer as `clientWidth * devicePixelRatio`, and it is worth following
+// through once: at 1000 CSS px wide on a 2x display with PIXEL = 3, the box is
+// floor(1000 / 3) = 333 CSS px, the buffer is 666 device px, and scaling by 3
+// paints it across 1998 device px — so one rendered pixel covers exactly three.
+// The ratio is PIXEL whatever the display, because the pixel ratio appears in
+// the buffer and in the painted width and divides straight back out.
+//
+// It used to multiply the step by devicePixelRatio as well, on the reasoning
+// that the ratio had to be cancelled by hand. It does not, and doing it twice
+// silently doubled the setting on every retina screen: PIXEL = 4 drew 8-pixel
+// blocks, and no value of it could ever draw 1x1. That is also why resizing the
+// window looked wrong — the blocks were a fixed number of *CSS* pixels, so they
+// stayed the same size on screen while everything else got smaller.
+//
+// Sizing the element here is also what makes the switch free. With PIXELATE off
+// nothing calls this, and the canvas takes its size from the stylesheet's
+// `width:100%;height:100%` instead — which is the one line that has to stay
+// whatever happens to this function, because without it a canvas with no
+// explicit size is 300 by 150 and the game renders in a stamp.
 function pixelate() {
-  const step = PIXELATED ? PIXEL * devicePixelRatio : 1;
-  canvas.style.width = Math.floor(innerWidth / step) + 'px';
-  canvas.style.height = Math.floor(innerHeight / step) + 'px';
-  canvas.style.transform = 'scale(' + step + ')';
+  canvas.style.width = Math.floor(innerWidth / PIXEL) + 'px';
+  canvas.style.height = Math.floor(innerHeight / PIXEL) + 'px';
+  canvas.style.transform = 'scale(' + PIXEL + ')';
 }
-pixelate();
-addEventListener('resize', pixelate);
+if (PIXELATE) {
+  pixelate();
+  addEventListener('resize', pixelate);
+}
 
 // ── Skeleton, measured from the model ───────────────────────────────────────
 // Where each leg is, and the height its vertices start belonging to it.
@@ -402,7 +428,9 @@ let clock = 0;
 let prev = 0;
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') {
-    PIXELATED = !PIXELATED;
+    // 1 through 8, then back to 1. A toggle only ever showed one coarseness, and
+    // which one it should be is exactly the question the key exists to answer.
+    PIXEL = (PIXEL % 8) + 1;
     pixelate();
     return;
   }
@@ -513,6 +541,102 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
   bmIndex(track, TI);
   bmStorages(track, STATE);
 
+  // The sky. One triangle big enough to cover the screen — the corners run to 3
+  // rather than 1 so a single one spans the viewport with the excess clipped
+  // away, which is a vertex and an edge cheaper than a quad and has no diagonal
+  // through the middle for the rasteriser to seam on.
+  //
+  // `zwrite: 0` and drawn before everything else: it fills the frame with sky,
+  // leaves the depth buffer as it found it, and the road and the unicorn then
+  // paint over it wherever they are.
+  const sky = bmProgram(Sky[0], { a: Sky[1], u: Sky[3], t: Sky[4], s: Sky[5], zwrite: 0 });
+  bmAttr(sky, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
+  bmIndex(sky, new Uint16Array([0, 1, 2]));
+  bmStorages(sky, STATE);
+
+  // The noise the clouds are made of: a 64-cubed volume of smooth value noise,
+  // folded into a 512x512 sheet as eight slices across by eight down.
+  //
+  // Built here, on the CPU, once. That is the trade the whole effect rests on —
+  // a march that *evaluates* its noise pays eight hashes and a heap of
+  // interpolation at every one of thousands of samples per pixel, and an earlier
+  // version of these clouds that did exactly that ran at a tenth of a frame per
+  // second. Reading it back is two texture fetches, which the GPU is built for.
+  //
+  // The lattice wraps at 8, so the volume tiles seamlessly in all three axes and
+  // the sky can be sampled forever without a repeat showing up as an edge.
+  const LAT = 8;
+  const lat = new Float32Array(LAT * LAT * LAT);
+  for (let i = 0; i < lat.length; i++) lat[i] = Math.random();
+  const latAt = (x, y, z) =>
+    lat[(((x % LAT) + LAT) % LAT) * LAT * LAT + (((y % LAT) + LAT) % LAT) * LAT + (((z % LAT) + LAT) % LAT)];
+  const fade = (t) => t * t * (3 - 2 * t);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const vnoise = (x, y, z) => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const zi = Math.floor(z);
+    const xf = fade(x - xi);
+    const yf = fade(y - yi);
+    const zf = fade(z - zi);
+    return lerp(
+      lerp(
+        lerp(latAt(xi, yi, zi), latAt(xi + 1, yi, zi), xf),
+        lerp(latAt(xi, yi + 1, zi), latAt(xi + 1, yi + 1, zi), xf),
+        yf,
+      ),
+      lerp(
+        lerp(latAt(xi, yi, zi + 1), latAt(xi + 1, yi, zi + 1), xf),
+        lerp(latAt(xi, yi + 1, zi + 1), latAt(xi + 1, yi + 1, zi + 1), xf),
+        yf,
+      ),
+      zf,
+    );
+  };
+  const vol = document.createElement('canvas');
+  vol.width = 512;
+  vol.height = 512;
+  const vctx = vol.getContext('2d');
+  const pix = vctx.createImageData(512, 512);
+  for (let z = 0; z < 64; z++) {
+    const ox = (z % 8) * 64;
+    const oy = ((z / 8) | 0) * 64;
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const u = (x / 64) * LAT;
+        const v = (y / 64) * LAT;
+        const w = (z / 64) * LAT;
+        const n = vnoise(u, v, w) * 0.62 + vnoise(u * 2, v * 2, w * 2) * 0.38;
+        const k = ((oy + y) * 512 + ox + x) * 4;
+        pix.data[k] = pix.data[k + 1] = pix.data[k + 2] = n * 255;
+        pix.data[k + 3] = 255;
+      }
+    }
+  }
+  vctx.putImageData(pix, 0, 0);
+
+  // The march, at a quarter of the width and a quarter of the height — one
+  // sixteenth of the rays. A cloud is the one thing in the scene that loses
+  // nothing to that: no edges, no texture, no silhouette, only soft gradients,
+  // and the target samples back linearly.
+  const clouds = bmTarget(
+    ((canvas.clientWidth * devicePixelRatio) / 4) | 0,
+    ((canvas.clientHeight * devicePixelRatio) / 4) | 0,
+  );
+  const cloud = bmProgram(Cloud[0], {
+    a: Cloud[1],
+    u: Cloud[3],
+    t: Cloud[4],
+    s: Cloud[5],
+    zwrite: 0,
+    fmt: 1,
+  });
+  bmAttr(cloud, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
+  bmIndex(cloud, new Uint16Array([0, 1, 2]));
+  bmTextures(cloud, bmTexture(vol, 1));
+  bmStorages(cloud, STATE);
+  bmTextures(sky, clouds);
+
   const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
   // Gallop, always, for as long as there is a track under the hooves. Written
@@ -545,6 +669,15 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
     bmDispatch(sim, 1);
 
     u[0] = TIME;
+    // The clouds first, into their own quarter-size target, then back to the
+    // screen where the sky samples and composites them. Before the road, so the
+    // ribbon paints over them and passes overhead on the climb.
+    bmPassTo(clouds);
+    bmUniforms(cloud, u);
+    bmDraw(cloud);
+    bmPassTo();
+    bmUniforms(sky, u);
+    bmDraw(sky);
     bmUniforms(prog, u);
     bmDraw(prog);
     // The same array, and the same sixteen bytes: the track reads uTime out of

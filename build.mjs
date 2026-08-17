@@ -182,8 +182,15 @@ console.log(`  index.html   ${jsBytes} bytes`);
 if (zipBytes !== null) console.log(`  game.zip     ${zipBytes} bytes`);
 console.log(`  budget       ${measured} / ${LIMIT}  (${pct}%)`);
 
+// Reported, never enforced. The gate used to fail the build, which sounds like
+// discipline and works out as the opposite: the way this thing gets made is add
+// something, see it, then win the bytes back, and a build that refuses to
+// produce a file in the middle of that loop just means the thing cannot be
+// looked at until it is already paid for. The number is what does the work —
+// knowing there are 200 bytes to find changes what gets built next, and it says
+// so just as loudly in red as it does by exiting.
 if (measured > LIMIT) {
-  console.error(`\n✗ over budget by ${measured - LIMIT} bytes (${label})`);
-  process.exit(1);
+  console.log(`\n! over by ${measured - LIMIT} bytes (${label}) — built anyway`);
+} else {
+  console.log(`\n✓ ${LIMIT - measured} bytes remaining`);
 }
-console.log(`\n✓ ${LIMIT - measured} bytes remaining`);

@@ -231,8 +231,12 @@ export const Unicorn = shader({
     // lattice without retuning this is a silent wrong answer, not an error —
     // it happened once already, and the only symptom was a unicorn lit the
     // colour of a panel some way up the track.
-    const row = floor(storageRead(uState, 11).w * 0.4456);
-    const wash = sin(row * 0.05) * 2.6 + sin(row * 0.017 + 4.3) * 1.6 + uTime * 0.35;
+    // The time term goes *inside* both waves, exactly as it does over there: the
+    // light flows along the road rather than the palette shifting under it, and a
+    // bounce that shifted while the road flowed would drift out of agreement
+    // within a second or two of standing still.
+    const flow = floor(storageRead(uState, 11).w * 0.4456) + uTime * 12;
+    const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + 4.3) * 1.6;
     // Over halfway to white, which is much further than the road's own panels go.
     // Bounced light is weak light: at the road's saturation the model came out
     // painted the colour of the panel under it — a green unicorn — rather than a
