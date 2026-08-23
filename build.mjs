@@ -75,15 +75,20 @@ let combined = sources
 // song is JSON on disk, which is the format Sonant-X Live exports and therefore
 // the format worth keeping it in; it becomes a literal on the way in.
 //
-// ZzFX comes in two builds and the micro one is the whole point of it: 868 bytes
-// packed against 3,458 for the full library, for the same synthesis. At this
-// budget that difference is a quarter of the remaining space.
+// ZzFX is NOT inlined. It was, for the jump sound, and when jump went so did the
+// last live `zzfx(...)` call in the project — src/soundEffects.js is now entirely
+// commented-out sound design, so the library was 1.2 kB of synthesiser shipping
+// for nobody. The file stays in the tree because it is the scratchpad the effects
+// get auditioned in; put both lines back the moment one of them is wired up:
+//
+//   readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
+//   readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),
+//
+// Music is unaffected — that is sonantx, and it has nothing to do with ZzFX.
 combined += '\n' + [
   readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
   `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'race-song.json'), 'utf8')};`,
   readFileSync(join(root, 'src', 'music.js'), 'utf8'),
-  readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
-  readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),
 ].join('\n');
 
 // Two changes the inspector needs and the release must never have. Flying the

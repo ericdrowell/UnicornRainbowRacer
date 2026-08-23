@@ -6,18 +6,6 @@
 // "use the default for this one", so only the parameters that matter are
 // written down.
 
-const JUMP = [.6,,129,.03,.05,.07,5,1.088440777963569,18,15,,,,,,,.19,.57,.08,,350];
-
-addEventListener('keydown', (e) => {
-  if (e.code !== 'Space') return;
-  // Space scrolls the page, and held keys repeat about thirty times a second —
-  // without both guards one press becomes a machine gun.
-  e.preventDefault();
-  // ZzFX has its own audio context, which the pause does not touch, so a paused
-  // game would otherwise still answer the space bar.
-  if (!e.repeat && !PAUSED) zzfx(...JUMP);
-});
-
 // jumps
 /*
 zzfx(...[1.3,,316,.02,.05,.09,,1.3,,21,,,,,,,.01,.88,.05,,-1400]); // Jump 107

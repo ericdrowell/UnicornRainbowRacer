@@ -12,6 +12,7 @@ import {
   step,
   clamp,
   mix,
+  mod,
   dot,
   cross,
   length,
@@ -92,8 +93,6 @@ export const Physics = shader({
     uThrottle: 'float',
     /** +1 steering one way, -1 the other. */
     uSteer: 'float',
-    /** 1 on the frame the jump key went down, 0 otherwise. */
-    uJump: 'float',
     uAspect: 'float',
     uRings: 'float',
     uWidth: 'float',
@@ -102,15 +101,15 @@ export const Physics = shader({
      * that coordinate so a lap holds a whole number of pattern periods, and the
      * unicorn has to land in the same space to be lit by the right panel.
      *
-     * The eighth float in a block that was already padded to eight, so it costs
-     * nothing to send.
+     * Rides in a uniform block padded to eight floats, so it costs nothing to
+     * send.
      */
     uPattern: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [1, 1, 1],
 
-  compute({ uState, uTrack, uDt, uThrottle, uSteer, uJump, uAspect, uRings, uWidth, uPattern }, id) {
+  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern }, id) {
     // A tab left in the background delivers one enormous frame on return, and
     // an unclamped step of that size moves the unicorn straight through the
     // road — collision is tested at the new position, not swept to it.
@@ -304,15 +303,14 @@ export const Physics = shader({
     const onRoad = step(abs(dot(pos.sub(centre.xyz), sideT)), uWidth * 0.5);
     const landed = step(high, 0) * onRoad;
     pos = pos.add(upT.scale((0 - high) * landed));
-    // Landing zeroes the fall; landing on the frame the jump key went down
-    // launches instead. Not landed and both leave vy alone, which is what makes
-    // jump a ground move without a branch.
+    // Landing zeroes the fall; not landed leaves vy alone, so gravity keeps
+    // accumulating. This is where jump used to live — the whole move was this one
+    // line launching instead of clamping when the key went down on the same frame.
     //
-    // Height is v squared over twice gravity, so **doubling the jump means
-    // multiplying the launch by root two, not by two** — 12 to 17 takes the arc
-    // from 2.4 up to 4.8. It also stretches the hang time, by the same root two,
-    // from about eight tenths of a second to one and a sixth.
-    vy = mix(vy, uJump * 17, landed);
+    // Gravity and the clamp stay. They are not jump machinery: they are what
+    // holds the unicorn against a road that climbs, banks and drops away, and
+    // what lets it fall past the rails when it leaves the edge.
+    vy = vy * (1 - landed);
 
     // Far enough under the road to have plainly lost it: back to the start.
     const lost = step(high, -50);
@@ -364,7 +362,14 @@ export const Physics = shader({
     // In rad/s throughout, rather than a floor in speed units multiplied into
     // rad/s afterwards: the 20 is the number that gets tuned by watching the
     // legs, so it is worth being the number that is written down.
-    const churn = max(abs(speed) * 0.6, 20 * smoothstep(0, 2, speed));
+    //
+    // Doubled in reverse — the animation, not the travel. At 0.6 per unit a
+    // backward amble tops out around 4.2 rad/s, which against the speed the road
+    // is actually going past reads as a unicorn gliding rearwards with its legs
+    // barely bothering. Twice that is a proper backwards scurry, and it costs the
+    // physics nothing because `speed` is untouched: the body still backs off at
+    // the same rate, the legs just work harder at it.
+    const churn = max(abs(speed) * 0.6, 20 * smoothstep(0, 2, speed)) * (1 + step(speed, -0.001));
     gait = gait + sign(speed) * churn * dt;
 
     // Behind and above the body, along the direction it is *travelling* —
@@ -448,7 +453,8 @@ export const Physics = shader({
     // solved for, so this is an interpolation of numbers that were sitting there
     // — no second search, and exact rather than ring index times a nominal
     // spacing, which the rings do not actually have.
-    storageWrite(uState, 11, vec4(courseDir, mix(ca.w, cb.w, along) * uPattern));
+    const trackAlong = mix(ca.w, cb.w, along) * uPattern;
+    storageWrite(uState, 11, vec4(courseDir, trackAlong));
     storageWrite(uState, 12, vec4(headingDir, 0));
   },
 });

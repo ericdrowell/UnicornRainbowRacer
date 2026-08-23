@@ -10,9 +10,12 @@ import {
   max,
   min,
   mix,
+  mod,
   pow,
   smoothstep,
   storageRead,
+  targetUv,
+  texture,
   type Vec3,
 } from 'brometal';
 
@@ -70,16 +73,24 @@ export const Track = shader({
     /** Across the road in -1..1, and distance travelled along it. */
     aEdge: 'vec2',
   },
-  uniforms: { uTime: 'float' },
+  // The unicorn, mirrored through the road plane and drawn to its own target.
+  // Sampled here rather than blended into the frame directly, so the road can lay
+  // down one resolved image instead of every overlapping triangle of the model in
+  // turn.
+  uniforms: { uTime: 'float', uMirrorTex: 'sampler2D' },
   // Read-only here. Physics writes it, and a read_write binding could not be
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
   storage: { uState: 'vec4' },
-  varyings: { vU: 'float', vV: 'float' },
+  varyings: { vU: 'float', vV: 'float', vWorld: 'vec3', vClip: 'vec4' },
 
   vertex({ aPos, aEdge }, { uState }, v) {
     v.vU = aEdge.x;
     v.vV = aEdge.y;
+    // The road point itself, unprojected. The shadow below is cast in world
+    // space, so it needs where this fragment actually is — the position this
+    // stage returns has already been through the camera and lost that.
+    v.vWorld = aPos;
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
@@ -88,10 +99,15 @@ export const Track = shader({
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
     const c3 = storageRead(uState, 7);
-    return c0.scale(aPos.x).add(c1.scale(aPos.y)).add(c2.scale(aPos.z)).add(c3);
+    // Kept so the fragment can find itself on screen: the reflection target is in
+    // screen space, and the divide by w has to happen per fragment rather than
+    // per vertex or the lookup skews across a triangle.
+    const clip = c0.scale(aPos.x).add(c1.scale(aPos.y)).add(c2.scale(aPos.z)).add(c3);
+    v.vClip = clip;
+    return clip;
   },
 
-  fragment({ uTime }, { vU, vV }) {
+  fragment({ uTime, uState, uMirrorTex }, { vU, vV, vWorld, vClip }) {
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
@@ -206,12 +222,46 @@ export const Track = shader({
     // the silhouette against black space, and it was a hairline visible only in
     // the far distance where perspective stacked it up. Widened to a fifth of
     // the half-width and driven to 3.4, it is a light source with a body to it.
+    // ── The unicorn's shadow ─────────────────────────────────────────────
+    // A blob directly beneath the animal, not a projection of the moon. Kart
+    // games have done it this way forever and it is not a shortcut they settled
+    // for: a shadow that tracks the light slides out from under the thing casting
+    // it, and the moment it does, it stops reading as contact. What the player
+    // needs from this shadow is to know where on the road the unicorn is standing
+    // — especially in the air off a crest — and only a blob pinned under the feet
+    // answers that.
+    //
+    // Distance is measured in the road's own plane, so a shadow on a banked or
+    // climbing stretch stays a disc lying on the surface instead of the ellipse a
+    // world-space distance would smear it into.
+    const body = storageRead(uState, 0).xyz;
+    const up = storageRead(uState, 2).xyz;
+    const flat = vWorld.sub(body);
+    const onPlane = flat.sub(up.scale(dot(flat, up)));
+    const shade = (1 - smoothstep(0.35, 1.1, length(onPlane))) * 0.5;
+
+    // ── The reflection ────────────────────────────────────────────────────
+    // Sampled at this fragment's own place on screen, which is where the mirrored
+    // unicorn was drawn, so the road picks up whatever of it lands here. No depth
+    // test is involved: the reflection cannot be clipped by the road it is lying
+    // on, which is what used to cut it in half wherever the surface rose.
+    //
+    // `w` is the coverage the reflection pass wrote. Multiplying by it keeps the
+    // road untouched everywhere the unicorn does not reach.
+    const mirrorUv = targetUv(vec4(vClip.x / vClip.w, vClip.y / vClip.w, 0, 1));
+    const mirrorPx = texture(uMirrorTex, mirrorUv);
+    // Fresnel: a glancing look at glass is nearly a mirror, straight down at it is
+    // nearly clear. Without it the reflection is as strong underfoot as out at the
+    // horizon, which reads as a decal rather than as a surface.
+    const gaze = normalize(vWorld.sub(storageRead(uState, 8).xyz));
+    const gloss = 0.25 + 0.45 * pow(1 - abs(dot(gaze, storageRead(uState, 2).xyz)), 3);
+
     const edge = abs(vU);
     const core = smoothstep(0.9, 1, edge);
     const lip = smoothstep(0.78, 0.97, edge);
     const halo = pow(smoothstep(0.3, 1, edge), 2);
     return vec4(
-      lit
+      mix(lit.scale(1 - shade), mirrorPx.xyz, mirrorPx.w * gloss)
         .add(glass.scale(halo * 0.8))
         .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
         .add(vec3(1, 0.97, 1).scale(core * 3.4)),

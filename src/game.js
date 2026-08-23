@@ -141,6 +141,20 @@ const weightAt = (y) => Math.min(Math.max((BELLY - y) / LEG_LEN, 0), 1);
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
+// Smooth normals, gathered while the mesh is built and applied once it is.
+//
+// The model is a 3D print: flat-shaded it reads as the faceted solid it really
+// is, and the brief is a plush toy. Averaging the normals of every face that
+// meets at a corner is the whole of the fix — the geometry keeps its silhouette
+// and its polygon count, and only the shading stops announcing where one
+// triangle ends and the next begins.
+//
+// Keyed on the rounded position, for the same reason `skinFor` is: a shared
+// corner has to give one answer no matter how many faces arrive at it, and
+// floats that came from the same STL vertex are not reliably equal.
+const SMOOTH = new Map();
+const NKEY = [];
+
 // Twice round the mesh: once as stored, once mirrored. Only the z > 0 half of
 // the unicorn is in MESH_P, and it is the single largest thing in the budget, so
 // the other half is rebuilt here for the cost of this loop.
@@ -174,6 +188,18 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
   // the face happens to carry. Corners shared with the body therefore stay
   // welded to it while the rest of the face swings, which is the flex the
   // shader's smoothstep is there to produce.
+  // Drop the model's own eye patch: five triangles of flat black laid on the
+  // cheek, which the shader now draws for itself. Left in, they sit in the same
+  // place as the head surface with their own angle, so the eye decal lands on
+  // both and the two fight — one circle on the cheek and a second, skewed one on
+  // the patch, z-fighting where they overlap. Repainting them as face was not
+  // enough: it is the geometry that is doubled, not the colour.
+  //
+  // Identified by the colour that is unique to them — 0.05 across, against
+  // hooves at 0.16 and a body at 1.
+  const ci0 = (j / 3) * 4;
+  if (MESH_C[ci0] < 0.1 && MESH_C[ci0 + 3] < 0.5) continue;
+
   const legs = tri.map((v) => skinFor(v[0], v[1], v[2]));
   let lead = -1;
   for (let k = 0; k < 3; k++) {
@@ -185,6 +211,20 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
 
   for (let k = 0; k < 3; k++) {
     P.push(tri[k][0] - root[0], tri[k][1] - root[1], tri[k][2] - root[2]);
+    // Provisional: the face's own normal, replaced below by the average of every
+    // face meeting at this corner. Keyed on the position *before* the root is
+    // subtracted, because that is the coordinate two faces actually share — the
+    // root differs between a body face and a leg face at the very seam where
+    // smoothing matters most.
+    NKEY.push(tri[k].map((c) => Math.round(c * 1000)).join());
+    const a = SMOOTH.get(NKEY[NKEY.length - 1]) || [0, 0, 0];
+    // Unnormalised, so a big triangle pulls the average further than a sliver —
+    // which is what area weighting is, and it costs nothing here because the
+    // cross product's length already is the area.
+    a[0] += n[0];
+    a[1] += n[1];
+    a[2] += n[2];
+    SMOOTH.set(NKEY[NKEY.length - 1], a);
     NR.push(n[0] / L, n[1] / L, n[2] / L);
     RT.push(root[0], root[1], root[2]);
     // How far down the limb this corner sits — the weight the shader scales by.
@@ -192,8 +232,34 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
     const t = legs[k] ? weightAt(tri[k][1]) : 0;
     SK.push(t, skin[1], skin[2], skin[3]);
     const ci = (j / 3) * 4 + k * 4;
-    CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], MESH_C[ci + 3]);
+    // The flat black patch the model carries for an eye is repainted as face.
+    // The bead appended further down is the eye now, and leaving the patch black
+    // underneath it puts two dark shapes at slightly different angles in the same
+    // place — which reads as a polygon halo around a circle, and was visible the
+    // moment the bead was made smaller than the patch it covers.
+    //
+    // Identified by its own colour, which is unique in the model: 0.05 across,
+    // against hooves at 0.16 and a body at 1. Repainting it frees the bead to be
+    // any size at all, since there is no longer anything for it to fail to hide.
+    const socket = MESH_C[ci] < 0.1 && MESH_C[ci + 3] < 0.5;
+    CL.push(
+      socket ? 1 : MESH_C[ci],
+      socket ? 0.97 : MESH_C[ci + 1],
+      socket ? 0.99 : MESH_C[ci + 2],
+      MESH_C[ci + 3],
+    );
   }
+}
+
+// The second pass. Every corner now knows the sum of the faces around it, so
+// the provisional flat normals get overwritten with the direction the *surface*
+// faces rather than the direction one triangle does.
+for (let i = 0; i < NKEY.length; i++) {
+  const a = SMOOTH.get(NKEY[i]);
+  const l = Math.hypot(a[0], a[1], a[2]) || 1;
+  NR[i * 3] = a[0] / l;
+  NR[i * 3 + 1] = a[1] / l;
+  NR[i * 3 + 2] = a[2] / l;
 }
 
 const idx = new Uint16Array(P.length / 3).map((_, i) => i);
@@ -392,18 +458,14 @@ for (let i = 0; i <= RINGS; i++) {
 // of the simulation: which keys are down, and a latch for the one that is an
 // event rather than a state.
 const HELD = {};
-let JUMPED = 0;
 /** 1 when either key of a pair is down. */
 const held = (a, b) => (HELD[a] || HELD[b] ? 1 : 0);
 
 addEventListener('keydown', (e) => {
   HELD[e.code] = 1;
-  // Jump is a press, not a hold. The latch is set here and cleared by the frame
-  // that spends it, so holding the key gives exactly one jump — and `repeat`
-  // keeps the key's own auto-repeat, about thirty a second, from giving more.
-  if (e.code === 'Space' && !e.repeat) JUMPED = 1;
   // Arrows scroll the page and space pages down it, both of which move the
-  // canvas out from under the player mid-corner.
+  // canvas out from under the player mid-corner. Space is no longer bound to
+  // anything, but it still scrolls, so it is still swallowed.
   if (/^(Arrow|Space)/.test(e.code)) e.preventDefault();
 });
 addEventListener('keyup', (e) => (HELD[e.code] = 0));
@@ -500,7 +562,12 @@ let STATE = null;
 // as bright as what surrounds it — the daylit sky this used to clear to was
 // within a stop of the rails, so the glowing ribbon read as a coloured floor.
 // Everything the road does now happens against nothing at all.
-bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
+// Alpha zero in the clear, and it matters in exactly one place. The canvas is
+// configured `alphaMode: 'opaque'`, so its own alpha is never looked at — but
+// render targets clear with this same colour, and the reflection target uses
+// alpha as its coverage mask. Cleared to 1 the mask reads "unicorn everywhere"
+// and the road mixes toward black across its whole surface.
+bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   STATE = bmStore(new Float32Array(52));
   const rings = bmStore(TRACK_DATA);
 
@@ -525,6 +592,35 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
   bmAttr(prog, 4, new Float32Array(CL));
   bmIndex(prog, idx);
   bmStorages(prog, STATE);
+
+  // The same model again, drawn as its own reflection in the road.
+  //
+  // A second program rather than a second draw of the first, because blending is
+  // baked into the pipeline at creation and this one needs it: alpha, so the road
+  // shows through, and no depth write, so the reflection cannot occlude anything
+  // — least of all the unicorn casting it.
+  //
+  // Culling off as well. The projection onto the road plane turns the model
+  // inside out on the way through, so half the faces come back wound the other
+  // way and back-face culling would eat them.
+  const refl = bmProgram(Unicorn[0], {
+    a: Unicorn[1],
+    i: Unicorn[2],
+    u: Unicorn[3],
+    t: Unicorn[4],
+    s: Unicorn[5],
+    // Draws into a target, not the canvas, and the two have different colour
+    // formats — the pipeline bakes one in, so without this the draw is a
+    // validation error and the whole frame goes black.
+    fmt: 1,
+  });
+  bmAttr(refl, 0, new Float32Array(P));
+  bmAttr(refl, 1, new Float32Array(NR));
+  bmAttr(refl, 2, new Float32Array(RT));
+  bmAttr(refl, 3, new Float32Array(SK));
+  bmAttr(refl, 4, new Float32Array(CL));
+  bmIndex(refl, idx);
+  bmStorages(refl, STATE);
 
   // Drawn without culling: the ribbon is one surface with nothing under it, and
   // half a lap of it is above the camera on the climb, so the underside is on
@@ -619,6 +715,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
   // sixteenth of the rays. A cloud is the one thing in the scene that loses
   // nothing to that: no edges, no texture, no silhouette, only soft gradients,
   // and the target samples back linearly.
+  // Full resolution, unlike the cloud target: this one carries the model's
+  // silhouette, and a quarter-size buffer would fray every edge of it.
+  const mirror = bmTarget(
+    (canvas.clientWidth * devicePixelRatio) | 0,
+    (canvas.clientHeight * devicePixelRatio) | 0,
+  );
   const clouds = bmTarget(
     ((canvas.clientWidth * devicePixelRatio) / 4) | 0,
     ((canvas.clientHeight * devicePixelRatio) / 4) | 0,
@@ -636,6 +738,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
   bmTextures(cloud, bmTexture(vol, 1));
   bmStorages(cloud, STATE);
   bmTextures(sky, clouds);
+  bmTextures(track, mirror);
 
   const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
@@ -656,12 +759,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
     step[0] = PAUSED ? 0 : elapsed;
     step[1] = held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown');
     step[2] = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft');
-    step[3] = PAUSED ? 0 : JUMPED;
-    step[4] = canvas.width / canvas.height;
-    step[5] = RINGS;
-    step[6] = TRACK_WIDTH;
-    step[7] = PATTERN;
-    JUMPED = 0;
+    step[3] = canvas.width / canvas.height;
+    step[4] = RINGS;
+    step[5] = TRACK_WIDTH;
+    step[6] = PATTERN;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -672,6 +773,15 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
+    // The mirrored unicorn, into its own target, before the frame proper. It
+    // resolves there against its own depth, so the road later reads one finished
+    // image rather than a stack of half-transparent triangles.
+    bmPassTo(mirror);
+    u[2] = 1;
+    bmUniforms(refl, u);
+    bmDraw(refl);
+    u[2] = 0;
+
     bmPassTo(clouds);
     bmUniforms(cloud, u);
     bmDraw(cloud);
@@ -687,5 +797,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 1]).then(() => {
     // the CPU at all.
     bmUniforms(track, u);
     bmDraw(track);
+
+
   });
 });

@@ -8,6 +8,7 @@ import {
   floor,
   max,
   mix,
+  min,
   dot,
   smoothstep,
   normalize,
@@ -252,7 +253,102 @@ export const Sky = shader({
       .add(texture(uClouds, targetUv(vec4(vNdc.x - 0.004, vNdc.y + 0.006, 0, 1))))
       .add(texture(uClouds, targetUv(vec4(vNdc.x + 0.004, vNdc.y + 0.006, 0, 1))))
       .scale(0.25);
-    const sky = haze.add(field.scale(behind)).add(glow).add(moon);
+    // ── The wish comet ───────────────────────────────────────────────────
+    // Somewhere between five and fifteen seconds apart, never the same twice.
+    //
+    // The obvious way to space these irregularly is to add up a run of random
+    // intervals, and a fragment shader cannot: that is a loop whose length grows
+    // with the clock. This gets the same distribution in constant time. Time is
+    // cut into fixed ten-second slots and each slot's comet starts at a random
+    // offset of nought to five seconds inside it, so the gap between one and the
+    // next is ten plus the difference of two such offsets — five to fifteen,
+    // averaging ten, and the arithmetic never looks further than the slot it is
+    // standing in.
+    //
+    // The slot index doubles as the seed, so every comet's arc and timing are
+    // decided for all time. No state, no spawner, and one can already be halfway
+    // across the sky the instant the game starts rather than the sky being empty
+    // until the first timer fires.
+    //
+    // The 3.5 is the crossing time. It has to stay under ten less the five of
+    // maximum offset, or a comet would still be flying when its slot ended and
+    // would be cut off mid-arc.
+    const slot = uTime * 0.1;
+    const which = floor(slot);
+    const start = fract(sin(which * 33.71) * 12345.678) * 5;
+    const phase = (fract(slot) * 10 - start) / 3.5;
+    const seedA = fract(sin(which * 91.7) * 43758.5453);
+    const seedB = fract(sin(which * 47.3 + 11.1) * 24634.6345);
+    // The arc is aimed through the stretch of sky the moon hangs in, because that
+    // is the part reliably on screen: the camera sits low behind the unicorn
+    // looking down a road that is usually turning, so most of the celestial
+    // sphere is behind it at any moment. A path drawn across world x — the
+    // obvious "left to right" — spends nearly all of itself out of frame and the
+    // comet is simply never seen, which is how the first one went.
+    //
+    // Still world space, not camera space. Pinning it to the view would guarantee
+    // it every time, and it would also swing with the handlebars, which is the one
+    // thing that would give it away as a trick.
+    // Anchored to the moon and swept perpendicular to it. The moon is the one
+    // direction known to be on screen, so building the path around it is what
+    // makes the comet reliably visible; picking world axes by eye put two
+    // successive attempts entirely behind the camera, because the view sits low
+    // behind the unicorn on a road that is nearly always turning.
+    //
+    // `sweep` is the moon crossed with world up, i.e. horizontal and square to
+    // it, so adding a multiple of it slides along the sky rather than towards or
+    // away from the moon. The vertical term lifts the arc above the moon and
+    // tilts it, so the comet falls slightly as it crosses instead of tracking a
+    // dead-level line.
+    const sweep = vec3(0.41, 0, 0.912);
+    const entry = normalize(vec3(0.8873, 0.2307, -0.3993).sub(sweep.scale(0.62)).add(vec3(0, 0.13 + seedA * 0.09, 0)));
+    const leave = normalize(vec3(0.8873, 0.2307, -0.3993).add(sweep.scale(0.62)).add(vec3(0, 0.01 + seedB * 0.07, 0)));
+    const head = normalize(mix(entry, leave, phase));
+    const travel = normalize(leave.sub(entry));
+
+    // Distances in radians rather than squared chords here, unlike the moon. The
+    // moon is a disc and only ever needs "inside or out"; a falling star is built
+    // from a head, a cross of spikes and a tail that all have to line up along the
+    // same two axes, and reasoning about that in squared units is a good way to
+    // get a comet shaped like a bruise.
+    const toHead = dir.sub(head);
+    const near = length(toHead);
+    // Along the arc and across it. `back` is how far behind the head this
+    // direction sits — the tail runs one way only, which is what makes it a tail
+    // rather than a halo.
+    const back = 0 - dot(toHead, travel);
+    const side = length(toHead.add(travel.scale(back)));
+
+    // The head: a hard white centre inside a soft bloom. The bloom carries the
+    // size and the centre carries the brightness, which is the trick to making
+    // something read as very bright rather than merely large and pale.
+    const core = 1 - smoothstep(0, 0.009, near);
+    const glare = 1 - smoothstep(0, 0.055, near);
+
+    // The four-point star. This is the whole difference between a comet and a
+    // wishing star: a plain bright dot is a planet, and the cross of light is what
+    // every drawing of a falling star since the first one has used to say the
+    // thing is *shining*. Two thin bars crossed at the head — one along the arc,
+    // one square to it — each long in its own axis and tight in the other.
+    const spikeA = (1 - smoothstep(0, 0.11, abs(back))) * (1 - smoothstep(0, 0.0035, side));
+    const spikeB = (1 - smoothstep(0, 0.0035, abs(back))) * (1 - smoothstep(0, 0.055, side));
+
+    // The tail: long, tapered, and thrown clear of the head. It widens as it goes
+    // and dims faster than it widens, which is what turns a stripe into vapour.
+    const run = min(max(back, 0) / 0.45, 1);
+    const spread = 0.038 * run + 0.006;
+    const tail = (1 - smoothstep(0, spread, side)) * (1 - run) * (1 - run) * step(0, back);
+
+    // Fades up as it enters and out before the gap, so it never snaps on.
+        // No extra gating needed for the quiet stretch: outside a crossing `phase`
+    // runs below nought or past one, and both fades clamp to zero there.
+    const life = smoothstep(0, 0.05, phase) * (1 - smoothstep(0.85, 1, phase));
+    // White at the head, cooling into the tail — a star, not a firework.
+    const comet = vec3(1, 1, 1).scale(core * 4 + (spikeA + spikeB) * 1.5)
+      .add(vec3(1, 0.96, 0.86).scale(glare * 0.9))
+      .add(vec3(0.8, 0.9, 1).scale(tail * 2.4));
+
+    const sky = haze.add(field.scale(behind)).add(glow).add(moon).add(comet.scale(life));
     return vec4(sky.scale(1 - cloud.w).add(cloud.xyz), 1);
   },
 });

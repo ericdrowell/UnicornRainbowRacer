@@ -54,21 +54,33 @@
   // its cycle. Driven from a clock here rather than from distance travelled,
   // because nothing is travelling — the model is parked at the origin.
   //
-  // R runs or walks, F freezes. Frozen is what the picker wants, since a
-  // triangle you are trying to point at should hold still; running is what the
-  // animation wants. Having both is the reason this is a variable rather than
-  // the constant zero it used to be.
+  // R switches direction, F starts and stops. Stopped is what the picker wants,
+  // since a triangle you are trying to point at should hold still; running is
+  // what the animation wants. Having both is the reason this is a variable
+  // rather than the constant zero it used to be.
   const RUN_SPEED = 20;
-  const WALK_SPEED = 2;
+  const WALK_SPEED = -4;
   let SPEED = RUN_SPEED;
-  let MOVING = 1;
+  // Frozen on arrival. The animation is the thing this build exists to inspect,
+  // and a moving target is the one thing you cannot inspect — the picker wants a
+  // triangle that holds still, and so does anyone looking closely at a seam. F
+  // starts it.
+  let MOVING = 0;
   let GAIT = 0;
   addEventListener('keydown', (e) => {
+    // Forward gallops, reverse walks — so R has to cross zero to show both, and
+    // the old forward-slow setting showed nothing the fast one did not.
     if (e.code === 'KeyR') SPEED = SPEED === RUN_SPEED ? WALK_SPEED : RUN_SPEED;
     if (e.code === 'KeyF') MOVING = 1 - MOVING;
   });
-  /** The shader's own walk-to-run blend, on the same two thresholds. */
-  const runBlend = () => smooth(6, 15, Math.abs(SPEED));
+  /** The shader's own gait select, on the same threshold it now uses.
+   *
+   *  This used to be `smooth(6, 15, |SPEED|)`, matching a shader that blended
+   *  walk into gallop as the unicorn got quicker. It does not any more: forwards
+   *  is always the gallop and only reverse walks, so the blend is on the *signed*
+   *  speed across the first few units of backing up. Left stale, the picker's
+   *  highlight would sit on a pose the shader is not drawing. */
+  const runBlend = () => smooth(-3, 0, SPEED);
 
   // Everything below repeats unicorn.shader.ts in JavaScript, gait selection
   // included. That duplication is the point: these are the positions the mouse
@@ -177,7 +189,12 @@
   let lastTick = 0;
   function camera() {
     const now = performance.now() / 1000;
-    if (lastTick) GAIT += (now - lastTick) * SPEED * 0.6 * MOVING;
+    // The rate physics uses: 0.6 radians per unit travelled, but never slower
+    // than 20 rad/s once moving forward at all — the floor that makes a standing
+    // start look like effort. Winding this by hand at plain `SPEED * 0.6`, as it
+    // used to, ran the legs at a third of the speed the track shows.
+    const churn = Math.max(Math.abs(SPEED) * 0.6, 20 * smooth(0, 2, SPEED));
+    if (lastTick) GAIT += (now - lastTick) * churn * Math.sign(SPEED) * MOVING;
     lastTick = now;
     body[7] = SPEED; // slot 1.w — the shader picks walk or run from this
     body[11] = GAIT; // slot 2.w — and how far through the cycle it is
@@ -241,6 +258,24 @@
     // passive listener may not preventDefault, so the page would scroll too.
     { passive: false },
   );
+
+  // ── Nothing but the unicorn ────────────────────────────────────────────────
+  // The road, the sky and the clouds are all still being drawn, and every one of
+  // them is in the way: the ribbon passes through the origin, so any orbit that
+  // dips below the horizon puts a wall of rainbow between the camera and the
+  // model, and the cloud march costs most of the frame to render scenery nobody
+  // is inspecting.
+  //
+  // Discriminated by vertex buffer count rather than by identity, because game.js
+  // keeps its programs in local consts this file cannot see. The unicorn is the
+  // only one with five attribute streams — position, normal, root, skin, colour;
+  // the road has two, the sky and the clouds one each. That is a fact about the
+  // model rather than about the draw order, so it survives the frame being
+  // reordered, which a "skip the second draw" rule would not.
+  const drawOnly = bmDraw;
+  bmDraw = (prog, count) => {
+    if (prog.b.length === 5) drawOnly(prog, count);
+  };
 
   // Take the state buffer over, immediately after the physics stage has filled
   // it and before bmLoop submits the frame that reads it. Wrapping the global
@@ -333,10 +368,10 @@
     requestAnimationFrame(draw);
     hud.textContent =
       `distance  ${dist.toFixed(2)}\n` +
-      `gait      ${SPEED === RUN_SPEED ? 'run' : 'walk'} at ${SPEED} m/s${MOVING ? '' : ' — frozen'}\n` +
+      `gait      ${SPEED > 0 ? 'gallop' : 'walk (reverse)'} at ${SPEED} m/s${MOVING ? '' : ' — frozen'}\n` +
       'scroll to zoom · drag to rotate\n' +
-      'R walk/run · F freeze (freeze before picking)\n' +
-      'back faces drawn · unicorn parked at the origin (debug build)';
+      `R forward/reverse · F ${MOVING ? 'freeze' : 'run'}\n` +
+      'unicorn only · back faces drawn · parked at the origin (debug build)';
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
     if (picked < 0 || !VP) return;

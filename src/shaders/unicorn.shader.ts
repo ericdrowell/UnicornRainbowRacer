@@ -1,11 +1,13 @@
 import {
   shader,
+  vec2,
   vec3,
   vec4,
   sin,
   cos,
   abs,
   floor,
+  fract,
   max,
   mix,
   sign,
@@ -13,6 +15,7 @@ import {
   dot,
   cross,
   smoothstep,
+  length,
   normalize,
   storageRead,
   type Vec3,
@@ -26,6 +29,45 @@ function spin(p: Vec3, a: number): Vec3 {
   const c = cos(a);
   const s = sin(a);
   return vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
+}
+
+/**
+ * One random number per lattice point, from the oldest trick there is: take a
+ * smooth function, run it somewhere far from the origin at a frequency nothing
+ * else in the shader shares, and keep only the fractional part. It is not a good
+ * hash — it bands on some drivers if the coordinates get large — but the
+ * coordinates here are model-space and never leave single digits.
+ */
+function hash(x: number, y: number): number {
+  return fract(sin(x * 127.1 + y * 311.7) * 43758.5453);
+}
+
+/**
+ * Value noise: the lattice above, interpolated with a smoothstep so the result
+ * is continuous rather than a grid of hard tiles.
+ *
+ * The smoothing is the point. Sampling the hash directly gives white noise,
+ * which is not fur — it is television static, and worse, it aliases into a
+ * crawling shimmer the moment the model moves or shrinks, because neighbouring
+ * pixels land on unrelated lattice cells. Interpolated, the field has a scale,
+ * and a scale is what lets it read as fibre.
+ *
+ * Written in components because the DSL's `fract` and `floor` are scalar-only.
+ */
+function noise(px: number, py: number): number {
+  const ix = floor(px);
+  const iy = floor(py);
+  const fx = px - ix;
+  const fy = py - iy;
+  // Hermite weights — the same curve `smoothstep` applies, inlined because it
+  // is wanted on the two axes separately rather than on an edge pair.
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  return mix(
+    mix(hash(ix, iy), hash(ix + 1, iy), ux),
+    mix(hash(ix, iy + 1), hash(ix + 1, iy + 1), ux),
+    uy,
+  );
 }
 
 /**
@@ -69,13 +111,15 @@ export const Unicorn = shader({
   //
   // Free to carry: a uniform block is padded to sixteen bytes, so uTime alone
   // was already reserving three float slots and uploading them every frame.
-  uniforms: { uTime: 'float', uRun: 'float' },
+  // uMirror turns this draw into the road's reflection of the model: 0 is the
+  // unicorn itself, 1 is its image in the floor.
+  uniforms: { uTime: 'float', uRun: 'float', uMirror: 'float' },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
-  varyings: { vNormal: 'vec3', vColor: 'vec3' },
+  varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun, uMirror }, v) {
     const body = storageRead(uState, 0);
     const facing = storageRead(uState, 1);
     const normal = storageRead(uState, 2);
@@ -182,34 +226,152 @@ export const Unicorn = shader({
       .add(normal.xyz.scale(posed.y))
       .add(across.scale(posed.z));
 
-    // Bands run diagonally and drift, so the mane and tail flow rather than sit.
-    // The multiplier is high because a mane spans barely half a unit: at a gentle
-    // rate the whole thing lands inside one arc of the palette and comes out a
-    // single colour with a slight gradient, which is not a rainbow.
+    // Bands run diagonally across the mane and tail. The multiplier is high
+    // because a mane spans barely half a unit: at a gentle rate the whole thing
+    // lands inside one arc of the palette and comes out a single colour with a
+    // slight gradient, which is not a rainbow.
     //
-    // Measured in model space, not world. Against world coordinates the bands
-    // would sweep through the mane as the unicorn drove, at a rate set by how
-    // fast it happened to be going.
-    const band = (local.x + local.y * 2.2) * 7 - uTime * 2.4;
+    // **Fixed, not flowing.** This used to carry a `- uTime * 2.4` term, which
+    // sent the palette cycling through the hair. Dropping it makes the stripes a
+    // property of the unicorn rather than an effect playing on it — the mane is
+    // dyed, and dyed hair does not change colour while you watch. It also stops
+    // the rainbow competing with the road, which is the thing in this scene that
+    // is supposed to be moving.
+    //
+    // Measured on the *undeformed* model, not on `local`. `local` is the posed
+    // position: it carries the gait and, more to the point, the bob — the whole
+    // body rising and falling as it runs. Keying the palette off that cycles the
+    // mane through the spectrum in time with the footfalls, which is the drift
+    // this was supposed to have lost. It is the same trap the eye below is
+    // written to avoid, and the same fix: read the rest coordinate.
+    const band = ((aPos.x + aRoot.x) + (aPos.y + aRoot.y) * 2.2) * 7;
     const rainbow = vec3(
       0.5 + 0.5 * cos(band),
       0.5 + 0.5 * cos(band + 2.09),
       0.5 + 0.5 * cos(band + 4.19),
     );
     v.vColor = mix(aColor.xyz, rainbow, aColor.w);
+    // The same flag the rainbow is keyed off, handed to the fragment stage so it
+    // can shade hair as hair. It costs an interpolator and saves the alternative,
+    // which is guessing from position where the mane stops and the neck starts.
+    v.vHair = aColor.w;
+    // Where this vertex sits on the *undeformed* model, which is what the eye
+    // below is drawn against. `aPos` is relative to its hip, so adding the root
+    // recovers the original coordinate; this deliberately skips the gait and the
+    // bob, or the pupil would slide about the face as the body rose and fell.
+    //
+    // The eye test below still reads only x and y: the two eyes sit at the same
+    // place on the head and differ solely in the sign of z, so ignoring z draws
+    // both from one test, and the only surfaces anywhere near this x and y are
+    // the two cheeks.
+    //
+    // z rides along for the hair. A mane is a thin crest whose width runs in z,
+    // so an x-y coordinate is constant across it — noise sampled on x and y alone
+    // can only band *along* the mane, which is precisely the wrong way for
+    // something meant to read as strands hanging down it.
+    v.vFace = vec3(aPos.x + aRoot.x, aPos.y + aRoot.y, aPos.z + aRoot.z);
+
+    // ── The reflection ────────────────────────────────────────────────────
+    // A straight mirror through the road plane, and nothing else. Seen by the
+    // same camera the mirrored model already lands exactly where its reflection
+    // belongs on screen — that is what a planar reflection *is* — so no projection
+    // and no depth trickery is wanted.
+    //
+    // This draw goes to an offscreen target, and that is what buys the simplicity.
+    // Rendered straight into the frame it has to fight the road for depth and
+    // loses, and blending it per-triangle stacks every overlapping face of the
+    // model on top of itself. Given its own target it resolves opaquely against
+    // its own depth and arrives as one flat image with a coverage mask — and the
+    // road then decides how much of it to show, once, against a finished picture.
+    const plane = storageRead(uState, 0).xyz;
+    const upT = storageRead(uState, 2).xyz;
+    const shown = mix(world, world.sub(upT.scale(2 * dot(world.sub(plane), upT))), uMirror);
 
     const c0 = storageRead(uState, 4);
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
     const c3 = storageRead(uState, 7);
-    return c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
+    return c0.scale(shown.x).add(c1.scale(shown.y)).add(c2.scale(shown.z)).add(c3);
   },
 
-  fragment({ uState, uTime }, { vNormal, vColor }) {
+  fragment({ uState, uTime, uMirror }, { vNormal, vColor, vFace, vHair }) {
+    // ── The pile ───────────────────────────────────────────────────────────
+    // What makes a plush toy read as plush is not its colour, it is that the
+    // surface never resolves: light lands on thousands of fibre tips at slightly
+    // different angles, so the shading stays grainy at a scale far below the
+    // silhouette. A smooth normal cannot produce that at any lighting setting,
+    // which is why the wrapped key light below — already doing its best to fake
+    // a soft material — still left the model looking moulded.
+    //
+    // The grain goes into the normal, not the colour. Tilting the normal makes
+    // every light term break up at once, including the road's bounce and the rim
+    // of the wrap, exactly as a real pile would. Painting the same pattern onto
+    // the albedo instead gives dirt, because it stays put when the light moves.
+    //
+    // **Two octaves, because fur is not one scale.** The coarse one is clumping —
+    // the way pile parts into tufts — and the fine one is the fibre tips inside a
+    // clump. With only the fine octave the surface reads as sandpaper: uniform
+    // grain is still uniform, which was the original complaint in a smaller size.
+    //
+    // Three samples at unrelated offsets, used as a tilt vector. This is not the
+    // true gradient of the field — that would want finite differences along two
+    // surface tangents, and there are no tangents on this mesh to take them
+    // along. Three decorrelated values tilt the normal in an arbitrary direction
+    // instead, which for a material whose fibres genuinely do point every which
+    // way is not an approximation of the right answer so much as the right answer
+    // arrived at cheaply.
+    //
+    // Sampled off `vFace`, the *undeformed* model coordinate the eye is drawn
+    // against, and for the same reason: in world space the fur would boil as the
+    // unicorn drove, and after skinning it would crawl along the legs as they
+    // swung. Locked to the undeformed surface, the pile belongs to the toy.
+    const fx = vFace.x;
+    const fy = vFace.y;
+    const clump = vec3(
+      noise(fx * 30, fy * 9),
+      noise(fx * 30 + 37.2, fy * 9 + 17.9),
+      noise(fx * 30 + 91.7, fy * 9 + 63.4),
+    ).sub(vec3(0.5, 0.5, 0.5));
+    const fibre = vec3(
+      noise(fx * 110, fy * 30),
+      noise(fx * 110 + 51.3, fy * 30 + 22.6),
+      noise(fx * 110 + 13.8, fy * 30 + 77.1),
+    ).sub(vec3(0.5, 0.5, 0.5));
+    const fuzz = clump.scale(0.30).add(fibre.scale(0.45));
+
+    // ── The mane and tail ──────────────────────────────────────────────────
+    // Hair is not fur with a different colour. Fur is a field of short fibres
+    // pointing outward, which is why the pile above is nearly isotropic; hair
+    // hangs in long strands that clump and part, and the thing that makes it
+    // read is that the highlights run *along* the strand while the variation
+    // runs across it. So the noise here is stretched far harder than the pile's
+    // — roughly seven to one — and the long axis points down, the way hair falls.
+    //
+    // The frequency across the strand is set by how big the mane actually is on
+    // screen, not by what looks right in isolation: it spans about half a model
+    // unit and lands in roughly thirty pixels, so strands about two pixels apart
+    // means a cell size near 1/60th of a unit. Finer than that and neighbouring
+    // pixels sample unrelated cells, which is not finer hair — it is a crawling
+    // shimmer that gets worse the further away the unicorn is.
+    const across = vFace.z * 60;
+    const along = (fx + fy * 2.2) * 7;
+    const s1 = noise(across, along);
+    const strand = vec3(s1, noise(across + 19.4, along + 55.2), noise(across + 82.1, along + 31.7))
+      .sub(vec3(0.5, 0.5, 0.5));
+
+    // Hair also *self-shadows* in a way pile does not: strands sit over one
+    // another, and the gaps between clumps go genuinely dark rather than merely
+    // turning away from the light. Tilting the normal alone cannot produce that,
+    // because a tilted normal still catches the ambient bounce. This multiplies
+    // it out, and it is most of why the mane reads as separate locks instead of
+    // a painted ribbon.
+    const locks = mix(1, 0.55 + 0.9 * s1, vHair);
+
     // Renormalised, unlike the faceted version: skinning rotates each vertex by
     // its own amount, so along a bending leg the normals genuinely differ across
-    // a face and the interpolated value is no longer unit length.
-    const n = normalize(vNormal);
+    // a face and the interpolated value is no longer unit length. The tilt rides
+    // in before the normalise, so it perturbs a direction rather than a length.
+    const n = normalize(vNormal.add(mix(fuzz, strand.scale(0.85), vHair)));
 
     // Lit from below, by the road. There is no sky any more — the scene clears
     // to almost black — so the ambient that used to pour blue daylight over
@@ -256,7 +418,41 @@ export const Unicorn = shader({
     // What is left of the key light, kept dim and pointed down the road so the
     // form still reads. Warm, so it separates from the road's pastels rather
     // than dissolving into them.
-    const key = vec3(1, 0.97, 0.9).scale(max(dot(n, normalize(vec3(0.55, 0.7, 0.85))), 0) * 0.34);
-    return vec4(vColor.mul(bounce.add(key)), 1);
+    //
+    // **Wrapped, not clamped.** `max(dot, 0)` puts the terminator exactly where
+    // the surface turns ninety degrees from the light, and that hard edge is
+    // what a billiard ball looks like. Remapping the dot product through
+    // `(d + w) / (1 + w)` lets the light bend a little way past the horizon, so
+    // it dies out gradually — which is what happens on anything fuzzy, because
+    // the fibres standing off the surface catch light the surface itself cannot.
+    // It is the cheapest thing that reads as fabric rather than plastic, and it
+    // costs an add and a divide that fold into constants.
+    const wrap = max((dot(n, normalize(vec3(0.55, 0.7, 0.85))) + 0.65) / 1.65, 0);
+    // Squared, because a soft material's falloff is not linear either: wrapping
+    // alone flattens the form into something evenly lit, and this puts the
+    // gradient back without putting the hard edge back with it.
+    const key = vec3(1, 0.97, 0.9).scale(wrap * wrap * 0.5);
+    // ── The eyes ───────────────────────────────────────────────────────────
+    // A circle, painted on the face in model space, 0.0675 across — half the
+    // width of the flat patch the model ships with, which is the size this eye
+    // has always been.
+    //
+    // Two cleverer versions came before it and both were worse. Ray-tracing a
+    // sphere *embedded* in the head makes the outline the curve where sphere
+    // meets skull, which follows the facets and is never round. Drawing the
+    // sphere's silhouette instead is round, but needs a near-side test to stop
+    // the far eye printing through the back of the head, and that test cuts the
+    // circle into a slash the moment the head turns. A decal has neither problem:
+    // it is round because it is defined round, and it is on the cheek because
+    // the cheek is the only thing at these coordinates.
+    //
+    // It projects to an ellipse when the head is seen at an angle, which is what
+    // a circle drawn on a curved surface does, and is what makes it read as an
+    // eye rather than as a sticker facing the camera.
+    const pupil = 1 - smoothstep(0.062, 0.0675, length(vFace.xy.sub(vec2(0.6401, 1.4904))));
+    // Alpha 1 either way. In the reflection pass this is coverage rather than
+    // opacity — the target clears transparent, so solid alpha is what tells the
+    // road which pixels the unicorn actually reaches.
+    return vec4(mix(vColor.mul(bounce.add(key)).scale(locks), vec3(0.02, 0.02, 0.03), pupil), 1);
   },
 });
