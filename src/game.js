@@ -15,74 +15,17 @@ const canvas = document.getElementById('c');
 // Everything that gets turned on and off while the game is being made, in one
 // place so none of it has to be hunted for.
 //
-// The two booleans are `const` rather than runtime flags because terser folds
-// them: with either false, the feature it guards becomes unreachable and
-// `--toplevel` deletes it outright, so a switch that is off costs nothing and
-// the build gets its bytes back. That is also why they cannot be flipped at
-// runtime — turning one on means a rebuild, which for a thing decided once per
-// session is the right trade at this budget.
+// `const` rather than a runtime flag because terser folds it: with it false the
+// feature it guards becomes unreachable and `--toplevel` deletes it outright, so
+// a switch that is off costs nothing and the build gets its bytes back. That is
+// also why it cannot be flipped at runtime — turning it on means a rebuild,
+// which for a thing decided once per session is the right trade at this budget.
 
-/** The soundtrack. Off while the road is being worked on: half an hour of the
- *  same loop is not a good way to judge a look. Sound effects are separate and
- *  keep working either way. */
-const MUSIC_ENABLED = false;
-
-/** The pixel grid. Off renders at native resolution, with the canvas filling
- *  the window from the stylesheet. */
-const PIXELATE = false;
-
-/** Block size when PIXELATE is on, in *device* pixels — 1 is native, 8 is
- *  chunky. P cycles it 1 to 8 at runtime; this is where it starts. */
-let PIXEL = 8;
-
-// ── Pixel grid ──────────────────────────────────────────────────────────────
-// Real pixel art rather than a blur filter: the scene is *rendered* at one pixel
-// per art pixel and then blown up by a whole number, so each art pixel lands on
-// an exact PIXEL x PIXEL block. Sampling a full-resolution image and quantising
-// it would give blocks too, but each would be a point sample of a sharp image —
-// blocky edges with full-resolution aliasing trapped inside them. Rendering at
-// the low resolution is what makes it read as pixel art.
-//
-// The blow-up is a CSS transform, not a second render pass. bmLoop sizes the
-// drawing buffer from the element's layout box, and a transform does not change
-// that box — so the buffer stays small while the picture fills the screen. A
-// post-process pass would cost a pipeline, a quad and a shader to arrive at the
-// same image, and this budget has 3.5 kB left in it.
-//
-// Flooring is what keeps the scaling exact. The element is sized to a whole
-// number of art pixels, so the leftover strip at the right and bottom is at most
-// PIXEL - 1 pixels of background rather than a row of half-width blocks.
-//
-// **PIXEL is a multiplier, and the block it makes is PIXEL by PIXEL real device
-// pixels — 1 is native, 2 is 2x2, 3 is 3x3.** That falls out of bmLoop sizing
-// the buffer as `clientWidth * devicePixelRatio`, and it is worth following
-// through once: at 1000 CSS px wide on a 2x display with PIXEL = 3, the box is
-// floor(1000 / 3) = 333 CSS px, the buffer is 666 device px, and scaling by 3
-// paints it across 1998 device px — so one rendered pixel covers exactly three.
-// The ratio is PIXEL whatever the display, because the pixel ratio appears in
-// the buffer and in the painted width and divides straight back out.
-//
-// It used to multiply the step by devicePixelRatio as well, on the reasoning
-// that the ratio had to be cancelled by hand. It does not, and doing it twice
-// silently doubled the setting on every retina screen: PIXEL = 4 drew 8-pixel
-// blocks, and no value of it could ever draw 1x1. That is also why resizing the
-// window looked wrong — the blocks were a fixed number of *CSS* pixels, so they
-// stayed the same size on screen while everything else got smaller.
-//
-// Sizing the element here is also what makes the switch free. With PIXELATE off
-// nothing calls this, and the canvas takes its size from the stylesheet's
-// `width:100%;height:100%` instead — which is the one line that has to stay
-// whatever happens to this function, because without it a canvas with no
-// explicit size is 300 by 150 and the game renders in a stamp.
-function pixelate() {
-  canvas.style.width = Math.floor(innerWidth / PIXEL) + 'px';
-  canvas.style.height = Math.floor(innerHeight / PIXEL) + 'px';
-  canvas.style.transform = 'scale(' + PIXEL + ')';
-}
-if (PIXELATE) {
-  pixelate();
-  addEventListener('resize', pixelate);
-}
+/** The soundtrack. Off for now — true costs about 2.3 kB, because terser can
+ *  only fold away the synthesiser and the song data while it is off. Sound
+ *  effects are separate and keep working either way. Which song plays is chosen
+ *  in build.mjs, where the JSON gets inlined. */
+const MUSIC_ENABLED = true;
 
 // ── Skeleton, measured from the model ───────────────────────────────────────
 // Where each leg is, and the height its vertices start belonging to it.
@@ -117,6 +60,20 @@ const UNICORNS = [
 const SELECTED_UNICORN = 1;
 
 const SKIN = UNICORNS[SELECTED_UNICORN];
+
+// ── The field ───────────────────────────────────────────────────────────────
+// Ten on the grid: the player, and nine drawn at random from the same roster.
+// Repeats are allowed and are not a bug — four liveries across nine cars means
+// duplicates are certain, and two Twilight Dashes on different lines read as two
+// racers rather than as a mistake. What would read as a mistake is a fixed
+// running order, which is what a shuffle without replacement would give.
+//
+// Kept in one array with the player at index 0, because that is the order the
+// GPU knows them in: racer 0 is the invocation that takes the keyboard and owns
+// the camera, and every buffer below is indexed the same way.
+const FIELD = 10;
+const RACERS = [SKIN];
+for (let i = 1; i < FIELD; i++) RACERS.push(UNICORNS[(Math.random() * UNICORNS.length) | 0]);
 
 /**
  * Whether a mesh colour is one the roster repaints. Matched against the value
@@ -280,17 +237,17 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
     // Sockets are interior faces that should read as body, so they take the hide
     // colour too — the same substitution that used to hard-code white.
     // Which roster colour, if any, replaces what the converter emitted here.
+    // Which roster colour replaces what the converter emitted here — as a code
+    // for the shader to act on, not as the colour itself. One vertex buffer is
+    // shared by all ten instances, so a colour resolved here would be the same
+    // colour on every unicorn in the field; the code lets each instance answer
+    // for itself. 1 is the mane, which the alpha channel already meant.
     const paint = socket || is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HIDE)
-      ? SKIN.body
+      ? 2
       : is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], WING)
-        ? SKIN.wing
+        ? 3
         : 0;
-    CL.push(
-      paint ? paint[0] : MESH_C[ci],
-      paint ? paint[1] : MESH_C[ci + 1],
-      paint ? paint[2] : MESH_C[ci + 2],
-      MESH_C[ci + 3],
-    );
+    CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], paint || MESH_C[ci + 3]);
   }
 }
 
@@ -323,23 +280,24 @@ const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 // first straight runs out from under it, which is what puts the model on the
 // road rather than beside it.
 const TRACK_WIDTH = 27;
-const TRACK = [
-  [0, 0, 0], // start line: flat, straight, and pointing the way the unicorn does
-  [30, 1, 2],
-  [53, 5, 8], // the climb starts
-  [64, 10, 20],
-  [62, 12, 37], // long left, high and open
-  [50, 12, 59],
-  [31, 13, 84],
-  [9, 17, 103],
-  [-12, 22, 111], // over the top
-  [-31, 23, 103], // summit, 23 above the start line
-  [-48, 18, 82], // dropping away
-  [-60, 10, 54],
-  [-63, 4, 29], // the tight one, and the steepest bit of the descent
-  [-53, 2, 12],
-  [-31, 1, 3], // levelling out onto the start straight
-];
+
+/**
+ * Which one is being raced. Three are planned; this is the first of them.
+ *
+ * The circuits themselves live in src/circuits.js — they are data, and a
+ * thousand coordinates sitting in the middle of this file buries everything
+ * around them.
+ */
+const SELECTED_CIRCUIT = 0;
+
+// Unpacked into triples once, here, because every loop below wants a point
+// rather than three numbers — and because doing it here means the literal above
+// never has to carry the brackets. A point list is the biggest thing in this
+// file and `[484, 0, 0], ` is four characters of punctuation for three numbers.
+const TRACK = [];
+for (let i = 0; i < CIRCUITS[SELECTED_CIRCUIT].points.length; i += 3) {
+  TRACK.push(CIRCUITS[SELECTED_CIRCUIT].points.slice(i, i + 3));
+}
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -356,6 +314,7 @@ const norm = (v) => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 };
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const dist = (a, b) => Math.hypot(...sub(a, b));
 
 /**
@@ -376,16 +335,69 @@ const spline = (a, b, c, d, t) =>
 // fixed count per segment. A fixed count would tessellate a 60-metre straight
 // and a 12-metre hairpin identically — the straight wastes triangles it has no
 // curve to spend them on, and the hairpin comes out visibly faceted.
-const CENTRE = [];
+// ── The centreline ──────────────────────────────────────────────────────────
+// Three passes: sample the spline finely, stand the loops up out of it, then
+// resample the result at even spacing. The middle pass is why the first two
+// cannot be one — a loop multiplies arc length locally by six or seven, so
+// points evenly spaced along the *course* come out bunched at the loop's joins
+// and stretched at its crown, and the ribbon facets visibly where it matters
+// most.
+const FINE = 0.05;
+const BASE = [];
 for (let i = 0; i < TRACK.length; i++) {
   const a = TRACK[(i + TRACK.length - 1) % TRACK.length];
   const b = TRACK[i];
   const c = TRACK[(i + 1) % TRACK.length];
   const d = TRACK[(i + 2) % TRACK.length];
-  const steps = Math.max(1, Math.round(dist(b, c) / RING_SPACING));
+  const steps = Math.max(1, Math.round(dist(b, c) / FINE));
   // The endpoint is left off: it is the next segment's start, and emitting both
-  // would put two rings in the same place and a zero-area quad between them.
-  for (let s = 0; s < steps; s++) CENTRE.push(spline(a, b, c, d, s / steps));
+  // would put two points in the same place.
+  for (let s = 0; s < steps; s++) BASE.push(spline(a, b, c, d, s / steps));
+}
+
+const BL = [0];
+for (let i = 1; i <= BASE.length; i++) BL.push(BL[i - 1] + dist(BASE[i % BASE.length], BASE[i - 1]));
+const BASE_LAP = BL[BASE.length];
+
+/** The course before the loops: a point and the direction through it. */
+const baseAt = (s) => {
+  const u = ((s % BASE_LAP) + BASE_LAP) % BASE_LAP;
+  let lo = 0;
+  let hi = BASE.length;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (BL[m] <= u) lo = m;
+    else hi = m;
+  }
+  const t = (u - BL[lo]) / Math.max(BL[lo + 1] - BL[lo], 1e-9);
+  const at = (k) => BASE[((k % BASE.length) + BASE.length) % BASE.length];
+  return {
+    p: at(lo).map((c, k) => c + (at(lo + 1)[k] - c) * t),
+    t: norm(sub(at(lo + 2), at(lo - 1))),
+  };
+};
+
+// Resampled by arc length rather than by spline parameter, so the rings come
+// out evenly spaced. This is not tidiness: the control points are far apart on
+// the straights and close together through the loop, and a spline stepped by
+// parameter puts rings wherever the points happen to be — bunched at the loop's
+// joins, stretched across its crown, and the ribbon facets exactly where it is
+// most on show.
+
+const CENTRE = [];
+{
+  // A whole number of rings to the lap, and the spacing stretched by a hair to
+  // fit: the ribbon is a closed strip, and a part-ring left over at the join is
+  // a short quad across the start line.
+  const n = Math.round(BASE_LAP / RING_SPACING);
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const want = (i * BASE_LAP) / n;
+    while (k + 1 < BASE.length && BL[k + 1] <= want) k++;
+    const t = (want - BL[k]) / Math.max(BL[k + 1] - BL[k], 1e-9);
+    const b = BASE[(k + 1) % BASE.length];
+    CENTRE.push(BASE[k].map((c, j) => c + (b[j] - c) * t));
+  }
 }
 
 const RINGS = CENTRE.length;
@@ -417,18 +429,110 @@ const MAP_R = 0.58 * Math.max(
   Math.max(...CENTRE.map((c) => c[2])) - Math.min(...CENTRE.map((c) => c[2])),
 );
 
+// ── Which way is up ─────────────────────────────────────────────────────────
+// Carried along the road, not derived from the world.
+//
+// **This is what a loop costs.** Every frame here used to start from
+// `cross(tangent, worldUp)`, which is exact, free, and undefined at precisely
+// one angle: straight up. The old comment beside it said the track "must not
+// actually stand on end", and that was not a style note — a vertical tangent
+// makes that cross product zero, the road loses its width, and the unicorn
+// loses the surface it is standing on. A loop stands on end twice.
+//
+// So the frame is transported instead: start level at ring zero, and at every
+// ring afterwards take the previous up and square it off against the new
+// tangent. Nothing is ever derived from the world, so nothing cares which way
+// the road is pointing, and the frame rotates only as much as the road forces it
+// to — which is the other half of why this construction is the right one. A
+// frame that keeps reaching for world up spins about the tangent as the road
+// goes over, and the ribbon twists on its own axis for no reason anyone driving
+// on it could see.
+const UPV = [];
+{
+  const world = [0, 1, 0];
+  const flatten = (v, t) => norm(sub(v, t.map((c) => c * dot(v, t))));
+  const ramp = (x, a, b) => Math.min(Math.max((x - a) / (b - a), 0), 1);
+  let up = flatten(world, TAN[0]);
+  for (let i = 0; i < RINGS; i++) {
+    if (i) up = flatten(up, TAN[i]);
+    // ── And then let back down towards level ────────────────────────────
+    // Transport on its own is not enough, and the loop is what proves it.
+    // Transport has no memory of the world — it only ever answers "as little
+    // rotation as the road forced", and a loop with any sideways in it forces
+    // some. Measured, this circuit's loop leaves 59 degrees of roll in the
+    // frame, and because nothing afterwards pulls it back, *the entire rest of
+    // the lap came out banked over at sixty degrees*. The road was still smooth
+    // and still closed; it was just lying on its side for three kilometres.
+    //
+    // So the frame is eased back towards world up wherever world up is
+    // meaningful, and left alone wherever it is not. Two conditions, and both
+    // are needed:
+    //
+    // - **The road must be shallow.** Near vertical there is no sideways to
+    //   take from the world — that is the degeneracy this construction exists
+    //   to avoid in the first place.
+    // - **The frame must not be inverted.** This is the one that is easy to
+    //   miss. At the crown of a loop the road is level and pointing backwards,
+    //   so the first test passes with room to spare — and world up is the exact
+    //   opposite of where the surface actually faces. Ease towards it there and
+    //   the road turns itself inside out at the top of every loop.
+    //
+    //   The threshold is *not upside down*, deliberately, and not *nearly
+    //   level*: a frame that has just come out of a loop is rolled the best part
+    //   of sixty degrees, and a gate that only opened for upright frames would
+    //   have found it too rolled to be allowed to un-roll. Which is exactly what
+    //   the first attempt at this did — it left the road on its side and then
+    //   refused to pick it up.
+    //
+    // Five percent a ring, so a shallow stretch pulls the frame back over about
+    // forty units: fast enough that the roll is gone shortly after a loop spits
+    // the road back out, slow enough to read as the road untwisting rather than
+    // snapping level.
+    const w = 0.05 * (1 - ramp(Math.abs(TAN[i][1]), 0.35, 0.7)) * ramp(dot(up, world), -0.1, 0.4);
+    if (w > 0) {
+      const level = flatten(world, TAN[i]);
+      up = norm(up.map((c, k) => c + (level[k] - c) * w));
+    }
+    UPV.push(up);
+  }
+}
+
+// The lap is closed and the transport is not: carried the whole way round, the
+// frame can come back rolled against the one it started with, and left alone
+// that is a crease across the start line. The easing above takes most of it out
+// on its own — the road is level at the line, so it arrives already upright —
+// but whatever is left is measured once here and unwound evenly over every ring,
+// so the road takes the whole lap to give it back and there is nowhere it
+// happens.
+{
+  const side0 = norm(cross(TAN[0], UPV[0]));
+  const back = UPV[RINGS - 1];
+  const twist = Math.atan2(dot(back, side0), dot(back, UPV[0]));
+  for (let i = 0; i < RINGS; i++) {
+    const a = (-twist * i) / RINGS;
+    const side = norm(cross(TAN[i], UPV[i]));
+    UPV[i] = norm(UPV[i].map((c, k) => c * Math.cos(a) + side[k] * Math.sin(a)));
+  }
+}
+
 // How hard the road is turning at each ring, signed: positive is a left-hander.
-// The y component of the cross product of the tangents either side is the sine
-// of the heading change, and dividing by the distance between them turns that
-// into curvature — a number about the track's shape, independent of how many
-// rings were spent on it.
+//
+// Measured in the road's own frame — how much the tangent swings *sideways* —
+// rather than out of the world's y axis as it was. On flat ground the two agree.
+// In a loop they could not disagree more: the tangent there is swinging through
+// a whole turn in the vertical plane, which a world-axis measurement reads as
+// the tightest corner on the circuit and banks accordingly, standing the road
+// over sideways in the middle of a loop. Read against the frame's own side
+// vector, the same swing is straight up, contributes nothing sideways, and the
+// loop comes out flat — which is what a loop is.
 let BANK = TAN.map((_, i) => {
-  const p = TAN[(i + RINGS - 1) % RINGS];
-  const n = TAN[(i + 1) % RINGS];
-  const turn = p[2] * n[0] - p[0] * n[2];
+  const side = norm(cross(TAN[i], UPV[i]));
+  const swing = sub(TAN[(i + 1) % RINGS], TAN[(i + RINGS - 1) % RINGS]);
   const span = dist(ring(i + 1), ring(i - 1));
-  return Math.min(Math.max((turn / span) * BANK_GAIN, -BANK_MAX), BANK_MAX);
+  const turn = -dot(swing, side) / span;
+  return Math.min(Math.max(turn * BANK_GAIN, -BANK_MAX), BANK_MAX);
 });
+
 
 // Catmull-Rom is only C1, so curvature — and with it the camber — *steps* at
 // every control point, and a step in camber is a crease running clean across
@@ -443,6 +547,19 @@ for (let pass = 0; pass < 12; pass++) {
   BANK = BANK.map(
     (b, i) => (BANK[(i + RINGS - 1) % RINGS] + 2 * b + BANK[(i + 1) % RINGS]) / 4,
   );
+}
+
+// The finished frame: the transported one, rolled by its camber. Everything
+// downstream — the ribbon, the grid, the physics — reads these two and never
+// reaches for world up again.
+const SIDEF = [];
+const UPF = [];
+for (let i = 0; i < RINGS; i++) {
+  const side = norm(cross(TAN[i], UPV[i]));
+  const cb = Math.cos(BANK[i]);
+  const sb = Math.sin(BANK[i]);
+  SIDEF.push(norm(side.map((c, k) => c * cb + UPV[i][k] * sb)));
+  UPF.push(norm(cross(SIDEF[i], TAN[i])));
 }
 
 // The lighting in the shader runs off distance travelled, and the track is a
@@ -462,17 +579,10 @@ const TP = [];
 const TE = [];
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
-  const t = TAN[g];
-  // Across the road, level with the horizon before banking. This is the one
-  // assumption the frame makes: a section going straight up has no side to
-  // speak of, so the track may climb as steeply as it likes but must not
-  // actually stand on end.
-  const side = norm(cross(t, [0, 1, 0]));
-  const up = cross(side, t);
-  const cb = Math.cos(BANK[g]);
-  const sb = Math.sin(BANK[g]);
-  // Rolled about the tangent, so the outside of a corner lifts.
-  const arm = side.map((s, k) => (s * cb + up[k] * sb) * TRACK_WIDTH * 0.5);
+  // Across the road, straight off the carried frame. This used to be built here
+  // out of the tangent and world up, which is the construction that cannot
+  // survive a loop — see UPV above.
+  const arm = SIDEF[g].map((c) => c * TRACK_WIDTH * 0.5);
   const c = CENTRE[g];
   const v = (i < RINGS ? ALONG[i] : LAP) * PATTERN;
   TP.push(c[0] - arm[0], c[1] - arm[1], c[2] - arm[2]);
@@ -501,13 +611,62 @@ for (let i = 0; i < RINGS; i++) {
 // again. Exactly the trick the ribbon itself uses for its seam quad, and for the
 // same reason: wrapping an index costs a branch in the shader, while repeating
 // twelve floats costs twelve floats.
-const TRACK_DATA = new Float32Array((RINGS + 1) * 8);
+// Three vec4s per ring now, not two: centre with distance travelled, tangent,
+// and the frame's up. The third is the whole reason a loop works — the physics
+// used to rebuild "up" from the tangent and world up on the GPU, and that is
+// undefined exactly where a loop stands the road on end. Sent instead of
+// derived, and there is nothing left to be undefined.
+//
+// The ring at the start is emitted a second time at the end, carrying a full
+// lap's distance instead of zero, so a body in the last segment interpolates
+// forwards rather than being told the road runs from LAP back to nothing.
+const TRACK_DATA = new Float32Array((RINGS + 1) * 12);
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
   TRACK_DATA.set(
-    [...CENTRE[g], i < RINGS ? ALONG[i] : LAP, ...TAN[g], BANK[g]],
-    i * 8,
+    [...CENTRE[g], i < RINGS ? ALONG[i] : LAP, ...TAN[g], 0, ...UPF[g], 0],
+    i * 12,
   );
+}
+
+// ── The grid ────────────────────────────────────────────────────────────────
+// Where the ten of them stand before the flag. Built here because this is where
+// the centreline, the camber and the lap length already live — the alternative
+// is teaching the physics stage to lay out a grid it will never look at again
+// after its first frame.
+//
+// Two abreast, seven metres between rows, backwards from the line. The player
+// takes the last slot rather than the first: a race you start in front of is a
+// time trial with scenery, and the whole reason for nine of them is to have
+// something to overtake.
+//
+// Only the position is seeded. Heading and course are left at zero, which the
+// physics stage already treats as "not yet placed" and fills from the tangent
+// under the body — the same path a respawn takes, so there is one piece of code
+// deciding which way a unicorn faces and not two that can disagree.
+const RACER_BASE = 16;
+const RACER_SLOTS = 5;
+/** Where the liveries start, four vec4s per racer. */
+const PALETTE = 80;
+
+/** The ring nearest a given distance round the lap. */
+const ringAt = (d) => {
+  const want = ((d % LAP) + LAP) % LAP;
+  let best = 0;
+  for (let i = 1; i < RINGS; i++) {
+    if (Math.abs(ALONG[i] - want) < Math.abs(ALONG[best] - want)) best = i;
+  }
+  return best;
+};
+
+const GRID = [];
+for (let i = 0; i < FIELD; i++) {
+  // Racer 0 is the player and goes to the back; the AI fill the rows in front.
+  const slot = i ? i - 1 : FIELD - 1;
+  const g = ringAt(LAP - (5 + Math.floor(slot / 2) * 7));
+  const arm = SIDEF[g];
+  const lat = (slot % 2 ? 1 : -1) * TRACK_WIDTH * 0.21;
+  GRID.push(CENTRE[g].map((c, k) => c + arm[k] * lat));
 }
 
 // ── Driving ─────────────────────────────────────────────────────────────────
@@ -546,13 +705,6 @@ let PAUSED = false;
 let clock = 0;
 let prev = 0;
 addEventListener('keydown', (e) => {
-  if (e.code === 'KeyP') {
-    // 1 through 8, then back to 1. A toggle only ever showed one coarseness, and
-    // which one it should be is exactly the question the key exists to answer.
-    PIXEL = (PIXEL % 8) + 1;
-    pixelate();
-    return;
-  }
   if (e.code !== 'Escape') return;
   PAUSED = !PAUSED;
   syncMusic();
@@ -634,9 +786,34 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // normalising a zero vector is NaN, not zero. NaN times a zero life is still
   // NaN, so an unseeded buffer would have taken the entire sky out for the first
   // eight tenths of a second, which is exactly long enough to see.
-  const state = new Float32Array(60);
+  // Sixteen vec4 slots of player, camera and falling star, five each for ten
+  // racers from slot 16, and four each of livery from slot 80. The first sixteen keep their old meanings so
+  // the road's shadow, the minimap and the debug build go on reading slot 0 for
+  // "where is the unicorn the camera is watching".
+  const state = new Float32Array(120 * 4);
   state[53] = 1;
   state[56] = 1;
+  // The grid. Position only: everything else is zero, which every field here is
+  // genuinely starting at — and a zero course is what tells the physics stage to
+  // point each unicorn down the road it finds itself on.
+  for (let i = 0; i < FIELD; i++) {
+    state.set(GRID[i], (RACER_BASE + i * RACER_SLOTS) * 4);
+  }
+  // Each racer's four colours, four slots apiece. Written once and never again:
+  // a livery is not state, it is a constant that happens to differ per instance,
+  // and this buffer is the only channel wide enough to carry ten of them.
+  //
+  // `mane: 0` means the original flowing spectrum. The flag rides in the spare
+  // word beside the hide, and the two mane colours are then never read.
+  RACERS.forEach((r, i) => {
+    const p = (PALETTE + i * 4) * 4;
+    state.set([...r.body, r.mane ? 0 : 1], p);
+    state.set(r.wing, p + 4);
+    if (r.mane) {
+      state.set(r.mane.slice(0, 3), p + 8);
+      state.set(r.mane.slice(3), p + 12);
+    }
+  });
   STATE = bmStore(state);
   const rings = bmStore(TRACK_DATA);
 
@@ -645,6 +822,17 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // answer never has to come back — see physics.shader.ts.
   const sim = bmCompute(Physics[0], { u: Physics[3], s: Physics[5] });
   bmStorages(sim, STATE, rings);
+
+  // ── The field, as instance data ─────────────────────────────────────────
+  // One buffer, one float: which racer each instance is. WebGPU guarantees only
+  // eight vertex buffers and the mesh already spends five, so the colours go
+  // through the state buffer instead — see PALETTE above. Asking for five
+  // instance buffers was ten in total, which is a validation error and a black
+  // screen rather than a slow frame.
+  const IX = new Float32Array(FIELD);
+  for (let i = 0; i < FIELD; i++) IX[i] = i;
+  /** The one instance buffer sits after the five per-vertex ones. */
+  const herd = (p) => bmAttr(p, 5, IX);
 
   const prog = bmProgram(Unicorn[0], {
     a: Unicorn[1],
@@ -659,6 +847,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmAttr(prog, 2, new Float32Array(RT));
   bmAttr(prog, 3, new Float32Array(SK));
   bmAttr(prog, 4, new Float32Array(CL));
+  herd(prog);
   bmIndex(prog, idx);
   bmStorages(prog, STATE);
 
@@ -688,6 +877,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmAttr(refl, 2, new Float32Array(RT));
   bmAttr(refl, 3, new Float32Array(SK));
   bmAttr(refl, 4, new Float32Array(CL));
+  herd(refl);
   bmIndex(refl, idx);
   bmStorages(refl, STATE);
 
@@ -843,10 +1033,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // once rather than per frame because nothing on this screen can change it; the
   // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
   u[1] = 1;
-  // The chosen unicorn's mane. Slot 3 is the spectrum flag; 4..9 are the two
-  // colours it runs between, ignored when the flag is set.
-  u[3] = SKIN.mane ? 0 : 1;
-  if (SKIN.mane) for (let i = 0; i < 6; i++) u[4 + i] = SKIN.mane[i];
   bmLoop((t) => {
     const elapsed = prev ? t - prev : 0;
     prev = t;
@@ -882,7 +1068,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmPassTo(mirror);
     u[2] = 1;
     bmUniforms(refl, u);
-    bmDraw(refl);
+    bmDraw(refl, FIELD);
     u[2] = 0;
 
     bmPassTo(clouds);
@@ -892,7 +1078,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmUniforms(sky, tu);
     bmDraw(sky);
     bmUniforms(prog, u);
-    bmDraw(prog);
+    bmDraw(prog, FIELD);
     // The same array, and the same sixteen bytes: the track reads uTime out of
     // the front of it and never looks at the gait behind. Each program owns its
     // uniform buffer, so one write does not reach the other — the camera they

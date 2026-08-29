@@ -70,10 +70,19 @@ export const Minimap = shader({
     // Nearest point on the course, and how far along the course it is. The
     // distance draws the line; the along-value colours it, so the gradient runs
     // with the circuit rather than across the box.
+    // Every sixth ring, three vec4s apart.
+    //
+    // The stride is what keeps this affordable. It is a search over the whole
+    // circuit run *per pixel*, and the circuit went from 190 rings to sixteen
+    // hundred — at one ring each that is a couple of thousand distance tests for
+    // every pixel of the map, every frame, to draw a line four pixels wide.
+    // Twelve metres between samples is far finer than the line is thick, so
+    // sixth-ing it costs nothing anyone can see and gives back five sixths of
+    // the work.
     let near = 1000000;
     let alongAt = 0;
-    for (let i = 0; i < uRings; i += 1) {
-      const c = storageRead(uTrack, i * 2);
+    for (let i = 0; i < uRings; i += 6) {
+      const c = storageRead(uTrack, i * 3);
       const d = length(vec2(c.x, c.z).sub(here));
       if (d < near) {
         near = d;
@@ -104,12 +113,27 @@ export const Minimap = shader({
       (1 - smoothstep(0, thin, rx)) * (1 - smoothstep(0, reach, rz)),
     );
 
+    // ── The rest of the field ──────────────────────────────────────────────
+    // Nine plain dots, no star: the star is how the player finds itself at a
+    // glance, and giving everyone one would take that away. Small, dim and the
+    // same for all of them — this is for reading gaps, not for telling Pinkie
+    // Fly from Hot Fluff at four millimetres across.
+    //
+    // Racer zero is skipped by starting at one; it is the player, and it is
+    // already drawn above as the star.
+    let pack = 0;
+    for (let j = 1; j < 10; j += 1) {
+      const them = storageRead(uState, 16 + j * 5);
+      pack = max(pack, 1 - smoothstep(0, uMapR * 0.03, length(vec2(them.x, them.z).sub(here))));
+    }
+
     const ink = spectrum(alongAt * 0.06);
     const paint = ink.scale(line)
+      .add(vec3(0.75, 0.82, 1).scale(pack * 1.1))
       .add(vec3(1, 0.99, 0.95).scale(core * 2.2 + spikes * 1.3));
     // Alpha comes from the ribbon and the star and nothing else, so the map is a
     // line and a star floating on the scene — no pane behind it, no glow around
     // it, and glass everywhere neither of them reaches.
-    return vec4(paint, min(line + core + spikes * 0.8, 1));
+    return vec4(paint, min(line + core + spikes * 0.8 + pack, 1));
   },
 });

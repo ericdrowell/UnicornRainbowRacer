@@ -101,40 +101,61 @@ export const Unicorn = shader({
     aRoot: 'vec3',
     /** Distance along the limb, gait phase, swing amplitude, knee amplitude. */
     aSkin: 'vec4',
-    /** Colour, plus 1 to replace it with the flowing rainbow. */
+    /**
+     * Colour, plus a code in w for what to do with it: 0 keep it, 1 replace it
+     * with the mane, 2 with this racer's hide, 3 with its wings.
+     *
+     * The last two used to be resolved on the CPU while the mesh was built, by
+     * matching the converter's colours against the chosen unicorn's. That works
+     * for one unicorn and cannot work for ten: the vertex buffer is shared by
+     * every instance, so a colour baked into it is the same colour on all of
+     * them. Baking the *question* instead — which part is this? — leaves the
+     * answer to the instance.
+     */
     aColor: 'vec4',
   },
-  // uRun is which screen this is, not which gait: 1 on the track, 0 on the
-  // unicorn select screen, where the same model walks on the spot. Direction is
-  // read off the state buffer below and multiplied in, so the track still walks
-  // when it reverses — the CPU has no say in that, and does not want one.
-  //
-  // Free to carry: a uniform block is padded to sixteen bytes, so uTime alone
-  // was already reserving three float slots and uploading them every frame.
-  // uMirror turns this draw into the road's reflection of the model: 0 is the
-  // unicorn itself, 1 is its image in the floor.
-  // The chosen unicorn's mane, as two colours it runs between, plus a flag for
-  // the one that uses the spectrum instead. Plain floats rather than vec3s: a
-  // vec3 uniform aligns to sixteen bytes in WGSL, and the CPU side writes this
-  // block as a flat array, so packing them loosely is a silent off-by-one waiting
-  // to happen.
+  /**
+   * Per racer, not per vertex: which unicorn of the ten this instance is.
+   *
+   * One float, and one instance buffer, because that is all there is room for.
+   * WebGPU guarantees eight vertex buffers and the mesh already spends five, so
+   * the four colours that make one unicorn not another cannot come this way —
+   * they live in the state buffer instead, which this stage already binds and
+   * which costs no binding at all to read further into. See `PALETTE` below.
+   *
+   * It is a float because every value in this language is; the compiler narrows
+   * it to u32 where it becomes an index.
+   */
+  instanceAttributes: {
+    aRacer: 'float',
+  },
   uniforms: {
     uTime: 'float',
     uRun: 'float',
     uMirror: 'float',
-    uRainbow: 'float',
-    uManeAR: 'float', uManeAG: 'float', uManeAB: 'float',
-    uManeBR: 'float', uManeBG: 'float', uManeBB: 'float',
   },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
-  varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float' },
+  varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float', vAlong: 'float' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun, uMirror, uRainbow, uManeAR, uManeAG, uManeAB, uManeBR, uManeBG, uManeBB }, v) {
-    const body = storageRead(uState, 0);
-    const facing = storageRead(uState, 1);
-    const normal = storageRead(uState, 2);
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uMirror }, v) {
+    // This racer's block. The layout mirrors the player's old fixed slots —
+    // position, drawn facing with speed, surface normal with gait — so
+    // everything below reads exactly as it did when there was only one.
+    const mine = 16 + aRacer * 5;
+    // This racer's four colours, written once at start-up and never touched
+    // again: hide with the mane's spectrum flag, wings, and the two colours the
+    // mane runs between.
+    const pal = 80 + aRacer * 4;
+    const aHide = storageRead(uState, pal).xyz;
+    const aRainbow = storageRead(uState, pal).w;
+    const aWings = storageRead(uState, pal + 1).xyz;
+    const aManeA = storageRead(uState, pal + 2).xyz;
+    const aManeB = storageRead(uState, pal + 3).xyz;
+    const body = storageRead(uState, mine);
+    const facing = storageRead(uState, mine + 1);
+    const normal = storageRead(uState, mine + 2);
     // ── Which gait ─────────────────────────────────────────────────────────
     // Two of them, chosen by how fast the unicorn is actually going. `aSkin.y`
     // carries the walk's phase for this leg, generated with the mesh; the
@@ -264,16 +285,25 @@ export const Unicorn = shader({
     );
     // The other unicorns run their mane between two colours along the same band
     // the spectrum uses, so the crest keeps its depth instead of going flat.
-    const dyed = mix(
-      vec3(uManeAR, uManeAG, uManeAB),
-      vec3(uManeBR, uManeBG, uManeBB),
-      0.5 + 0.5 * cos(band),
-    );
-    v.vColor = mix(aColor.xyz, mix(dyed, rainbow, uRainbow), aColor.w);
+    const dyed = mix(aManeA, aManeB, 0.5 + 0.5 * cos(band));
+    // The three codes, as ranges rather than equality tests: these arrive as
+    // interpolated floats and comparing one for equality against 2 is the kind
+    // of thing that works on the machine it was written on.
+    const hair = step(0.5, aColor.w) * (1 - step(1.5, aColor.w));
+    const hide = step(1.5, aColor.w) * (1 - step(2.5, aColor.w));
+    const wings = step(2.5, aColor.w);
+    const worn = mix(mix(aColor.xyz, aHide, hide), aWings, wings);
+    v.vColor = mix(worn, mix(dyed, rainbow, aRainbow), hair);
     // The same flag the rainbow is keyed off, handed to the fragment stage so it
     // can shade hair as hair. It costs an interpolator and saves the alternative,
     // which is guessing from position where the mane stops and the neck starts.
-    v.vHair = aColor.w;
+    v.vHair = hair;
+    // How far along the road this racer is, in the track shader's own units,
+    // carried down to the fragment stage so the bounce light below can be the
+    // colour of the panel *this* unicorn is standing on. It used to read the
+    // player's slot directly, which with a field of ten would have lit every
+    // one of them the colour of whatever the player was over.
+    v.vAlong = storageRead(uState, mine + 3).w;
     // Where this vertex sits on the *undeformed* model, which is what the eye
     // below is drawn against. `aPos` is relative to its hip, so adding the root
     // recovers the original coordinate; this deliberately skips the gait and the
@@ -302,8 +332,8 @@ export const Unicorn = shader({
     // model on top of itself. Given its own target it resolves opaquely against
     // its own depth and arrives as one flat image with a coverage mask — and the
     // road then decides how much of it to show, once, against a finished picture.
-    const plane = storageRead(uState, 0).xyz;
-    const upT = storageRead(uState, 2).xyz;
+    const plane = body.xyz;
+    const upT = normal.xyz;
     const shown = mix(world, world.sub(upT.scale(2 * dot(world.sub(plane), upT))), uMirror);
 
     const c0 = storageRead(uState, 4);
@@ -313,7 +343,7 @@ export const Unicorn = shader({
     return c0.scale(shown.x).add(c1.scale(shown.y)).add(c2.scale(shown.z)).add(c3);
   },
 
-  fragment({ uState, uTime, uMirror }, { vNormal, vColor, vFace, vHair }) {
+  fragment({ uState, uTime, uMirror }, { vNormal, vColor, vFace, vHair, vAlong }) {
     // ── The pile ───────────────────────────────────────────────────────────
     // What makes a plush toy read as plush is not its colour, it is that the
     // surface never resolves: light lands on thousands of fibre tips at slightly
@@ -416,7 +446,7 @@ export const Unicorn = shader({
     // light flows along the road rather than the palette shifting under it, and a
     // bounce that shifted while the road flowed would drift out of agreement
     // within a second or two of standing still.
-    const flow = floor(storageRead(uState, 11).w * 0.4456) + uTime * 12;
+    const flow = floor(vAlong * 0.4456) + uTime * 12;
     const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + 4.3) * 1.6;
     // Over halfway to white, which is much further than the road's own panels go.
     // Bounced light is weak light: at the road's saturation the model came out

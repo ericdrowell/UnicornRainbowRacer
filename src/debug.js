@@ -122,9 +122,15 @@
     const r = CL[v * 4];
     const g = CL[v * 4 + 1];
     const b = CL[v * 4 + 2];
-    if (CL[v * 4 + 3] > 0.5) return 'mane / tail';
-    if (is(r, g, b, SKIN.wing)) return 'wing';
-    if (is(r, g, b, SKIN.body)) return 'body';
+    // The fourth component is a code, not an alpha: 1 mane, 2 hide, 3 wings.
+    // It used to be enough to compare the colour against the chosen unicorn's,
+    // because the roster's colours were baked into CL while the mesh was built.
+    // With ten unicorns sharing one vertex buffer they cannot be, so CL keeps
+    // the converter's own colour and says which part it is instead.
+    const code = CL[v * 4 + 3];
+    if (code > 0.5 && code < 1.5) return 'mane / tail';
+    if (code > 2.5) return 'wing';
+    if (code > 1.5) return 'body';
     if (r > 0.9 && g > 0.7 && b < 0.5) return 'horn';
     if (r < 0.1) return 'eye';
     return 'hoof';
@@ -187,8 +193,21 @@
   let PITCH = 0.22;
   let VP = null;
   const TARGET = [0, 1.02, 0];
-  const body = new Float32Array(32);
+  // Slots 0 to 83: the legacy body and camera, racer zero's own block at 16,
+  // and its livery at 80. The render stages read the racer block, so an identity
+  // body written only to slot 0 would leave the model collapsed to a point.
+  const body = new Float32Array(84 * 4);
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0, /* across */ 0, 0, 1, 0]);
+  // The same identity, where the vertex stage actually looks for it.
+  body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0], 16 * 4);
+  // And the chosen unicorn's colours, which are per-racer data now rather than
+  // uniforms. Written once here; nothing on this screen changes them.
+  body.set([...SKIN.body, SKIN.mane ? 0 : 1], 80 * 4);
+  body.set(SKIN.wing, 81 * 4);
+  if (SKIN.mane) {
+    body.set(SKIN.mane.slice(0, 3), 82 * 4);
+    body.set(SKIN.mane.slice(3), 83 * 4);
+  }
 
   // The release ties the gait to distance covered, so the legs stop when the
   // unicorn does. Nothing here covers any distance, so the inspector winds it by
@@ -205,8 +224,14 @@
     const churn = Math.max(Math.abs(SPEED) * 0.6, 20 * smooth(0, 2, SPEED));
     if (lastTick) GAIT += (now - lastTick) * churn * Math.sign(SPEED) * MOVING;
     lastTick = now;
-    body[7] = SPEED; // slot 1.w — the shader picks walk or run from this
-    body[11] = GAIT; // slot 2.w — and how far through the cycle it is
+    // Racer zero's slots 17.w and 18.w — the shader picks walk or run from the
+    // first and reads how far through the cycle it is from the second. The old
+    // slots 1.w and 2.w are still written for the road's shadow, which reads
+    // them from there.
+    body[7] = SPEED;
+    body[11] = GAIT;
+    body[16 * 4 + 7] = SPEED;
+    body[16 * 4 + 11] = GAIT;
 
     const view = bmLook(eyePos(), TARGET, [0, 1, 0]);
     // 0.004 rather than the release's 0.1, because flying the camera inside the
@@ -283,7 +308,15 @@
   // reordered, which a "skip the second draw" rule would not.
   const drawOnly = bmDraw;
   bmDraw = (prog, count) => {
-    if (prog.b.length === 5) drawOnly(prog, count);
+    // Six streams now, not five: the five per-vertex ones plus the per-instance
+    // racer index. Still unique to the unicorn — the road has two, the sky and
+    // the clouds one each.
+    //
+    // And always one instance, whatever the race asked for. This screen is a
+    // model inspector: the other nine are somewhere down a track that is not
+    // being drawn, and the picker below compares the mouse against `posed()` in
+    // model space, which only racer zero is in.
+    if (prog.b.length === 6) drawOnly(prog, 1);
   };
 
   // Take the state buffer over, immediately after the physics stage has filled

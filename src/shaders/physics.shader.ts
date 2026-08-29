@@ -64,16 +64,43 @@ import {
  */
 
 /**
- * The across-track direction at a ring, rolled by the camber.
+ * The road's own frame at a point on a segment: forward, up and across.
  *
- * Level first, from the tangent and world up, then rotated about the tangent.
- * This is the same construction game.js used to build the ribbon, and it has to
- * stay the same construction: if the two disagree the unicorn stands on a
- * surface that is not where the road was drawn.
+ * **This used to build itself from world up and could not survive a loop.** It
+ * was `normalize(cross(fwd, vec3(0, 1, 0)))` rolled by the camber — exact, free,
+ * and undefined at exactly one angle: straight up. The comment beside it said
+ * the track "must not actually stand on end", which was not a style note. A
+ * vertical tangent makes that cross product zero, the road loses its width, and
+ * the unicorn loses the surface it is standing on. A loop stands on end twice.
+ *
+ * So game.js carries a frame along the whole centreline instead — squaring each
+ * ring's up against its own tangent, starting level, and unwinding the leftover
+ * twist over the lap — and sends it in the ring record. Nothing here is derived
+ * from the world any more, so nothing here cares which way the road is pointing.
+ *
+ * The camber is already rolled into it on the way in, so there is no bank term
+ * left to apply and nothing for the two sides to disagree about.
+ *
+ * Re-squared after the interpolation because a lerp between two unit vectors a
+ * few degrees apart is neither unit nor quite perpendicular to the tangent, and
+ * the whole point of this is to hand back a frame that is both.
  */
-function across(fwd: Vec3, bank: number): Vec3 {
-  const flat = normalize(cross(fwd, vec3(0, 1, 0)));
-  return flat.scale(cos(bank)).add(cross(flat, fwd).scale(sin(bank)));
+function frameUp(fwd: Vec3, up: Vec3): Vec3 {
+  return normalize(up.sub(fwd.scale(dot(up, fwd))));
+}
+
+/**
+ * A fixed random number per racer, per channel.
+ *
+ * The field needs to differ from itself — nine identical AIs drive the same line
+ * at the same speed and arrive as one wide unicorn — and the differences have to
+ * be *stable*, because a lane that changed frame to frame is a twitch, not a
+ * preference. Deriving them from the invocation index gives both for free: no
+ * uniform to upload, no buffer to seed, and racer 4 is the same racer 4 every
+ * frame of every run.
+ */
+function vary(i: number, k: number): number {
+  return fract(sin(i * 12.9898 + k * 78.233) * 43758.5453);
 }
 
 /**
@@ -115,7 +142,7 @@ export const Physics = shader({
     uTime: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
-  workgroupSize: [1, 1, 1],
+  workgroupSize: [10, 1, 1],
 
   compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime }, id) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -123,19 +150,35 @@ export const Physics = shader({
     // road — collision is tested at the new position, not swept to it.
     const dt = min(uDt, 0.05);
 
-    const s0 = storageRead(uState, 0);
-    const s1 = storageRead(uState, 1);
-    const s2 = storageRead(uState, 2);
-    const s3 = storageRead(uState, 3);
+    // ── Which unicorn this invocation is ───────────────────────────────────
+    // Ten of them now, one per invocation of a single workgroup, and they all
+    // run the code below. Racer zero is the player and the only difference is
+    // where its throttle and steering come from — everything after that, the
+    // handling model included, is shared. That is the point of doing it this
+    // way rather than giving the AI a simpler mover of its own: a field that
+    // obeys different physics from the player reads as fake the first time you
+    // race alongside it.
+    const FIELD = 10;
+    const RACER = 16;
+    const SLOTS = 5;
+    const me = id.x;
+    const mine = RACER + me * SLOTS;
+    /** 1 for the player, 0 for the AI. Used as a mix factor, never as a branch. */
+    const player = 1 - step(0.5, me);
+
+    const s0 = storageRead(uState, mine);
+    const s1 = storageRead(uState, mine + 1);
+    const s2 = storageRead(uState, mine + 2);
+    const s3 = storageRead(uState, mine + 3);
     let pos = s0.xyz;
     let speed = s1.w;
     let gait = s2.w;
-    let vy = s3.w;
+    let vy = s0.w;
     // Where it is going and where it is pointing, as world directions. Two
     // whole slots because they are vectors now rather than angles off the
     // track — see the steering below for why that had to change.
-    let courseDir = storageRead(uState, 11).xyz;
-    let headingDir = storageRead(uState, 12).xyz;
+    let courseDir = s3.xyz;
+    let headingDir = storageRead(uState, mine + 4).xyz;
 
     // Nearest ring, by brute force over the whole lap. Tracking the last ring
     // and searching outwards from it would be fewer iterations, but it makes
@@ -146,7 +189,7 @@ export const Physics = shader({
     let nearest = 0;
     let nearestD = 1000000;
     for (let i = 0; i < uRings; i += 1) {
-      const c = storageRead(uTrack, i * 2);
+      const c = storageRead(uTrack, i * 3);
       const d = length(c.xyz.sub(pos));
       if (d < nearestD) {
         nearestD = d;
@@ -171,15 +214,17 @@ export const Physics = shader({
     // the pair either side of it. Chosen with mix rather than a branch, and
     // `b = a + 1` is always in range because the CPU repeats ring zero at the
     // end of the buffer.
-    const here = storageRead(uTrack, nearest * 2);
-    const ahead = storageRead(uTrack, nearest * 2 + 2);
+    const here = storageRead(uTrack, nearest * 3);
+    const ahead = storageRead(uTrack, nearest * 3 + 3);
     const forward = step(0, dot(pos.sub(here.xyz), ahead.xyz.sub(here.xyz)));
     const a = mix(max(nearest - 1, 0), nearest, forward);
 
-    const ca = storageRead(uTrack, a * 2);
-    const ta = storageRead(uTrack, a * 2 + 1);
-    const cb = storageRead(uTrack, a * 2 + 2);
-    const tb = storageRead(uTrack, a * 2 + 3);
+    const ca = storageRead(uTrack, a * 3);
+    const ta = storageRead(uTrack, a * 3 + 1);
+    const ua = storageRead(uTrack, a * 3 + 2);
+    const cb = storageRead(uTrack, a * 3 + 3);
+    const tb = storageRead(uTrack, a * 3 + 4);
+    const ub = storageRead(uTrack, a * 3 + 5);
     const seg = cb.xyz.sub(ca.xyz);
     // Clamped, so a body off the end of a segment borrows that segment's end
     // frame rather than extrapolating one that bends away from the road.
@@ -191,8 +236,59 @@ export const Physics = shader({
     // construction instead of by being tuned to.
     const centre = vec4(ca.xyz.add(seg.scale(along)), 0);
     const fwdT = normalize(mix(ta.xyz, tb.xyz, along));
-    const sideT = across(fwdT, mix(ta.w, tb.w, along));
-    const upT = cross(sideT, fwdT);
+    const upT = frameUp(fwdT, mix(ua.xyz, ub.xyz, along));
+    const sideT = cross(fwdT, upT);
+
+    // ── The driver ─────────────────────────────────────────────────────────
+    // For racer zero this is the keyboard. For the other nine it is this, and it
+    // is deliberately the smallest thing that can drive a car: aim at a point
+    // some way up the road, steer at it, and lift off when the aim is hard.
+    //
+    // **The look-ahead is the whole AI.** A racer that steers at the road
+    // *under* it corrects late, overshoots, and weaves; one that steers at the
+    // road well in front of it turns in early and comes out of a corner already
+    // pointed down the next straight. Fourteen rings is far enough to do that
+    // and near enough that the target is still on the piece of track the racer
+    // is committed to.
+    const LOOK = 14;
+    const aim = mod(nearest + LOOK, uRings);
+    const ac = storageRead(uTrack, aim * 3);
+    const aimT = storageRead(uTrack, aim * 3 + 1);
+    const aimU = storageRead(uTrack, aim * 3 + 2);
+    // A lane of its own, held for the whole race. Nine racers all aiming at the
+    // centreline is a single-file train that never overtakes and never touches,
+    // which makes both the field and the collisions below invisible. Spread
+    // across 55% of the width, they run abreast, and the closing speeds between
+    // different lanes are what actually produce contact.
+    const lane = (vary(me, 1) - 0.5) * uWidth * 0.55;
+    const aimPt = ac.xyz.add(cross(normalize(aimT.xyz), frameUp(normalize(aimT.xyz), aimU.xyz)).scale(lane));
+
+    // How far off the nose the target sits, measured along the exact axis
+    // positive steering rotates towards. Taking the sign from the steering's own
+    // construction rather than from a cross product and a guess is what makes
+    // this correct by build instead of by testing which way the AI drove off.
+    const want = normalize(aimPt.sub(pos));
+    const lat = dot(want, cross(headingDir, upT));
+    const aiSteer = clamp(lat * 3.2, -1, 1);
+    // Off the throttle when the nose is a long way from where it wants to be,
+    // which is what a corner looks like from here. Without it they arrive at
+    // hairpins at top speed, understeer into the rail and fall off the world —
+    // and the rails do not stop them, because nothing here knows about rails.
+    const aiThrottle = 1 - 0.9 * smoothstep(0.18, 0.62, abs(lat));
+
+    // Each AI is a little slower than the player and a little different from its
+    // neighbours, so the field spreads out over a lap instead of staying a lump,
+    // and so winning is possible without being trivial. The player is capped at
+    // 60 as before — the drag settles it near 55 long before that.
+    const cap = mix(46 + vary(me, 2) * 9, 60, player);
+    // The cap eases the throttle off rather than clamping the speed, and that
+    // matters now that a shunt can add speed the racer did not ask for. Clamped,
+    // an AI sitting at its cap had any push from behind erased on the very next
+    // frame — the shove landed, the buffer was written, and the ceiling took it
+    // straight back off. Easing lets it run over its own limit for a second and
+    // coast back down, which is what being rear-ended is supposed to look like.
+    const throttle = mix(aiThrottle * (1 - smoothstep(cap - 5, cap, speed)), uThrottle, player);
+    const steer = mix(aiSteer, uSteer, player);
 
     // ── Where it points, and where it goes ─────────────────────────────────
     // Both are **world directions**, not angles measured off the track, and
@@ -216,7 +312,7 @@ export const Physics = shader({
     // Steering rotates the nose about the road's normal. Scaled by speed,
     // because a kart that pivots on the spot reads as a bug.
     const grip = min(abs(speed) / 7, 1);
-    const turn = uSteer * dt * 2.6 * grip;
+    const turn = steer * dt * 2.6 * grip;
     headingDir = normalize(
       headingDir.scale(cos(turn)).add(cross(headingDir, upT).scale(sin(turn))),
     );
@@ -264,10 +360,12 @@ export const Physics = shader({
     // The clamp is a backstop well clear of top speed, not the thing setting
     // it. The reverse end is doing real work though: backing up is drag-free at
     // these speeds, so -7 is the only reason it stops.
-    const rate = mix(30, 7.5, step(0, uThrottle));
-    speed = speed + uThrottle * rate * dt;
-    speed = speed - speed * (1 - step(0.5, abs(uThrottle))) * dt * 0.9;
+    const rate = mix(30, 7.5, step(0, throttle));
+    speed = speed + throttle * rate * dt;
+    speed = speed - speed * (1 - step(0.5, abs(throttle))) * dt * 0.9;
     speed = speed - speed * abs(speed) * dt * 0.0025;
+    // A backstop well clear of anything the throttle can reach, not the thing
+    // setting the top speed — see the ease above.
     speed = clamp(speed, -7, 60);
 
     // Both flattened back into the road's surface. This is the one thing the
@@ -279,6 +377,63 @@ export const Physics = shader({
     courseDir = normalize(courseDir.sub(upT.scale(dot(courseDir, upT))));
 
     pos = pos.add(courseDir.scale(speed * dt));
+
+    // ── Bumping ────────────────────────────────────────────────────────────
+    // Every racer against every other, resolved by each one moving *itself*.
+    // Nothing reaches across to modify another racer, which is what makes this
+    // safe to run in ten invocations at once — and it still comes out symmetric,
+    // because the racer on the other side of the contact is running this same
+    // loop about this one and reaching the equal and opposite conclusion.
+    //
+    // **Where you hit decides whether speed changes at all.** Two things happen
+    // on contact and they are separate:
+    //
+    // - *Position* always separates, whatever the angle. Nobody ever ends up
+    //   inside anybody.
+    // - *Speed* is only traded nose-to-tail. Run into the side of a unicorn and
+    //   you knock it across the road and carry on at the speed you arrived at;
+    //   run into the back of one and you shunt it forward and lose the speed you
+    //   gave it.
+    //
+    // `nose` is what tells them apart: the contact direction against the
+    // direction of travel, so 1 is square in the back or square in the front and
+    // 0 is a pure side swipe. Taken absolute, because both halves of a rear-end
+    // are the same event seen from either end.
+    //
+    // The trade itself is the two speeds meeting in the middle — a perfectly
+    // inelastic collision, and the reason it needs no sign test. The racer
+    // behind is the faster one, so averaging costs it speed; the racer in front
+    // is the slower one, so the same average gives speed to it. One expression,
+    // and it is correct from both seats at once.
+    //
+    // **The read here is racy and deliberately so.** These ten invocations share
+    // a workgroup with no barrier, so another racer's slot may hold this frame's
+    // value or the last one's. At sixty frames a second and fifty-odd units a
+    // second that is under a metre against a contact radius of 2.4 — and the
+    // alternative, a second dispatch to publish positions before resolving them,
+    // is a whole extra pass to buy an accuracy nobody can see.
+    //
+    // The self-test is `abs(j - me)` rather than a branch: at j == me the gap is
+    // zero, which would otherwise register as the hardest possible collision
+    // with itself and fire every racer off the track on frame one.
+    for (let j = 0; j < FIELD; j += 1) {
+      const away = pos.sub(storageRead(uState, RACER + j * SLOTS).xyz);
+      const gap = length(away);
+      const hit = step(0.5, abs(j - me)) * step(0.001, gap) * (1 - step(2.4, gap));
+      // Divided rather than normalised: at gap zero — self, or two bodies exactly
+      // coincident — `hit` is already zero, so this contributes nothing, and the
+      // max() keeps the divide itself finite instead of producing the NaN that
+      // normalize() would and then spreading it through the whole position.
+      const line = away.scale(1 / max(gap, 0.001));
+      pos = pos.add(line.scale(hit * (2.4 - gap) * 0.5));
+      const nose = abs(dot(line, courseDir));
+      const theirs = storageRead(uState, RACER + j * SLOTS + 1).w;
+      // Not the whole way to the average in one frame: contact lasts while the
+      // two are still overlapping, so a firm shunt applies this several times
+      // over and arrives at the average anyway. Going all the way immediately
+      // makes a light touch feel like hitting a wall.
+      speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5);
+    }
 
     // What gets *drawn*, and deliberately past even the nose. The gap between
     // the nose and the course is the slip angle, and overstating it is what
@@ -297,11 +452,32 @@ export const Physics = shader({
     // nose and course agree, where it is exactly one unit long.
     const dir = normalize(courseDir.add(headingDir.sub(courseDir).scale(2.7)));
 
-    // Gravity along the road's normal rather than world down. On a surface
-    // banked thirty degrees those differ, and using world down lets a body
-    // resting on the camber slide, which then needs friction invented to stop
-    // it. Down-is-into-the-road costs one vector and no friction at all.
-    vy = vy - 30 * dt;
+    // ── Gravity ────────────────────────────────────────────────────────────
+    // Into the road, always, and harder where the road is steep.
+    //
+    // Down-the-normal rather than world-down is not new and was never about
+    // loops: a body resting on a camber under world gravity slides, which then
+    // needs friction invented to stop it, and into-the-surface costs one vector
+    // and no friction at all. What it means on a loop is that it already holds a
+    // unicorn to a road that has gone past vertical — the pull follows the
+    // surface round, so there is no orientation at which it stops pressing.
+    //
+    // **What is new is the second term, and it is there because holding on is
+    // not the same as holding on hard enough.** A real loop is survived on
+    // speed: too slow at the crown and you leave the track. There is no speed
+    // term here and there should not be one — falling out of a loop because you
+    // lifted off is a simulation answer to an arcade question — so instead the
+    // pull ramps up where the road is steep enough for it to matter.
+    //
+    // `tilt` is the road's own up against the world's, so it is 1 on the flat,
+    // 0 on a wall and -1 upside down. Nothing changes until 45 degrees off
+    // level, which is past every camber the circuit builds — the ceiling is 0.55
+    // radians, about 31 — so ordinary corners feel exactly as they did. Past 45
+    // it climbs to two and a half times, and by the time the road is properly
+    // inverted a unicorn is stuck to it whatever it is doing.
+    const tilt = dot(upT, vec3(0, 1, 0));
+    const steep = 1 - smoothstep(0.35, 0.707, tilt);
+    vy = vy - 30 * (1 + 1.5 * steep) * dt;
     pos = pos.add(upT.scale(vy * dt));
 
     // Height above the surface, and whether there is any surface here. Past the
@@ -431,73 +607,94 @@ export const Physics = shader({
     const za = (500 + 0.1) / (0.1 - 500);
     const zb = (2 * 500 * 0.1) / (0.1 - 500);
 
-    storageWrite(uState, 0, vec4(pos, 0));
-    storageWrite(uState, 1, vec4(dir, speed));
-    storageWrite(uState, 2, vec4(upT, gait));
-    storageWrite(uState, 3, vec4(sideT, vy));
-    storageWrite(uState, 4, project(vec4(xAxis.x, yAxis.x, zAxis.x, 0), fx, f, za, zb));
-    storageWrite(uState, 5, project(vec4(xAxis.y, yAxis.y, zAxis.y, 0), fx, f, za, zb));
-    storageWrite(uState, 6, project(vec4(xAxis.z, yAxis.z, zAxis.z, 0), fx, f, za, zb));
-    storageWrite(
-      uState,
-      7,
-      project(
-        vec4(0 - dot(xAxis, eye), 0 - dot(yAxis, eye), 0 - dot(zAxis, eye), 1),
-        fx,
-        f,
-        za,
-        zb,
-      ),
-    );
-    // The camera's own memory. The 1 in the first slot is the "there is a
-    // camera here now" flag the snap above reads on the very first frame.
-    storageWrite(uState, 8, vec4(eye, 1));
-    storageWrite(uState, 9, vec4(at, 0));
-    storageWrite(uState, 10, vec4(camUp, 0));
-    // The spare word on the course direction carries how far along the road the
-    // unicorn is, in the units the track shader draws in, so the model can be
-    // lit by the panel it is standing on. The two ring records either side of it
-    // carry real distances in their own spare words and the segment is already
-    // solved for, so this is an interpolation of numbers that were sitting there
-    // — no second search, and exact rather than ring index times a nominal
-    // spacing, which the rings do not actually have.
+    // ── What this racer leaves behind ──────────────────────────────────────
+    // Its own five slots, written by every invocation. The render stages read
+    // the first three of these — position, the direction to draw it facing, and
+    // the surface it is standing on — at `RACER + instance * SLOTS`, which is
+    // why their order here mirrors the player's old slots 0, 1 and 2 exactly.
     const trackAlong = mix(ca.w, cb.w, along) * uPattern;
-    storageWrite(uState, 11, vec4(courseDir, trackAlong));
-    storageWrite(uState, 12, vec4(headingDir, 0));
+    storageWrite(uState, mine, vec4(pos, vy));
+    storageWrite(uState, mine + 1, vec4(dir, speed));
+    storageWrite(uState, mine + 2, vec4(upT, gait));
+    storageWrite(uState, mine + 3, vec4(courseDir, trackAlong));
+    // Raw distance round the lap rather than the track shader's stretched
+    // version: this one is for knowing who is winning, so it wants metres.
+    storageWrite(uState, mine + 4, vec4(headingDir, mix(ca.w, cb.w, along)));
 
-    // The falling star's arc, aimed by the camera once and then left in the world.
-    //
-    // The sky shader used to build this arc every frame from wherever the camera
-    // was pointing at that moment, which is why the star turned with the player:
-    // it was never in the world at all, it was painted on the inside of the view.
-    // Aiming it is still the camera's job — a star on a fixed compass bearing is
-    // only seen when the player happens to face it, and on a road that is always
-    // turning that was almost never. So it is aimed once, on the frame it lights,
-    // and held in world space for the rest of its flight. Placed by the view, then
-    // left behind by it.
-    //
-    // The slot arithmetic mirrors the sky shader, which owns the star's shape:
-    // same 7.5 second block, same per-slot offset, so "has it started yet" is the
-    // same question answered the same way in both places. If one changes the other
-    // has to follow.
-    const beat = uTime / 7.5;
-    const slotIx = floor(beat);
-    const begin = mix(fract(sin(slotIx * 33.71) * 12345.678) * 2.4, 0.8, step(slotIx, 0.5));
-    const armed = storageRead(uState, 13);
-    // Fire on the frame the star lights, once per slot. The spare word carries the
-    // slot the stored arc belongs to, offset by one so that a zeroed buffer reads
-    // as "nothing armed yet" rather than as "slot zero is already done" — which
-    // would have cost the opening star, the one the player is guaranteed to see.
-    const fire = step(begin, fract(beat) * 7.5) * (1 - step(abs(armed.w - slotIx - 1), 0.5));
-    // Enough vertical scatter that consecutive stars do not trace one groove.
-    const wander = fract(sin(slotIx * 91.7) * 43758.5453) * 0.22 - 0.11;
-    // zAxis runs from the target back to the eye, so forward is its negation.
-    const gaze = vec3(0, 0, 0).sub(zAxis);
-    // A 64 degree sweep, entering high on the left and leaving lower on the right
-    // — it is a falling star, so it has to lose height as it crosses.
-    const enterDir = normalize(gaze.sub(xAxis.scale(0.62)).add(yAxis.scale(0.58 + wander)));
-    const leaveDir = normalize(gaze.add(xAxis.scale(0.62)).add(yAxis.scale(0.46 + wander)));
-    storageWrite(uState, 13, vec4(mix(armed.xyz, enterDir, fire), mix(armed.w, slotIx + 1, fire)));
-    storageWrite(uState, 14, vec4(mix(storageRead(uState, 14).xyz, leaveDir, fire), 0));
+    // ── And what only the player leaves behind ─────────────────────────────
+    // The camera, the falling star, and the legacy body slots the road, the
+    // minimap and the debug build still read from fixed positions. All of it is
+    // about the one unicorn being watched, so all of it is racer zero's alone —
+    // nine more invocations writing their own camera into slot 4 would be nine
+    // cameras fighting over one matrix.
+    if (player > 0.5) {
+      storageWrite(uState, 0, vec4(pos, 0));
+      storageWrite(uState, 1, vec4(dir, speed));
+      storageWrite(uState, 2, vec4(upT, gait));
+      storageWrite(uState, 3, vec4(sideT, vy));
+      storageWrite(uState, 4, project(vec4(xAxis.x, yAxis.x, zAxis.x, 0), fx, f, za, zb));
+      storageWrite(uState, 5, project(vec4(xAxis.y, yAxis.y, zAxis.y, 0), fx, f, za, zb));
+      storageWrite(uState, 6, project(vec4(xAxis.z, yAxis.z, zAxis.z, 0), fx, f, za, zb));
+      storageWrite(
+        uState,
+        7,
+        project(
+          vec4(0 - dot(xAxis, eye), 0 - dot(yAxis, eye), 0 - dot(zAxis, eye), 1),
+          fx,
+          f,
+          za,
+          zb,
+        ),
+      );
+      // The camera's own memory. The 1 in the first slot is the "there is a
+      // camera here now" flag the snap above reads on the very first frame.
+      storageWrite(uState, 8, vec4(eye, 1));
+      storageWrite(uState, 9, vec4(at, 0));
+      storageWrite(uState, 10, vec4(camUp, 0));
+      // The spare word on the course direction carries how far along the road the
+      // unicorn is, in the units the track shader draws in, so the model can be
+      // lit by the panel it is standing on. The two ring records either side of it
+      // carry real distances in their own spare words and the segment is already
+      // solved for, so this is an interpolation of numbers that were sitting there
+      // — no second search, and exact rather than ring index times a nominal
+      // spacing, which the rings do not actually have.
+      storageWrite(uState, 11, vec4(courseDir, trackAlong));
+      storageWrite(uState, 12, vec4(headingDir, 0));
+
+      // The falling star's arc, aimed by the camera once and then left in the world.
+      //
+      // The sky shader used to build this arc every frame from wherever the camera
+      // was pointing at that moment, which is why the star turned with the player:
+      // it was never in the world at all, it was painted on the inside of the view.
+      // Aiming it is still the camera's job — a star on a fixed compass bearing is
+      // only seen when the player happens to face it, and on a road that is always
+      // turning that was almost never. So it is aimed once, on the frame it lights,
+      // and held in world space for the rest of its flight. Placed by the view, then
+      // left behind by it.
+      //
+      // The slot arithmetic mirrors the sky shader, which owns the star's shape:
+      // same 7.5 second block, same per-slot offset, so "has it started yet" is the
+      // same question answered the same way in both places. If one changes the other
+      // has to follow.
+      const beat = uTime / 7.5;
+      const slotIx = floor(beat);
+      const begin = mix(fract(sin(slotIx * 33.71) * 12345.678) * 2.4, 0.8, step(slotIx, 0.5));
+      const armed = storageRead(uState, 13);
+      // Fire on the frame the star lights, once per slot. The spare word carries the
+      // slot the stored arc belongs to, offset by one so that a zeroed buffer reads
+      // as "nothing armed yet" rather than as "slot zero is already done" — which
+      // would have cost the opening star, the one the player is guaranteed to see.
+      const fire = step(begin, fract(beat) * 7.5) * (1 - step(abs(armed.w - slotIx - 1), 0.5));
+      // Enough vertical scatter that consecutive stars do not trace one groove.
+      const wander = fract(sin(slotIx * 91.7) * 43758.5453) * 0.22 - 0.11;
+      // zAxis runs from the target back to the eye, so forward is its negation.
+      const gaze = vec3(0, 0, 0).sub(zAxis);
+      // A 64 degree sweep, entering high on the left and leaving lower on the right
+      // — it is a falling star, so it has to lose height as it crosses.
+      const enterDir = normalize(gaze.sub(xAxis.scale(0.62)).add(yAxis.scale(0.58 + wander)));
+      const leaveDir = normalize(gaze.add(xAxis.scale(0.62)).add(yAxis.scale(0.46 + wander)));
+      storageWrite(uState, 13, vec4(mix(armed.xyz, enterDir, fire), mix(armed.w, slotIx + 1, fire)));
+      storageWrite(uState, 14, vec4(mix(storageRead(uState, 14).xyz, leaveDir, fire), 0));
+    }
   },
 });

@@ -60,7 +60,7 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 }
 // The inspector is appended only for `npm run debug`, so it cannot creep into a
 // release: the file simply is not in the program that gets minified.
-const sources = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/game.js'];
+const sources = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/circuits.js', 'src/game.js'];
 if (process.env.DEBUG) sources.push('src/debug.js');
 let combined = sources
   .map((f) => readFileSync(join(root, f), 'utf8'))
@@ -87,7 +87,7 @@ let combined = sources
 // Music is unaffected — that is sonantx, and it has nothing to do with ZzFX.
 combined += '\n' + [
   readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
-  `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'race-song.json'), 'utf8')};`,
+  `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'dizzy-beats.json'), 'utf8')};`,
   readFileSync(join(root, 'src', 'music.js'), 'utf8'),
 ].join('\n');
 
