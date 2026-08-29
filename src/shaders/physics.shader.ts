@@ -10,6 +10,8 @@ import {
   max,
   exp,
   step,
+  floor,
+  fract,
   clamp,
   mix,
   mod,
@@ -105,11 +107,17 @@ export const Physics = shader({
      * send.
      */
     uPattern: 'float',
+    /**
+     * Wall clock, for the falling star's arc. The block was already padded to
+     * eight floats for uPattern's sake and only seven were used, so this rides
+     * along at no cost.
+     */
+    uTime: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [1, 1, 1],
 
-  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern }, id) {
+  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime }, id) {
     // A tab left in the background delivers one enormous frame on return, and
     // an unclamped step of that size moves the unicorn straight through the
     // road — collision is tested at the new position, not swept to it.
@@ -456,5 +464,40 @@ export const Physics = shader({
     const trackAlong = mix(ca.w, cb.w, along) * uPattern;
     storageWrite(uState, 11, vec4(courseDir, trackAlong));
     storageWrite(uState, 12, vec4(headingDir, 0));
+
+    // The falling star's arc, aimed by the camera once and then left in the world.
+    //
+    // The sky shader used to build this arc every frame from wherever the camera
+    // was pointing at that moment, which is why the star turned with the player:
+    // it was never in the world at all, it was painted on the inside of the view.
+    // Aiming it is still the camera's job — a star on a fixed compass bearing is
+    // only seen when the player happens to face it, and on a road that is always
+    // turning that was almost never. So it is aimed once, on the frame it lights,
+    // and held in world space for the rest of its flight. Placed by the view, then
+    // left behind by it.
+    //
+    // The slot arithmetic mirrors the sky shader, which owns the star's shape:
+    // same 7.5 second block, same per-slot offset, so "has it started yet" is the
+    // same question answered the same way in both places. If one changes the other
+    // has to follow.
+    const beat = uTime / 7.5;
+    const slotIx = floor(beat);
+    const begin = mix(fract(sin(slotIx * 33.71) * 12345.678) * 2.4, 0.8, step(slotIx, 0.5));
+    const armed = storageRead(uState, 13);
+    // Fire on the frame the star lights, once per slot. The spare word carries the
+    // slot the stored arc belongs to, offset by one so that a zeroed buffer reads
+    // as "nothing armed yet" rather than as "slot zero is already done" — which
+    // would have cost the opening star, the one the player is guaranteed to see.
+    const fire = step(begin, fract(beat) * 7.5) * (1 - step(abs(armed.w - slotIx - 1), 0.5));
+    // Enough vertical scatter that consecutive stars do not trace one groove.
+    const wander = fract(sin(slotIx * 91.7) * 43758.5453) * 0.22 - 0.11;
+    // zAxis runs from the target back to the eye, so forward is its negation.
+    const gaze = vec3(0, 0, 0).sub(zAxis);
+    // A 64 degree sweep, entering high on the left and leaving lower on the right
+    // — it is a falling star, so it has to lose height as it crosses.
+    const enterDir = normalize(gaze.sub(xAxis.scale(0.62)).add(yAxis.scale(0.58 + wander)));
+    const leaveDir = normalize(gaze.add(xAxis.scale(0.62)).add(yAxis.scale(0.46 + wander)));
+    storageWrite(uState, 13, vec4(mix(armed.xyz, enterDir, fire), mix(armed.w, slotIx + 1, fire)));
+    storageWrite(uState, 14, vec4(mix(storageRead(uState, 14).xyz, leaveDir, fire), 0));
   },
 });

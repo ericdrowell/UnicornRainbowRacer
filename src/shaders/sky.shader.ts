@@ -9,8 +9,10 @@ import {
   max,
   mix,
   min,
+  cross,
   dot,
   smoothstep,
+  sqrt,
   normalize,
   storageRead,
   texture,
@@ -254,55 +256,52 @@ export const Sky = shader({
       .add(texture(uClouds, targetUv(vec4(vNdc.x + 0.004, vNdc.y + 0.006, 0, 1))))
       .scale(0.25);
     // ── The wish comet ───────────────────────────────────────────────────
-    // Somewhere between five and fifteen seconds apart, never the same twice.
+    // One every five to ten seconds, and the player sees every one of them.
     //
-    // The obvious way to space these irregularly is to add up a run of random
-    // intervals, and a fragment shader cannot: that is a loop whose length grows
-    // with the clock. This gets the same distribution in constant time. Time is
-    // cut into fixed ten-second slots and each slot's comet starts at a random
-    // offset of nought to five seconds inside it, so the gap between one and the
-    // next is ten plus the difference of two such offsets — five to fifteen,
-    // averaging ten, and the arithmetic never looks further than the slot it is
-    // standing in.
+    // Spacing an irregular sequence normally means summing a run of random
+    // intervals, which a fragment shader cannot do — that is a loop that grows
+    // with the clock. The same distribution comes out of fixed slots: time is cut
+    // into 7.5 second blocks and each block's star starts at a random offset of
+    // nought to 2.5 seconds inside it, so the gap between one and the next is 7.5
+    // plus the difference of two offsets — five to ten, in constant time.
     //
-    // The slot index doubles as the seed, so every comet's arc and timing are
-    // decided for all time. No state, no spawner, and one can already be halfway
-    // across the sky the instant the game starts rather than the sky being empty
-    // until the first timer fires.
+    // The slot index is the seed, so every star is decided for all time. No state
+    // and no spawner, which is why one is already crossing the instant the game
+    // starts rather than the sky being empty until a timer first fires.
     //
-    // The 3.5 is the crossing time. It has to stay under ten less the five of
-    // maximum offset, or a comet would still be flying when its slot ended and
-    // would be cut off mid-arc.
-    const slot = uTime * 0.1;
+    // Slot zero is the opening: it goes almost at once and runs a little longer,
+    // because the first one is the establishing shot.
+    const slot = uTime / 7.5;
     const which = floor(slot);
-    const start = fract(sin(which * 33.71) * 12345.678) * 5;
-    const phase = (fract(slot) * 10 - start) / 3.5;
-    const seedA = fract(sin(which * 91.7) * 43758.5453);
-    const seedB = fract(sin(which * 47.3 + 11.1) * 24634.6345);
-    // The arc is aimed through the stretch of sky the moon hangs in, because that
-    // is the part reliably on screen: the camera sits low behind the unicorn
-    // looking down a road that is usually turning, so most of the celestial
-    // sphere is behind it at any moment. A path drawn across world x — the
-    // obvious "left to right" — spends nearly all of itself out of frame and the
-    // comet is simply never seen, which is how the first one went.
+    const opening = step(which, 0.5);
+    const start = mix(fract(sin(which * 33.71) * 12345.678) * 2.4, 0.8, opening);
+    // Five seconds to cross, as it was. It has to fit inside the slot alongside
+    // the offset, and 2.4 + 5 lands exactly on 7.5 while 0.8 + 5.4 leaves room.
+    const span = mix(5, 5.4, opening);
+    const phase = (fract(slot) * 7.5 - start) / span;
+    // Where it crosses. Two world directions, aimed by the camera on the frame the
+    // star lit and frozen there by the physics pass — see the arming block at the
+    // end of physics.shader.ts for why it is aimed at all rather than given a
+    // fixed bearing.
     //
-    // Still world space, not camera space. Pinning it to the view would guarantee
-    // it every time, and it would also swing with the handlebars, which is the one
-    // thing that would give it away as a trick.
-    // Anchored to the moon and swept perpendicular to it. The moon is the one
-    // direction known to be on screen, so building the path around it is what
-    // makes the comet reliably visible; picking world axes by eye put two
-    // successive attempts entirely behind the camera, because the view sits low
-    // behind the unicorn on a road that is nearly always turning.
+    // Read rather than built, and that is the fix for the star turning with the
+    // player. These used to be assembled here from the live camera axes, which
+    // meant the arc was re-aimed every frame: turning the unicorn turned the star,
+    // because the star was painted on the view rather than hanging in the sky.
+    // Now the view only decides where it starts.
     //
-    // `sweep` is the moon crossed with world up, i.e. horizontal and square to
-    // it, so adding a multiple of it slides along the sky rather than towards or
-    // away from the moon. The vertical term lifts the arc above the moon and
-    // tilts it, so the comet falls slightly as it crosses instead of tracking a
-    // dead-level line.
-    const sweep = vec3(0.41, 0, 0.912);
-    const entry = normalize(vec3(0.8873, 0.2307, -0.3993).sub(sweep.scale(0.62)).add(vec3(0, 0.13 + seedA * 0.09, 0)));
-    const leave = normalize(vec3(0.8873, 0.2307, -0.3993).add(sweep.scale(0.62)).add(vec3(0, 0.01 + seedB * 0.07, 0)));
+    // Entry and exit sit a little outside the frame, so it enters and leaves
+    // rather than appearing and vanishing mid-sky.
+    //
+    // The 64 degree sweep crossed in five seconds is the original pacing, kept
+    // deliberately. Widening it to 87 degrees and crossing in three and a half was
+    // what made it look wrong before, in two ways at once: it moved half again too
+    // fast, and `travel` below — the chord from entry to exit — only stands in for
+    // the tangent while the arc is short, so over a wide arc the tail stopped
+    // trailing straight behind the head.
+    const entry = normalize(storageRead(uState, 13).xyz);
+    const leave = normalize(storageRead(uState, 14).xyz);
+
     const head = normalize(mix(entry, leave, phase));
     const travel = normalize(leave.sub(entry));
 
@@ -342,7 +341,7 @@ export const Sky = shader({
     // Fades up as it enters and out before the gap, so it never snaps on.
         // No extra gating needed for the quiet stretch: outside a crossing `phase`
     // runs below nought or past one, and both fades clamp to zero there.
-    const life = smoothstep(0, 0.05, phase) * (1 - smoothstep(0.85, 1, phase));
+    const life = smoothstep(0, 0.05, phase) * (1 - smoothstep(0.72, 0.85, phase));
     // White at the head, cooling into the tail — a star, not a firework.
     const comet = vec3(1, 1, 1).scale(core * 4 + (spikeA + spikeB) * 1.5)
       .add(vec3(1, 0.96, 0.86).scale(glare * 0.9))

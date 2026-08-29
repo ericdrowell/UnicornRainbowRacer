@@ -5,6 +5,7 @@ import {
   vec4,
   floor,
   fract,
+  sin,
   mod,
   max,
   min,
@@ -46,11 +47,27 @@ function volume(tex: Sampler2D, p: Vec3): number {
   return mix(texture(tex, s0).x, texture(tex, s1).x, z - zi);
 }
 
-/** Three octaves. The fourth cost two more fetches and showed nothing. */
+/**
+ * One octave, which is all a fourteen-unit — now seven-unit — step can resolve.
+ *
+ * This was three, and the top two were not detail. The volume repeats every
+ * `1/0.0075` = 133 world units, so its lattice cell is about 17 units across and
+ * the octaves sat at feature sizes of roughly 17, 8 and 4. A march sampling
+ * every 14 units resolves nothing finer than 28, so 42% of the fBM's weight was
+ * below its own sampling rate: not structure, just a fresh random number at
+ * every sample. Dithered starts then spread that across pixels as grain, and the
+ * quarter-size cloud target magnified each of those pixels into a 4×4 block.
+ *
+ * Adding a fourth octave "showed nothing", as the old note here said. It was the
+ * same effect one step further along — and the reason the third showed nothing
+ * either.
+ *
+ * Dropping to one is also what pays for the finer stride below: two texture
+ * fetches per density sample instead of six, so twice the steps still costs a
+ * third less than three octaves at sixty-four did.
+ */
 function fbm(tex: Sampler2D, p: Vec3): number {
-  return (
-    volume(tex, p) * 0.55 + volume(tex, p.scale(2.03)) * 0.28 + volume(tex, p.scale(4.01)) * 0.14
-  );
+  return volume(tex, p) * 0.97;
 }
 
 /**
@@ -114,17 +131,35 @@ export const Cloud = shader({
     const eye = storageRead(uState, 8).xyz;
     const light = vec3(0.8873, 0.2307, -0.3993);
 
-    // Sixty-four steps over nine hundred units. Dithered starts, because a fixed
-    // offset lays concentric rings across the sky wherever the step is coarser
-    // than the cloud it is sampling — which at fourteen units a step is
-    // everywhere.
-    const jitter = fract(vNdc.x * 431.7 + vNdc.y * 289.3) * 14;
+    // A hundred and twenty-eight steps of seven units, over the same nine hundred
+    // as sixty-four of fourteen. Dithered starts, because a fixed offset lays
+    // concentric rings across the sky wherever the step is coarser than the
+    // cloud it is sampling.
+    //
+    // Halving the stride does two things the dither cannot. It doubles what the
+    // march can resolve, which is what lets the noise keep its remaining
+    // structure instead of aliasing it; and it halves the opacity any one sample
+    // can contribute, so a pixel's colour is settled by two or three samples
+    // rather than by which single fourteen-unit shell it happened to land in.
+    // That second part is most of the smoothness: dither turns step banding into
+    // per-pixel noise, but only more samples average that noise away.
+    //
+    // The `sin` is load-bearing. `fract` of a *linear* function of x and y —
+    // which is what this was — is a sawtooth plane, not a hash: it ramps 0..1
+    // and wraps, over and over, along the direction (431.7, 289.3). Every pixel
+    // in one of those bands started its march at the same offset and sampled the
+    // density field in lockstep, so the bands stopped cancelling each other out
+    // and the sawtooth's own wrap lines were ruled across the sky as dark
+    // diagonals. Folding the ramp through a sine decorrelates neighbours — 0.6
+    // radians of argument per pixel, multiplied up past 43758 — which is what
+    // makes this a dither rather than a pattern.
+    const jitter = fract(sin(vNdc.x * 431.7 + vNdc.y * 289.3) * 43758.5) * 7;
 
     let acc = vec3(0, 0, 0);
     let alpha = 0;
-    for (let i = 0; i < 64; i++) {
+    for (let i = 0; i < 128; i++) {
       if (alpha < 0.98) {
-        const p = eye.add(dir.scale(jitter + i * 14));
+        const p = eye.add(dir.scale(jitter + i * 7));
         const d = density(uNoise, p, uTime);
         if (d > 0.001) {
           // Denser is darker and bluer: the deep parts of a cloud are where the
@@ -137,7 +172,11 @@ export const Cloud = shader({
           const lift = d - density(uNoise, p.add(light.scale(26)), uTime) / 0.95;
           const litColour = body.add(vec3(0.55, 0.56, 0.62).scale(lift * 1.9));
           acc = acc.add(litColour.scale(1 - alpha));
-          alpha = alpha + d * 0.85 * (1 - alpha);
+          // Half the stride, half the opacity per step, so a ray crossing a
+          // given depth of cloud ends up as opaque as it was before. This is the
+          // number that has to move with the step count or the whole sky changes
+          // density.
+          alpha = alpha + d * 0.425 * (1 - alpha);
         }
       }
     }

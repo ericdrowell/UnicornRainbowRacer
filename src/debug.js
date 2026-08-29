@@ -108,14 +108,23 @@
     return [b[0] + RT[v * 3], b[1] + RT[v * 3 + 1] + bob, b[2] + RT[v * 3 + 2]];
   }
 
-  /** Colour is the part label — each piece was given its own at conversion. */
+  /**
+   * Colour is the part label — each piece was given its own at conversion.
+   *
+   * Hide and wing are matched against the roster rather than by hue, because CL
+   * holds the repainted colour, not the converter's. Loose hue tests used to be
+   * enough when only the hide was substituted and the wing was always pink; now
+   * that a unicorn can have white wings, "bright and unsaturated" no longer
+   * means body. Mirroring and the skipped socket faces put CL out of step with
+   * MESH_C, so reading the original colour by index is not an option.
+   */
   function partOf(v) {
     const r = CL[v * 4];
     const g = CL[v * 4 + 1];
     const b = CL[v * 4 + 2];
     if (CL[v * 4 + 3] > 0.5) return 'mane / tail';
-    if (r > 0.9 && g > 0.9 && b > 0.9) return 'body';
-    if (r > 0.9 && g < 0.75 && b > 0.6) return 'wing';
+    if (is(r, g, b, SKIN.wing)) return 'wing';
+    if (is(r, g, b, SKIN.body)) return 'body';
     if (r > 0.9 && g > 0.7 && b < 0.5) return 'horn';
     if (r < 0.1) return 'eye';
     return 'hoof';

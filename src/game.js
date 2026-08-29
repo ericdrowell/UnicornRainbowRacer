@@ -96,6 +96,41 @@ const LEGS = [
   [-0.55, -0.32, 0, 1],
 ];
 
+// ── The roster ──────────────────────────────────────────────────────────────
+// Four unicorns, differing in body colour, wing colour, and the colours their
+// mane and tail run between. Everything else — hooves, horn, eyes — is shared,
+// so a new one is a handful of numbers and a name rather than a new model.
+//
+// The mane is a gradient between two colours rather than one flat colour,
+// because the mane already has a band coordinate running along it for the
+// rainbow and a single colour throws that away: the crest goes matte and stops
+// reading as hair. `mane: 0` means the original spectrum instead of a pair.
+
+const UNICORNS = [
+  { name: 'Rainbow Pie', body: [1, 0.97, 0.99], wing: [1, 0.62, 0.78], mane: 0 },
+  { name: 'Hot Fluff', body: [0.55, 0.82, 0.98], wing: [1, 0.97, 0.99], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
+  { name: 'Twilight Dash', body: [0.97, 0.62, 0.78], wing: [0.32, 0.16, 0.48], mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58] },
+  { name: 'Pinkie Fly', body: [1, 0.8, 0.88], wing: [1, 0.97, 0.99], mane: [0.72, 0.09, 0.38, 0.88, 0.22, 0.52] },
+];
+
+/** Who the player rides. Change this line to change unicorn. */
+const SELECTED_UNICORN = 1;
+
+const SKIN = UNICORNS[SELECTED_UNICORN];
+
+/**
+ * Whether a mesh colour is one the roster repaints. Matched against the value
+ * rather than flagged in the mesh, so the model stays exactly as the converter
+ * emitted it — and the parts no unicorn recolours (hooves, horn, eyes) keep
+ * their colours without needing to be listed anywhere.
+ *
+ * The model carries exactly six colours, so neither test can collide with
+ * anything else: the hide is the only near-white and the wing the only pink.
+ */
+const is = (r, g, b, m) => Math.abs(r - m[0]) < 1e-3 && Math.abs(g - m[1]) < 1e-3 && Math.abs(b - m[2]) < 1e-3;
+const HIDE = [1, 0.97, 0.99];
+const WING = [1, 0.62, 0.78];
+
 // ── Buffers ─────────────────────────────────────────────────────────────────
 const P = [];
 const NR = [];
@@ -242,10 +277,18 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
     // against hooves at 0.16 and a body at 1. Repainting it frees the bead to be
     // any size at all, since there is no longer anything for it to fail to hide.
     const socket = MESH_C[ci] < 0.1 && MESH_C[ci + 3] < 0.5;
+    // Sockets are interior faces that should read as body, so they take the hide
+    // colour too — the same substitution that used to hard-code white.
+    // Which roster colour, if any, replaces what the converter emitted here.
+    const paint = socket || is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HIDE)
+      ? SKIN.body
+      : is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], WING)
+        ? SKIN.wing
+        : 0;
     CL.push(
-      socket ? 1 : MESH_C[ci],
-      socket ? 0.97 : MESH_C[ci + 1],
-      socket ? 0.99 : MESH_C[ci + 2],
+      paint ? paint[0] : MESH_C[ci],
+      paint ? paint[1] : MESH_C[ci + 1],
+      paint ? paint[2] : MESH_C[ci + 2],
       MESH_C[ci + 3],
     );
   }
@@ -359,6 +402,20 @@ const TAN = CENTRE.map((_, i) => norm(sub(ring(i + 1), ring(i - 1))));
 const ALONG = [0];
 for (let i = 1; i < RINGS; i++) ALONG.push(ALONG[i - 1] + dist(ring(i), ring(i - 1)));
 const LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
+
+// The box the course fits in, seen from above. Worked out here because this file
+// already holds the centreline; the minimap shader would otherwise have to scan
+// the whole ring buffer every frame to find the same four numbers.
+//
+// One radius for both axes rather than a width and a height: the map is drawn
+// square, and scaling the axes independently would stretch the circuit to fill
+// the box and stop it being a picture of the track's actual shape.
+const MAP_X = (Math.min(...CENTRE.map((c) => c[0])) + Math.max(...CENTRE.map((c) => c[0]))) / 2;
+const MAP_Z = (Math.min(...CENTRE.map((c) => c[2])) + Math.max(...CENTRE.map((c) => c[2]))) / 2;
+const MAP_R = 0.58 * Math.max(
+  Math.max(...CENTRE.map((c) => c[0])) - Math.min(...CENTRE.map((c) => c[0])),
+  Math.max(...CENTRE.map((c) => c[2])) - Math.min(...CENTRE.map((c) => c[2])),
+);
 
 // How hard the road is turning at each ring, signed: positive is a left-hander.
 // The y component of the cross product of the tangents either side is the sine
@@ -568,7 +625,19 @@ let STATE = null;
 // alpha as its coverage mask. Cleared to 1 the mask reads "unicorn everywhere"
 // and the road mixes toward black across its whole surface.
 bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
-  STATE = bmStore(new Float32Array(52));
+  // Fifteen vec4 slots. Thirteen of body, camera and course; the last two hold
+  // the falling star's arc, frozen in the world when it lights.
+  //
+  // Those two are seeded with a pair of unit vectors rather than left at zero.
+  // Nothing reads them until the first star arms — its own life factor is zero
+  // until then — but the sky normalises them every frame regardless, and
+  // normalising a zero vector is NaN, not zero. NaN times a zero life is still
+  // NaN, so an unseeded buffer would have taken the entire sky out for the first
+  // eight tenths of a second, which is exactly long enough to see.
+  const state = new Float32Array(60);
+  state[53] = 1;
+  state[56] = 1;
+  STATE = bmStore(state);
   const rings = bmStore(TRACK_DATA);
 
   // The simulation. One workgroup of one, dispatched once a frame: there is a
@@ -740,12 +809,44 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmTextures(sky, clouds);
   bmTextures(track, mirror);
 
+  // The course map. Two triangles in the corner, blended over the finished frame
+  // and drawn last, so nothing in the scene can cover it.
+  const map = bmProgram(Minimap[0], {
+    a: Minimap[1],
+    u: Minimap[3],
+    t: Minimap[4],
+    s: Minimap[5],
+    blend: 'alpha',
+    zwrite: 0,
+  });
+  bmAttr(map, 0, new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]));
+  bmIndex(map, new Uint16Array([0, 1, 2, 0, 2, 3]));
+  bmStorages(map, STATE, rings);
+  const mapU = new Float32Array(Minimap[3] / 4);
+  mapU[1] = MAP_X;
+  mapU[2] = MAP_Z;
+  mapU[3] = MAP_R;
+  mapU[4] = RINGS;
+
   const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
+  // The clock, on its own, for the stages that want nothing else.
+  //
+  // This used to be `u` as well, and it worked only because the unicorn's block
+  // happened to be the same sixteen bytes as everyone else's. Giving the unicorn
+  // its mane colours grew it to forty-eight, and handing that to a program with a
+  // sixteen byte block overruns it — the write is rejected and the uniform simply
+  // never updates. The symptom was the whole sky frozen at time zero: no comet,
+  // no drift in the road's palette, and nothing in the console to say so.
+  const tu = new Float32Array(4);
   // Gallop, always, for as long as there is a track under the hooves. Written
   // once rather than per frame because nothing on this screen can change it; the
   // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
   u[1] = 1;
+  // The chosen unicorn's mane. Slot 3 is the spectrum flag; 4..9 are the two
+  // colours it runs between, ignored when the flag is set.
+  u[3] = SKIN.mane ? 0 : 1;
+  if (SKIN.mane) for (let i = 0; i < 6; i++) u[4 + i] = SKIN.mane[i];
   bmLoop((t) => {
     const elapsed = prev ? t - prev : 0;
     prev = t;
@@ -763,6 +864,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[4] = RINGS;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
+    step[7] = TIME;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -770,6 +872,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmDispatch(sim, 1);
 
     u[0] = TIME;
+    tu[0] = TIME;
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
@@ -783,10 +886,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     u[2] = 0;
 
     bmPassTo(clouds);
-    bmUniforms(cloud, u);
+    bmUniforms(cloud, tu);
     bmDraw(cloud);
     bmPassTo();
-    bmUniforms(sky, u);
+    bmUniforms(sky, tu);
     bmDraw(sky);
     bmUniforms(prog, u);
     bmDraw(prog);
@@ -795,8 +898,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // uniform buffer, so one write does not reach the other — the camera they
     // share travels the other way, through the state buffer, and never touches
     // the CPU at all.
-    bmUniforms(track, u);
+    bmUniforms(track, tu);
     bmDraw(track);
+
+    // Last of all, over everything.
+    mapU[0] = canvas.width / canvas.height;
+    bmUniforms(map, mapU);
+    bmDraw(map);
 
 
   });

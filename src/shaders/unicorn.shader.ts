@@ -113,13 +113,25 @@ export const Unicorn = shader({
   // was already reserving three float slots and uploading them every frame.
   // uMirror turns this draw into the road's reflection of the model: 0 is the
   // unicorn itself, 1 is its image in the floor.
-  uniforms: { uTime: 'float', uRun: 'float', uMirror: 'float' },
+  // The chosen unicorn's mane, as two colours it runs between, plus a flag for
+  // the one that uses the spectrum instead. Plain floats rather than vec3s: a
+  // vec3 uniform aligns to sixteen bytes in WGSL, and the CPU side writes this
+  // block as a flat array, so packing them loosely is a silent off-by-one waiting
+  // to happen.
+  uniforms: {
+    uTime: 'float',
+    uRun: 'float',
+    uMirror: 'float',
+    uRainbow: 'float',
+    uManeAR: 'float', uManeAG: 'float', uManeAB: 'float',
+    uManeBR: 'float', uManeBG: 'float', uManeBB: 'float',
+  },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
   varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun, uMirror }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor }, { uState, uTime, uRun, uMirror, uRainbow, uManeAR, uManeAG, uManeAB, uManeBR, uManeBG, uManeBB }, v) {
     const body = storageRead(uState, 0);
     const facing = storageRead(uState, 1);
     const normal = storageRead(uState, 2);
@@ -250,7 +262,14 @@ export const Unicorn = shader({
       0.5 + 0.5 * cos(band + 2.09),
       0.5 + 0.5 * cos(band + 4.19),
     );
-    v.vColor = mix(aColor.xyz, rainbow, aColor.w);
+    // The other unicorns run their mane between two colours along the same band
+    // the spectrum uses, so the crest keeps its depth instead of going flat.
+    const dyed = mix(
+      vec3(uManeAR, uManeAG, uManeAB),
+      vec3(uManeBR, uManeBG, uManeBB),
+      0.5 + 0.5 * cos(band),
+    );
+    v.vColor = mix(aColor.xyz, mix(dyed, rainbow, uRainbow), aColor.w);
     // The same flag the rainbow is keyed off, handed to the fragment stage so it
     // can shade hair as hair. It costs an interpolator and saves the alternative,
     // which is guessing from position where the mane stops and the neck starts.

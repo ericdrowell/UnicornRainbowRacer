@@ -7,8 +7,6 @@ import {
   abs,
   floor,
   fract,
-  max,
-  min,
   mix,
   mod,
   pow,
@@ -32,7 +30,7 @@ function spectrum(k: number): Vec3 {
 
 /**
  * The rainbow road: one ribbon lofted along the track's centreline, surfaced as
- * lit glass panels rather than as painted lanes.
+ * a lattice of lit panels rather than as painted lanes.
  *
  * The geometry arrives already flattened — game.js sweeps the centre points into
  * a strip and hands over two numbers per vertex, how far across the road it sits
@@ -44,9 +42,9 @@ function spectrum(k: number): Vec3 {
  * **The lattice is fixed to the road and the colour is not.** A tile is a place
  * on the track — it has to be, or the grid slides underfoot while the unicorn
  * stands still — so nothing about the geometry moves. What moves is the hue
- * field washing over it, which is why the time term left the vertex stage (where
- * it used to scroll the whole surface bodily) and became a drift in the colour
- * down in the fragment.
+ * field washing over it, which is why the time term lives in the fragment, as a
+ * drift in the colour, rather than in the vertex stage scrolling the surface
+ * bodily.
  *
  * **Colour is sampled per tile, from a field that varies over hundreds of
  * metres.** Every fragment of a panel gets the hue at that panel's index, so
@@ -55,17 +53,26 @@ function spectrum(k: number): Vec3 {
  * with a grid drawn over it. Because the field's wavelength is far longer than a
  * tile, a whole stretch of road leans lavender, the next leans pink, and no
  * single view carries the entire spectrum at once. Sampling a *continuous*
- * rainbow instead gave uniform noise: every colour present everywhere, which
- * reads as chaos rather than as light.
+ * rainbow instead is a real alternative and it was tried — the road becomes one
+ * unbroken wash, softer and with nothing to hold the eye at mid-distance. This
+ * is the tiled version of the same field, and the two differ only by a `floor`.
+ *
+ * **The tiles are flat, and nothing is drawn inside them or between them.** Two
+ * things used to be: a sub-grid of four faint traces each way, and a
+ * centre-to-seam falloff meant to read as a pane of glass. At twelve panels
+ * across, seen at speed, the falloff read as black gridlines instead and the
+ * traces aliased into moiré by mid-distance. Both are gone. What separates one
+ * panel from the next is now only its own fixed brightness and the step in hue,
+ * so neighbours that agree on both merge and the lattice quietly breaks up.
  *
  * **There is no post-process bloom, so the bloom is built into the shapes.** The
  * runtime has no render targets — there is nowhere to draw a bright pass and
- * blur it back — so glow is analytic. Panels are lit from the middle and fall
- * off into their seams rather than ending at them, the rail carries a wide skirt
- * inboard of its core, and the core itself is driven well past white so it
- * clips. What this cannot do is bleed *outward*, past the edge of the ribbon
- * into open space: there are no fragments out there to brighten. The silhouette
- * is a hard edge against the dark, and only a second pass would soften it.
+ * blur it back — so glow is analytic. Panels are driven past 1 so their pastels
+ * clip towards white, the rail carries a wide skirt inboard of its core, and the
+ * core itself is pushed well past white. What this cannot do is bleed *outward*,
+ * past the edge of the ribbon into open space: there are no fragments out there
+ * to brighten. The silhouette is a hard edge against the dark, and only a second
+ * pass would soften it.
  */
 export const Track = shader({
   attributes: {
@@ -118,8 +125,6 @@ export const Track = shader({
     const along = vV * 0.4456;
     const col = floor(across);
     const row = floor(along);
-    const inX = fract(across);
-    const inY = fract(along);
 
     // The hue field. Two waves, both slow: one turns over about every 280 metres
     // of road, the other about every 830 and leans across the width as it goes,
@@ -161,52 +166,32 @@ export const Track = shader({
     const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + col * 0.5 + 1.3) * 1.6;
     // Pastel, not pigment. Glass lit from inside washes out towards white as it
     // brightens, and a saturated hue at full strength reads as paint instead.
-    // Only a fifth of the way there, though: the panel's own falloff below takes
-    // its middle to white on its own, so mixing much white in here as well left
-    // the whole road frosted and took the rainbow out of it.
+    // Only a fifth of the way there, though: mixing much white in here as well
+    // leaves the whole road frosted and takes the rainbow out of it.
     const glass = mix(spectrum(wash), vec3(1, 1, 1), 0.2);
 
     // Panels are not identical: each gets a fixed brightness of its own, so the
     // surface reads as a field of separate lamps rather than one printed sheet.
     // The usual hashed sine — cheap, and the banding it is notorious for is
     // invisible once the result only has to look like manufacturing tolerance.
+    //
+    // This is now the *only* thing distinguishing one panel from the next
+    // besides the step in hue, and that is the point. Two things used to be
+    // drawn inside a panel and both are gone: four faint lines each way — the
+    // sub-grid — and a centre-to-edge falloff that darkened every panel into its
+    // own border. The falloff was there to say "pane of glass"; what it actually
+    // said, twelve panels across at speed, was "black gridlines". Without it a
+    // panel is flat edge to edge, and where two neighbours happen to agree on
+    // both `lamp` and hue they merge outright and the lattice disappears for a
+    // square or two.
     const lamp = 0.74 + 0.26 * fract(sin(col * 12.99 + row * 78.23) * 43758.5);
 
-    // How far into its panel a fragment is: 0 hard against the join, 0.5 dead
-    // centre. One number for all four sides, rather than a smoothstep per side
-    // multiplied together, which is fewer instructions for the same shape.
-    const depth = min(min(inX, 1 - inX), min(inY, 1 - inY));
-
-    // The light inside the pane, and nothing darker anywhere. There is no seam
-    // term at all now and the floor sits just under full: every panel is its
-    // colour edge to edge, and this only lifts the middle of one a little
-    // further, so the surface reads as squares of light butted together rather
-    // than as panes with gaps between them.
-    //
-    // What that gives up is the glass. A dark rim is how a lit thing behind a
-    // surface announces the surface, and without one the road stops being
-    // material and becomes colour — closer to a screen than to a floor. The two
-    // numbers below are the whole switch: `0.16 + 1.25` with a
-    // `* (0.32 + 0.68 * smoothstep(0, 0.045, depth))` after it is the glass, and
-    // it is one edit back.
-    const glowIn = smoothstep(0, 0.42, depth);
-
-    // Circuitry under the glass: four faint lines each way inside every panel.
-    // Dim on purpose — this is the detail that says "illuminated technology"
-    // from a few metres away and should be gone by mid-distance, where it would
-    // otherwise alias into moiré.
-    const trace = max(
-      smoothstep(0.46, 0.5, abs(fract(across * 4) - 0.5)),
-      smoothstep(0.46, 0.5, abs(fract(along * 4) - 0.5)),
-    );
-
-    // Over 1 across the middle of a panel, and deliberately so: the centres clip
-    // towards white and the hue holds everywhere else. With the floor this high
-    // the panel is essentially flat colour, and what separates one square from
-    // the next is `lamp` — the per-panel brightness — and the step in hue, not a
-    // drawn edge. Where two neighbours happen to agree on both, they merge, and
-    // the grid quietly disappears for a square or two.
-    const lit = glass.scale(lamp * (0.92 + 0.5 * glowIn) + trace * 0.14);
+    // Flat, and over 1 for most panels, so the pastels clip towards white — the
+    // only bloom this surface gets, since there is no post-process pass to give
+    // it any. 1.32 against an average `lamp` of 0.87 lands the road at the same
+    // exposure the old centre-lit panels averaged out to, so removing the
+    // falloff changed the edges without changing the brightness.
+    const lit = glass.scale(lamp * 1.32);
 
     // The rails. This is what sells it as a ribbon in space rather than a
     // painted floor — the edge is the only part of a road with nothing beyond
