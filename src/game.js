@@ -392,9 +392,16 @@ const SELECTED_CIRCUIT = 0;
 // rather than three numbers — and because doing it here means the literal above
 // never has to carry the brackets. A point list is the biggest thing in this
 // file and `[484, 0, 0], ` is four characters of punctuation for three numbers.
+//
+// The literal holds *steps*, not places: each triple is added to the one before,
+// starting from the origin. See circuits.js. The running sum is over integers,
+// so a hundred and forty-two additions reproduce the original coordinates
+// exactly rather than approximately.
 const TRACK = [];
-for (let i = 0; i < CIRCUITS[SELECTED_CIRCUIT].points.length; i += 3) {
-  TRACK.push(CIRCUITS[SELECTED_CIRCUIT].points.slice(i, i + 3));
+const STEPS = CIRCUITS[SELECTED_CIRCUIT].points;
+for (let i = 0; i < STEPS.length; i += 3) {
+  const at = TRACK[TRACK.length - 1] || [0, 0, 0];
+  TRACK.push([at[0] + STEPS[i], at[1] + STEPS[i + 1], at[2] + STEPS[i + 2]]);
 }
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
@@ -512,20 +519,6 @@ const TAN = CENTRE.map((_, i) => norm(sub(ring(i + 1), ring(i - 1))));
 const ALONG = [0];
 for (let i = 1; i < RINGS; i++) ALONG.push(ALONG[i - 1] + dist(ring(i), ring(i - 1)));
 const LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
-
-// The box the course fits in, seen from above. Worked out here because this file
-// already holds the centreline; the minimap shader would otherwise have to scan
-// the whole ring buffer every frame to find the same four numbers.
-//
-// One radius for both axes rather than a width and a height: the map is drawn
-// square, and scaling the axes independently would stretch the circuit to fill
-// the box and stop it being a picture of the track's actual shape.
-const MAP_X = (Math.min(...CENTRE.map((c) => c[0])) + Math.max(...CENTRE.map((c) => c[0]))) / 2;
-const MAP_Z = (Math.min(...CENTRE.map((c) => c[2])) + Math.max(...CENTRE.map((c) => c[2]))) / 2;
-const MAP_R = 0.58 * Math.max(
-  Math.max(...CENTRE.map((c) => c[0])) - Math.min(...CENTRE.map((c) => c[0])),
-  Math.max(...CENTRE.map((c) => c[2])) - Math.min(...CENTRE.map((c) => c[2])),
-);
 
 // ── Which way is up ─────────────────────────────────────────────────────────
 // Carried along the road, not derived from the world.
@@ -1425,20 +1418,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmTextures(sky, clouds);
   bmTextures(track, mirror);
 
-  // The course map. Two triangles in the corner, blended over the finished frame
-  // and drawn last, so nothing in the scene can cover it.
-  const map = bmProgram(Minimap[0], {
-    a: Minimap[1],
-    u: Minimap[3],
-    t: Minimap[4],
-    s: Minimap[5],
-    blend: 'alpha',
-    zwrite: 0,
-  });
-  bmAttr(map, 0, new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]));
-  bmIndex(map, new Uint16Array([0, 1, 2, 0, 2, 3]));
-  bmStorages(map, STATE, rings);
-
   // The title card. Its own program because it blends — the letters have to sit
   // over the sky rather than punch a hole in it — and because a blend state is
   // baked into a pipeline at creation and cannot be switched on for one draw.
@@ -1459,12 +1438,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmIndex(text, new Uint16Array([0, 1, 2, 0, 2, 3]));
   bmTextures(text, cardTex);
   const textU = new Float32Array(Text[3] / 4);
-
-  const mapU = new Float32Array(Minimap[3] / 4);
-  mapU[1] = MAP_X;
-  mapU[2] = MAP_Z;
-  mapU[3] = MAP_R;
-  mapU[4] = RINGS;
 
   const step = new Float32Array(Physics[3] / 4);
   const u = new Float32Array(Unicorn[3] / 4);
@@ -1634,11 +1607,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // the CPU at all.
     bmUniforms(track, tu);
     bmDraw(track);
-
-    // Last of all, over everything.
-    mapU[0] = canvas.width / canvas.height;
-    bmUniforms(map, mapU);
-    bmDraw(map);
 
     // ── The overlay ─────────────────────────────────────────────────────────
     // Whatever this screen has to say, gathered into the instance buffer and
