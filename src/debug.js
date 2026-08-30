@@ -111,27 +111,24 @@
   /**
    * Colour is the part label — each piece was given its own at conversion.
    *
-   * Hide and wing are matched against the roster rather than by hue, because CL
-   * holds the repainted colour, not the converter's. Loose hue tests used to be
-   * enough when only the hide was substituted and the wing was always pink; now
-   * that a unicorn can have white wings, "bright and unsaturated" no longer
-   * means body. Mirroring and the skipped socket faces put CL out of step with
-   * MESH_C, so reading the original colour by index is not an option.
+   * The hide is matched against the roster rather than by hue, because CL holds
+   * the repainted colour, not the converter's. Mirroring and the skipped socket
+   * faces put CL out of step with MESH_C, so reading the original colour by
+   * index is not an option.
    */
   function partOf(v) {
     const r = CL[v * 4];
     const g = CL[v * 4 + 1];
     const b = CL[v * 4 + 2];
-    // The fourth component is a code, not an alpha: 1 mane, 2 hide, 3 wings.
+    // The fourth component is a code, not an alpha: 1 mane, 2 hide, 3 horn.
     // It used to be enough to compare the colour against the chosen unicorn's,
     // because the roster's colours were baked into CL while the mesh was built.
     // With ten unicorns sharing one vertex buffer they cannot be, so CL keeps
     // the converter's own colour and says which part it is instead.
     const code = CL[v * 4 + 3];
     if (code > 0.5 && code < 1.5) return 'mane / tail';
-    if (code > 2.5) return 'wing';
+    if (code > 2.5) return 'horn';
     if (code > 1.5) return 'body';
-    if (r > 0.9 && g > 0.7 && b < 0.5) return 'horn';
     if (r < 0.1) return 'eye';
     return 'hoof';
   }
@@ -196,18 +193,13 @@
   // Slots 0 to 83: the legacy body and camera, racer zero's own block at 16,
   // and its livery at 80. The render stages read the racer block, so an identity
   // body written only to slot 0 would leave the model collapsed to a point.
-  const body = new Float32Array(84 * 4);
+  const body = new Float32Array(85 * 4);
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0, /* across */ 0, 0, 1, 0]);
   // The same identity, where the vertex stage actually looks for it.
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0], 16 * 4);
   // And the chosen unicorn's colours, which are per-racer data now rather than
   // uniforms. Written once here; nothing on this screen changes them.
-  body.set([...SKIN.body, SKIN.mane ? 0 : 1], 80 * 4);
-  body.set(SKIN.wing, 81 * 4);
-  if (SKIN.mane) {
-    body.set(SKIN.mane.slice(0, 3), 82 * 4);
-    body.set(SKIN.mane.slice(3), 83 * 4);
-  }
+  body.set(livery(SKIN), 80 * 4);
 
   // The release ties the gait to distance covered, so the legs stop when the
   // unicorn does. Nothing here covers any distance, so the inspector winds it by

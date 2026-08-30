@@ -223,7 +223,14 @@ export const Track = shader({
     const up = storageRead(uState, 2).xyz;
     const flat = vWorld.sub(body);
     const onPlane = flat.sub(up.scale(dot(flat, up)));
-    const shade = (1 - smoothstep(0.35, 1.1, length(onPlane))) * 0.5;
+    //
+    // Switched off with the unicorns. On the title screen the field is not drawn
+    // at all, and a shadow is cast by a body — left on, this one sat on the road
+    // under a unicorn that was not there, which reads as a smudge rather than as
+    // a shadow. The flag comes from the state buffer's spare word rather than a
+    // uniform, because this stage already binds that buffer.
+    const shade =
+      (1 - smoothstep(0.35, 1.1, length(onPlane))) * 0.5 * (1 - storageRead(uState, 9).w);
 
     // ── The reflection ────────────────────────────────────────────────────
     // Sampled at this fragment's own place on screen, which is where the mirrored

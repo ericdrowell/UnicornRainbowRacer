@@ -103,7 +103,7 @@ export const Unicorn = shader({
     aSkin: 'vec4',
     /**
      * Colour, plus a code in w for what to do with it: 0 keep it, 1 replace it
-     * with the mane, 2 with this racer's hide, 3 with its wings.
+     * with the mane, 2 with this racer's hide, 3 with its horn.
      *
      * The last two used to be resolved on the CPU while the mesh was built, by
      * matching the converter's colours against the chosen unicorn's. That works
@@ -111,6 +111,10 @@ export const Unicorn = shader({
      * every instance, so a colour baked into it is the same colour on all of
      * them. Baking the *question* instead — which part is this? — leaves the
      * answer to the instance.
+     *
+     * Code 3 was the wings, and is now the horn — a slot that came free the day
+     * the wings went, and wanted filling the day a black unicorn needed a horn
+     * that was not gold.
      */
     aColor: 'vec4',
   },
@@ -133,29 +137,153 @@ export const Unicorn = shader({
     uTime: 'float',
     uRun: 'float',
     uMirror: 'float',
+    /**
+     * How big to draw the model. 1 on the track; larger on the select screen,
+     * where the whole point is a close look at one unicorn.
+     *
+     * Applied to the posed offset rather than to the world position, so a
+     * unicorn grows about its own hooves instead of being flung away from the
+     * origin — and so the gait, the bob and the lean all scale with it and stay
+     * in proportion.
+     */
+    uScale: 'float',
+    /** 1 on the select screen, where the roster rides a carousel. */
+    uSelect: 'float',
+    /** How far round the ring has wound, in seats. Eased, so fractional. */
+    uPick: 'float',
+    /** How many unicorns are on the ring, for the wrap above. */
+    uCount: 'float',
   },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
   varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float', vAlong: 'float' },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uMirror }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uMirror, uScale, uSelect, uPick, uCount }, v) {
     // This racer's block. The layout mirrors the player's old fixed slots —
     // position, drawn facing with speed, surface normal with gait — so
     // everything below reads exactly as it did when there was only one.
     const mine = 16 + aRacer * 5;
-    // This racer's four colours, written once at start-up and never touched
-    // again: hide with the mane's spectrum flag, wings, and the two colours the
-    // mane runs between.
-    const pal = 80 + aRacer * 4;
+    // This racer's colours, written once at start-up and never touched again:
+    // hide with the mane's spectrum flag, the three stops the mane runs through,
+    // and the horn.
+    const pal = 80 + aRacer * 5;
     const aHide = storageRead(uState, pal).xyz;
     const aRainbow = storageRead(uState, pal).w;
-    const aWings = storageRead(uState, pal + 1).xyz;
-    const aManeA = storageRead(uState, pal + 2).xyz;
-    const aManeB = storageRead(uState, pal + 3).xyz;
-    const body = storageRead(uState, mine);
-    const facing = storageRead(uState, mine + 1);
-    const normal = storageRead(uState, mine + 2);
+    const aManeA = storageRead(uState, pal + 1).xyz;
+    const aManeB = storageRead(uState, pal + 2).xyz;
+    const aManeC = storageRead(uState, pal + 3).xyz;
+    const aHorn = storageRead(uState, pal + 4).xyz;
+    const onRoad = storageRead(uState, mine);
+    const facingRoad = storageRead(uState, mine + 1);
+    const normalRoad = storageRead(uState, mine + 2);
+
+    // ── The carousel ───────────────────────────────────────────────────────
+    // On the select screen the roster leaves the road and rides a ring hung in
+    // the air in front of the camera, one seat per unicorn.
+    //
+    // **It lives here, in the renderer, and not in the physics stage.** There is
+    // one position per racer and the simulation reads its bodies out of it, so a
+    // seat written there is a body that has moved: the camera is built from
+    // racer zero's position and the ring is placed relative to the camera, which
+    // made the shot chase its own carousel a little further every frame — and
+    // the four racers then started the race hanging in mid-air where the ring
+    // had left them. Placing them here touches nothing the simulation reads.
+    //
+    // Sizes come from the ring rather than a scale per seat: the front one sits
+    // five units from the eye and its neighbours fifteen, so perspective alone
+    // makes the choice three times the size of the ones beside it.
+    const camEye = storageRead(uState, 8).xyz;
+    const gazeRaw = storageRead(uState, 9).xyz.sub(camEye);
+    const gaze = gazeRaw.scale(1 / max(length(gazeRaw), 0.0001));
+    const camUp = storageRead(uState, 10).xyz;
+    const sideRaw = cross(gaze, camUp);
+    const ringSide = sideRaw.scale(1 / max(length(sideRaw), 0.0001));
+    // Up on *screen*, not up in the world: the shot looks down at the circuit,
+    // so world up runs into the frame at an angle and lifting by it moves the
+    // ring sideways as much as upward.
+    const upRaw = camUp.sub(gaze.scale(dot(camUp, gaze)));
+    const screenUp = upRaw.scale(1 / max(length(upRaw), 0.0001));
+    // Far enough out that the camera is not standing inside the choice. At
+    // scale 4 the model is about five units long, so a front seat five units
+    // from the eye put the lens in its ribcage — and with back faces culled an
+    // inside-out unicorn is not a big unicorn, it is no unicorn at all. Twenty
+    // two out with a ten-unit ring leaves the front one twelve away and its
+    // neighbours twenty four, which is the same two-to-one the ring is for.
+    // Dropped below the eye line rather than lifted above it. The model's origin
+    // is its hooves — everything is posed upward from there — so a seat on the
+    // centre line puts the body entirely in the top half of the frame, which is
+    // where the first attempt at this put the heads: out of shot. Half the
+    // model's height down centres the unicorn instead of its feet.
+    const hub = camEye.add(gaze.scale(20)).sub(screenUp.scale(1.6));
+
+    // Where this unicorn sits relative to the chosen one, wrapped into the
+    // half-open range either side of it. **The wrap is what makes the carousel
+    // endless**: `uPick` counts turns of the wheel rather than an index into the
+    // roster, so it climbs forever, and taking it modulo the count means the
+    // unicorn that has just left one edge is already arriving at the other. Hold
+    // the right arrow and it goes round and round.
+    const rel = aRacer - uPick;
+    const d = rel - uCount * floor(rel / uCount + 0.5);
+
+    // A shallow arc rather than a full circle. Only three seats are ever meant
+    // to be on screen — the choice and the one either side of it — so the ring
+    // only has to bend far enough to push the neighbours back and away, not far
+    // enough to bring a fourth round behind them.
+    // A gentle arc. Steep enough to read as a ring in depth, shallow enough that
+    // the neighbours stay well inside the frame — swing it wider and the size
+    // difference grows, but they slide off the edges long before it is enough.
+    const phi = d * 0.95;
+    const seat = hub.add(ringSide.scale(sin(phi) * 7)).sub(gaze.scale(cos(phi) * 7));
+
+    // How much this one *is* the choice: 1 at the front, 0 at a neighbour.
+    const chosen = 1 - min(abs(d), 1);
+
+    // Neighbours are shrunk on purpose as well as by distance. Perspective alone
+    // cannot do this job: a ring deep enough to halve their size is also wide
+    // enough to push them off the sides, so the depth sells the shape and this
+    // sells the hierarchy.
+    // Anything past a neighbour collapses to nothing. Scaling it away rather
+    // than skipping the draw keeps the instance count fixed at the whole roster,
+    // which is what lets one of them be mid-hand-over from one edge to the other
+    // without the draw call changing under it.
+    const near = 1 - smoothstep(1.15, 1.55, abs(d));
+    // The neighbours are *not* dimmed. They were, briefly, and it was wrong: a
+    // multiply over the whole model does not read as "further back", it reads as
+    // a different unicorn — a lilac one goes grey and a cream one goes brown, so
+    // the two liveries either side of the choice were being misreported at the
+    // exact moment the player was trying to compare them. Size alone carries the
+    // hierarchy, and size is the one cue that cannot lie about colour.
+    // Facing out of the ring, so the one at the front looks at the camera and
+    // the rest are caught turning away from it.
+    const outRaw = seat.sub(hub);
+    const outward = outRaw.scale(1 / max(length(outRaw), 0.0001));
+
+    // Every seat turns on the spot, at one shared rate, so you can see what you
+    // are choosing from every side.
+    //
+    // **The rate cannot be weighted by which one is chosen, and that is not a
+    // stylistic call.** It was `uTime * 1.15 * chosen`, so that only the front
+    // one spun — and multiplying a clock that grows without bound by a weight
+    // that changes is a trap: when `chosen` swings from 0 to 1 thirty seconds in,
+    // the angle swings thirty-four radians with it, in whatever fraction of a
+    // second the ring takes to turn. The unicorns whipped round harder the longer
+    // the screen had been open. Fixing it by integrating the rate would need
+    // somewhere to keep the accumulated angle, and this stage has no state at
+    // all; one rate for everybody needs none and cannot drift.
+    //
+    // A plain two-term rotation is enough because `outward` is square to
+    // `screenUp` by construction: the ring lies in the plane of the gaze and the
+    // sideways, and both of those are perpendicular to screen up. The third term
+    // of a general axis-angle rotation would be multiplied by zero.
+    const turn = uTime * 1.15;
+    const turned = outward.scale(cos(turn)).add(cross(screenUp, outward).scale(sin(turn)));
+
+    const body = vec4(mix(onRoad.xyz, seat, uSelect), onRoad.w);
+    const facing = vec4(mix(facingRoad.xyz, turned, uSelect), facingRoad.w);
+    // Legs at a steady canter. The gait is a distance, so this is the distance a
+    // unicorn would have covered by now at a believable speed.
+    const normal = vec4(mix(normalRoad.xyz, screenUp, uSelect), mix(normalRoad.w, uTime * 26, uSelect));
     // ── Which gait ─────────────────────────────────────────────────────────
     // Two of them, chosen by how fast the unicorn is actually going. `aSkin.y`
     // carries the walk's phase for this leg, generated with the mesh; the
@@ -222,6 +350,7 @@ export const Unicorn = shader({
     // DSL scopes to shader parameters and locals — module-level values are not
     // in scope, which it says plainly rather than compiling to something wrong.
     const kneeY = 0.3;
+
     const atKnee = spin(vec3(aPos.x, aPos.y + kneeY, aPos.z), bend);
     const limb = spin(vec3(atKnee.x, atKnee.y - kneeY, atKnee.z), hip);
     // The barrel rises and falls, which sells a run more than the legs do. Tied
@@ -244,10 +373,12 @@ export const Unicorn = shader({
     // keeps the basis right-handed with the model's, and a basis that quietly
     // flips handedness mirrors the mesh and turns every face inside out.
     const across = cross(facing.xyz, normal.xyz);
+    // Size, and the collapse that hides everything past a neighbour.
+    const grow = uScale * mix(1, near * mix(0.58, 1, chosen), uSelect);
     const world = body.xyz
-      .add(facing.xyz.scale(local.x))
-      .add(normal.xyz.scale(local.y))
-      .add(across.scale(local.z));
+      .add(facing.xyz.scale(local.x * grow))
+      .add(normal.xyz.scale(local.y * grow))
+      .add(across.scale(local.z * grow));
 
     // The normal rides the same basis. Skipping this leaves the lighting fixed
     // to the world while the unicorn turns under it, so the lit side stays put
@@ -283,16 +414,29 @@ export const Unicorn = shader({
       0.5 + 0.5 * cos(band + 2.09),
       0.5 + 0.5 * cos(band + 4.19),
     );
-    // The other unicorns run their mane between two colours along the same band
+    // The other unicorns run their mane through three colours along the same band
     // the spectrum uses, so the crest keeps its depth instead of going flat.
-    const dyed = mix(aManeA, aManeB, 0.5 + 0.5 * cos(band));
-    // The three codes, as ranges rather than equality tests: these arrive as
+    //
+    // Three and not two, because a two-stop gradient can only ever put the mix of
+    // its ends in the middle — fine for pink to blue, which passes through
+    // lavender on its own, and no use at all to a mane that wants blue, green and
+    // red. A two-colour mane is still one line of authoring: game.js stores it as
+    // three stops with the middle at the midpoint, which is the same straight
+    // line, so there is nothing to branch on here.
+    //
+    // `t * 2 - half` and not `fract(t * 2)`: fract of exactly 2 is 0, so the very
+    // tip of the band would snap back to the middle colour instead of reaching
+    // the last one.
+    const t = 0.5 + 0.5 * cos(band);
+    const half = step(0.5, t);
+    const dyed = mix(mix(aManeA, aManeB, half), mix(aManeB, aManeC, half), t * 2 - half);
+    // The codes, as ranges rather than equality tests: these arrive as
     // interpolated floats and comparing one for equality against 2 is the kind
     // of thing that works on the machine it was written on.
     const hair = step(0.5, aColor.w) * (1 - step(1.5, aColor.w));
     const hide = step(1.5, aColor.w) * (1 - step(2.5, aColor.w));
-    const wings = step(2.5, aColor.w);
-    const worn = mix(mix(aColor.xyz, aHide, hide), aWings, wings);
+    const horn = step(2.5, aColor.w);
+    const worn = mix(mix(aColor.xyz, aHide, hide), aHorn, horn);
     v.vColor = mix(worn, mix(dyed, rainbow, aRainbow), hair);
     // The same flag the rainbow is keyed off, handed to the fragment stage so it
     // can shade hair as hair. It costs an interpolator and saves the alternative,
@@ -343,7 +487,7 @@ export const Unicorn = shader({
     return c0.scale(shown.x).add(c1.scale(shown.y)).add(c2.scale(shown.z)).add(c3);
   },
 
-  fragment({ uState, uTime, uMirror }, { vNormal, vColor, vFace, vHair, vAlong }) {
+  fragment({ uState, uTime, uMirror, uSelect }, { vNormal, vColor, vFace, vHair, vAlong }) {
     // ── The pile ───────────────────────────────────────────────────────────
     // What makes a plush toy read as plush is not its colour, it is that the
     // surface never resolves: light lands on thousands of fibre tips at slightly
@@ -454,10 +598,18 @@ export const Unicorn = shader({
     // white one catching green off the floor, and it lost its own markings with
     // it. Washed out this far, the tint is unmistakable and the unicorn is still
     // the unicorn.
+    //
+    // Taken all the way to white on the select screen. The road there is
+    // scenery, not a light: the unicorns are hanging in the air well clear of it
+    // and the player is trying to compare four liveries, so a floor that tints
+    // them turns "which colour do I want" into "which colour is it under this
+    // bit of track". They are still shaded — the falloff and the key light below
+    // both stay, or a unicorn is a flat cut-out — but nothing about the road
+    // reaches them.
     const glow = mix(
       vec3(0.5 + 0.5 * cos(wash), 0.5 + 0.5 * cos(wash + 2.09), 0.5 + 0.5 * cos(wash + 4.19)),
       vec3(1, 1, 1),
-      0.55,
+      mix(0.55, 1, uSelect),
     );
 
     // Strongest on the underside and falling off over the top, which is what an

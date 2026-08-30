@@ -127,7 +127,20 @@ export const Minimap = shader({
       pack = max(pack, 1 - smoothstep(0, uMapR * 0.03, length(vec2(them.x, them.z).sub(here))));
     }
 
-    const ink = spectrum(alongAt * 0.06);
+    // One turn of the wheel over one lap, so the map is a single sweep of the
+    // spectrum rather than a barber's pole.
+    //
+    // This was `alongAt * 0.06`, a fixed rate — fine on the 380-unit test track,
+    // where it came to about three and a half turns, and nonsense on a circuit
+    // eight times longer, where it wound round thirty times and the map became a
+    // repeating stripe with no sense of direction in it.
+    //
+    // The lap length comes out of the ring buffer rather than a uniform. game.js
+    // emits ring zero a second time at the end carrying the full lap distance
+    // instead of nought — it does that so the last segment interpolates forwards
+    // — and that spare word is exactly the number wanted here.
+    const lap = storageRead(uTrack, uRings * 3).w;
+    const ink = spectrum((alongAt / lap) * 6.2832);
     const paint = ink.scale(line)
       .add(vec3(0.75, 0.82, 1).scale(pack * 1.1))
       .add(vec3(1, 0.99, 0.95).scale(core * 2.2 + spikes * 1.3));

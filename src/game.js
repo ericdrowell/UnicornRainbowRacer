@@ -27,6 +27,22 @@ const canvas = document.getElementById('c');
  *  in build.mjs, where the JSON gets inlined. */
 const MUSIC_ENABLED = true;
 
+//
+// MUSIC_ENABLED gates every line of music below it — and it is the switch
+// itself that every guard tests, not the context it produces. Testing `MUSIC`
+// instead reads better and costs 18 kB of source: a const used ahead of its own
+// declaration is one terser will not fold, so the branch survives minification
+// and drags the synthesiser and the song data through with it. Naming the switch
+// directly, declared right here, is a value terser can see is false — and then
+// everything depending on it is unreachable and goes.
+//
+// This lived in its own src/music.js until it turned out to be a wrapper around
+// four functions. Folding it in meant moving the song data *ahead* of this file
+// in the build, because the songs are `const` and a const referenced before its
+// declaration line has run is a ReferenceError, not a hoist.
+const MUSIC = MUSIC_ENABLED && new (AudioContext || webkitAudioContext)();
+
+
 // ── Skeleton, measured from the model ───────────────────────────────────────
 // Where each leg is, and the height its vertices start belonging to it.
 const BELLY = 0.56; // below this, a vertex is leg rather than body
@@ -40,20 +56,88 @@ const LEGS = [
 ];
 
 // ── The roster ──────────────────────────────────────────────────────────────
-// Four unicorns, differing in body colour, wing colour, and the colours their
-// mane and tail run between. Everything else — hooves, horn, eyes — is shared,
-// so a new one is a handful of numbers and a name rather than a new model.
+// Four unicorns, differing in body colour, horn colour, and the colours their
+// mane and tail run between. Everything else — hooves, eyes — is shared, so a
+// new one is a handful of numbers and a name rather than a new model.
 //
-// The mane is a gradient between two colours rather than one flat colour,
-// because the mane already has a band coordinate running along it for the
-// rainbow and a single colour throws that away: the crest goes matte and stops
-// reading as hair. `mane: 0` means the original spectrum instead of a pair.
+// `horn` is optional and gold when left out, because it is gold on three of the
+// four. Spelling it on every entry to say what the default already says is three
+// lines of noise around the one that differs.
+//
+// There used to be a `wing` colour here as well. The wings are gone: 88 of the
+// model's 339 triangles for a pair of pads that a chase camera only ever sees
+// the back of, and 1.2 kB of a budget that is 8 kB over.
+//
+// The mane is a gradient rather than one flat colour, because the mane already
+// has a band coordinate running along it for the rainbow and a single colour
+// throws that away: the crest goes matte and stops reading as hair. `mane: 0`
+// means the original spectrum instead.
+//
+// Six numbers are two colours and the crest runs between them; nine are three
+// and it runs through the middle one on the way. Two is enough whenever the
+// colour wanted in the middle is the mix of the ends — pink to blue passes
+// through lavender on its own — and three is for when it is not, which is any
+// mane naming hues from opposite sides of the wheel.
 
 const UNICORNS = [
-  { name: 'Rainbow Pie', body: [1, 0.97, 0.99], wing: [1, 0.62, 0.78], mane: 0 },
-  { name: 'Hot Fluff', body: [0.55, 0.82, 0.98], wing: [1, 0.97, 0.99], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
-  { name: 'Twilight Dash', body: [0.97, 0.62, 0.78], wing: [0.32, 0.16, 0.48], mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58] },
-  { name: 'Pinkie Fly', body: [1, 0.8, 0.88], wing: [1, 0.97, 0.99], mane: [0.72, 0.09, 0.38, 0.88, 0.22, 0.52] },
+  { name: 'Starlight', body: [1, 0.97, 0.99], mane: 0 },
+  { name: 'Ember', body: [1, 0.72, 0.42], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
+  { name: 'Midnight', body: [0.1, 0.09, 0.15], horn: [1, 1, 1], mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58] },
+  { name: 'Bubble Gum', body: [1, 0.8, 0.88], mane: [0.72, 0.09, 0.38, 0.88, 0.22, 0.52] },
+  {
+    name: 'Sparkle',
+    body: [0.55, 0.32, 0.78],
+    horn: [1, 0.55, 0.78],
+    mane: [1, 0.97, 0.99, 0.95, 0.45, 0.72],
+  },
+  {
+    name: 'Goldfish',
+    body: [0.9, 0.72, 0.28],
+    horn: [0.72, 0.45, 0.2],
+    mane: [0.85, 0.87, 0.9, 0.72, 0.45, 0.2],
+  },
+  // Pink and blue, and the purple comes free. A mane is two colours blended
+  // along a band that runs the length of the crest, so the middle of it is
+  // already the mix of the ends — and pink mixed with blue is exactly the
+  // lavender this one wants in the middle. Storing a third colour to put it
+  // there would be a fifth palette slot for every racer to say what the two it
+  // already has were going to say anyway.
+  {
+    name: 'Cupcake',
+    body: [0.62, 0.82, 0.95],
+    horn: [1, 0.72, 0.82],
+    mane: [1, 0.45, 0.72, 0.42, 0.6, 1],
+  },
+  // The palest of the roster: hide and mane are within a few hundredths of each
+  // other, so the gold horn is the only thing on it with any contrast, and it
+  // takes the default rather than naming one. The mane still runs between two
+  // tones rather than sitting on one — cream to a warmer peach — because a
+  // single colour on a crest that already has a band coordinate through it
+  // comes out matte and stops reading as hair. Two near-identical tones are
+  // enough to keep it.
+  {
+    name: 'Seashell',
+    body: [1, 0.82, 0.85],
+    mane: [1, 0.89, 0.8, 0.96, 0.8, 0.68],
+  },
+  // The first mane that genuinely needs three stops. Blue to red on its own runs
+  // through purple, and blue to green runs through teal — there is no pair whose
+  // midpoint is the other colour, which is what the two-colour form has always
+  // relied on.
+  {
+    name: 'M&M',
+    body: [0.12, 0.18, 0.48],
+    horn: [0.25, 0.78, 0.35],
+    mane: [0.2, 0.35, 0.9, 0.2, 0.75, 0.3, 0.85, 0.15, 0.15],
+  },
+  // Back to two stops: light blue to dark blue is one hue at two brightnesses,
+  // so the middle takes care of itself.
+  {
+    name: 'Spidey',
+    body: [0.85, 0.14, 0.16],
+    horn: [1, 1, 1],
+    mane: [0.45, 0.72, 1, 0.1, 0.22, 0.6],
+  },
 ];
 
 /** Who the player rides. Change this line to change unicorn. */
@@ -62,31 +146,40 @@ const SELECTED_UNICORN = 1;
 const SKIN = UNICORNS[SELECTED_UNICORN];
 
 // ── The field ───────────────────────────────────────────────────────────────
-// Ten on the grid: the player, and nine drawn at random from the same roster.
-// Repeats are allowed and are not a bug — four liveries across nine cars means
-// duplicates are certain, and two Twilight Dashes on different lines read as two
-// racers rather than as a mistake. What would read as a mistake is a fixed
-// running order, which is what a shuffle without replacement would give.
+// The roster, once each, and nobody else. It used to be ten — the player plus
+// nine drawn at random with repeats — which put three Bubble Gums on the grid
+// and made the field read as filler rather than as opposition. One of each is a
+// smaller race and a better one: every unicorn on the road is a unicorn you
+// could have picked.
 //
-// Kept in one array with the player at index 0, because that is the order the
-// GPU knows them in: racer 0 is the invocation that takes the keyboard and owns
-// the camera, and every buffer below is indexed the same way.
-const FIELD = 10;
-const RACERS = [SKIN];
-for (let i = 1; i < FIELD; i++) RACERS.push(UNICORNS[(Math.random() * UNICORNS.length) | 0]);
+// **The line-up is a rotation, not a slice, and that matters.** Racer 0 is the
+// invocation that takes the keyboard and owns the camera, so the player's choice
+// has to be first; rotating the roster round to start there keeps all four in
+// the race and puts the other three behind, whichever one was chosen. Lifting
+// the pick out and unshifting it does the same thing in more code.
+//
+// FIELD is also written down in physics.shader.ts, which cannot read this file:
+// the compiler works from the source, so the workgroup size and its loop bound
+// are literals there. Change one and change all three.
+const FIELD = UNICORNS.length;
+const RACERS = [];
+const lineUp = (pick) => {
+  for (let i = 0; i < FIELD; i++) RACERS[i] = UNICORNS[(pick + i) % FIELD];
+};
+lineUp(SELECTED_UNICORN);
 
 /**
  * Whether a mesh colour is one the roster repaints. Matched against the value
  * rather than flagged in the mesh, so the model stays exactly as the converter
- * emitted it — and the parts no unicorn recolours (hooves, horn, eyes) keep
- * their colours without needing to be listed anywhere.
+ * emitted it — and the parts no unicorn recolours (hooves, eyes) keep their
+ * colours without needing to be listed anywhere.
  *
- * The model carries exactly six colours, so neither test can collide with
- * anything else: the hide is the only near-white and the wing the only pink.
+ * The model carries five colours and no two are close, so neither test can
+ * collide: the hide is the only near-white and the horn the only gold.
  */
 const is = (r, g, b, m) => Math.abs(r - m[0]) < 1e-3 && Math.abs(g - m[1]) < 1e-3 && Math.abs(b - m[2]) < 1e-3;
 const HIDE = [1, 0.97, 0.99];
-const WING = [1, 0.62, 0.78];
+const HORN = [1, 0.83, 0.3];
 
 // ── Buffers ─────────────────────────────────────────────────────────────────
 const P = [];
@@ -244,7 +337,7 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
     // for itself. 1 is the mane, which the alpha channel already meant.
     const paint = socket || is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HIDE)
       ? 2
-      : is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], WING)
+      : is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HORN)
         ? 3
         : 0;
     CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], paint || MESH_C[ci + 3]);
@@ -646,7 +739,7 @@ for (let i = 0; i <= RINGS; i++) {
 // deciding which way a unicorn faces and not two that can disagree.
 const RACER_BASE = 16;
 const RACER_SLOTS = 5;
-/** Where the liveries start, four vec4s per racer. */
+/** Where the liveries start, five vec4s per racer. */
 const PALETTE = 80;
 
 /** The ring nearest a given distance round the lap. */
@@ -701,61 +794,313 @@ let TIME = 0;
 // carries on regardless, so a pause that merely skips the draw leaves the gait
 // running invisibly and the legs jump to a new position the moment it resumes.
 // Accumulating elapsed time only while playing means paused really is stopped.
-let PAUSED = false;
+// Which states count as "playing" is the state machine's business — see the
+// frame loop, where only RACE advances the clock.
 let clock = 0;
 let prev = 0;
-addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape') return;
-  PAUSED = !PAUSED;
-  syncMusic();
-});
 
-// The rendered song, once music.js has it, and the source playing it. A pause
-// is silence, so there is nothing playing to hold on to while paused. Not TRACK:
-// that is the road's centreline, further up this file — everything here shares
-// one scope, so a second TRACK is not a shadow, it is a build failure.
-let SONG = null;
-let PLAYING = null;
+// ── The state machine ───────────────────────────────────────────────────────
+// Five screens, one variable, and one function that moves between them.
+//
+// Called SCREEN rather than STATE because STATE is the GPU buffer every stage
+// reads its world out of — everything in this program shares one scope, so a
+// second STATE is not a shadow, it is a build failure.
+//
+// The states are numbers rather than strings because every one of them is
+// compared dozens of times a frame and terser can fold a number into the
+// comparison; the names are consts so the code still reads as names.
+//
+//   TITLE   a flat pink card. No world, no music, nothing to look at but the
+//           name of the game. Any key leaves.
+//   SELECT  the circuit orbiting behind one unicorn turning on the spot.
+//           Left and right change it, enter starts the race.
+//   RACE    the thing itself.
+//   PAUSE   the race, frozen, with the world still drawn behind the card.
+//   WIN     the race over, and the same.
+//
+// Every transition goes through `go`, which is what keeps the music honest:
+// each state names its own song, and the one place that changes state is the
+// one place that has to ask for it.
+const TITLE = 0;
+const SELECT = 1;
+const RACE = 2;
+const PAUSE = 3;
+const WIN = 4;
+let SCREEN = TITLE;
+
+/** Which unicorn the player has picked, as an index into UNICORNS. */
+let PICK = SELECTED_UNICORN;
+/**
+ * Where the carousel actually is, easing towards PICK.
+ *
+ * Held separately because the ring has to *turn*: snapping it to the new index
+ * would teleport the choice into the front seat, and the one thing a carousel is
+ * for is showing that the thing you wanted came round.
+ *
+ * It also has to be allowed to unwind past the ends — pressing left at the first
+ * unicorn should run the ring backwards to the last, not spin it forwards
+ * through the whole roster — so this tracks an unbounded winding rather than an
+ * index, and the shader takes it modulo the seats.
+ */
+let SPIN = SELECTED_UNICORN;
+let SPIN_TO = SELECTED_UNICORN;
+
+/** Fades the title card's pink out from under the world when SELECT arrives. */
+let PINK = 1;
 
 /**
- * Point the audio at whatever the game currently wants: the song while you
- * drive, nothing at all while you are paused.
+ * Times racer zero has crossed the line — which is one more than the laps it has
+ * *completed*, because the first crossing is the start. The grid stands behind
+ * the line, so the opening lap begins with a crossing that finishes nothing.
  *
- * Resuming starts the song at its first note, which is why the pause stops the
- * source outright rather than suspending the context. A BufferSource plays once
- * and cannot be rewound, so playing from the beginning *is* a new source — and
- * a suspended context would do the opposite, holding the playhead exactly where
- * the pause caught it. Sources are cheap: the buffer is the expensive part, and
- * that is rendered once at load and handed to every source that follows.
- *
- * One function rather than a decision in each place that needs one, because two
- * places deciding independently is exactly how they came to disagree. music.js
- * may not start the track until the browser has seen a gesture, so it waits for
- * the first key or click — and that first key can be the very Escape that just
- * paused. Both handlers fire, and whichever ran last used to win. Now both ask
- * this, and this only ever answers with the state the game is actually in. Both
- * running for one Escape is harmless either way: paused, the second call finds
- * nothing left to stop; playing, it restarts a song that began a moment ago,
- * which is the same song from the top.
+ * Module scope rather than inside the frame loop because `go` resets it, and
+ * `go` is what every transition goes through — a counter the transition cannot
+ * reach is one that survives into the next race.
  */
+let crossings = 0;
+
+/**
+ * One unicorn's colours, in the layout the palette region expects.
+ *
+ * **A two-colour mane is stored as a three-stop gradient with its middle stop at
+ * the midpoint**, which is the same straight line through colour space — so
+ * every mane written before the third stop existed comes out unchanged, to the
+ * pixel, and the shader has one blend rather than a branch.
+ */
+function livery(r) {
+  const paint = new Float32Array(20);
+  paint.set([...r.body, r.mane ? 0 : 1], 0);
+  if (r.mane) {
+    const a = r.mane.slice(0, 3);
+    const c = r.mane.slice(-3);
+    paint.set(a, 4);
+    paint.set(r.mane.length > 6 ? r.mane.slice(3, 6) : a.map((v, k) => (v + c[k]) / 2), 8);
+    paint.set(c, 12);
+  }
+  paint.set(r.horn || HORN, 16);
+  return paint;
+}
+
+/**
+ * Dress the palette slots.
+ *
+ * The palettes live in the state buffer, five vec4s per racer from slot 80, and
+ * every render stage already reads them there — so this is not a message to
+ * anything, it is twenty numbers written over twenty, and the next frame draws
+ * different unicorns.
+ *
+ * The same slots serve two purposes, which is why this takes a roster rather
+ * than assuming one. On the select screen they are the carousel, in roster
+ * order, one per seat; in a race they are the grid, which is the same four
+ * rotated so the player's pick leads. Racer zero is the player either way, so
+ * the seat you were looking at really is the unicorn that leaves the grid.
+ */
+function dress(list) {
+  for (let i = 0; i < FIELD; i++) {
+    bmDevice.queue.writeBuffer(STATE, (PALETTE + i * 5) * 16, livery(list[i]));
+  }
+}
+
+/**
+ * Put the whole field back on the grid.
+ *
+ * **The select screen leaves the whole field in the air.** The carousel is drawn by
+ * writing seats into the same slots the simulation reads its bodies out of —
+ * there is only one position per racer — so the first four come out of that
+ * screen believing they are hanging in front of a camera. Left alone they start
+ * the race there, fall, and hunt for a road that is a hundred units away.
+ *
+ * Zeroing everything but the position is what makes this a *reset* rather than a
+ * repair: a zero course is the flag the physics stage reads as "not yet placed",
+ * and it answers it from the tangent under the body. So the same write that
+ * fixes the carousel also clears speed, gait and the fall, and points every
+ * unicorn back down the road.
+ */
+function resetGrid() {
+  const block = new Float32Array(RACER_SLOTS * 4);
+  for (let i = 0; i < FIELD; i++) {
+    block.fill(0);
+    block.set(GRID[i], 0);
+    bmDevice.queue.writeBuffer(STATE, (RACER_BASE + i * RACER_SLOTS) * 16, block);
+  }
+}
+
+function go(next) {
+  // A race always starts from nothing, however it was reached.
+  if (next === RACE && SCREEN !== PAUSE) crossings = 0;
+  // The palettes are shared between the carousel and the grid, so they are
+  // rewritten on the way into each.
+  if (next === SELECT) dress(UNICORNS);
+  if (next === RACE && SCREEN === SELECT) {
+    lineUp(PICK);
+    dress(RACERS);
+    resetGrid();
+  }
+  SCREEN = next;
+  syncMusic();
+}
+
+// The two rendered loops, filled in by music.js as each finishes, and the song
+// each state asks for. TITLE is deliberately absent: silence is a choice there,
+// not an oversight — it is what makes the first keypress the moment the game
+// starts making noise.
+const SONGS = {};
+const SCORE = { 1: 'menu', 2: 'race', 3: 'menu', 4: 'menu' };
+
+addEventListener('keydown', (e) => {
+  if (SCREEN === TITLE) {
+    go(SELECT);
+    return;
+  }
+  if (SCREEN === SELECT) {
+    // Wrapped both ways, so the roster is a carousel rather than a list with
+    // ends to bump into.
+    const step = (e.code === 'ArrowRight' || e.code === 'KeyD' ? 1 : 0) -
+      (e.code === 'ArrowLeft' || e.code === 'KeyA' ? 1 : 0);
+    if (step) {
+      // The winding moves by one whatever happens; the index wraps. That is what
+      // makes the ring turn the short way round the ends.
+      SPIN_TO += step;
+      PICK = (PICK + step + UNICORNS.length) % UNICORNS.length;
+    }
+    if (e.code === 'Enter' || e.code === 'Space') go(RACE);
+    return;
+  }
+  // Any key at all leaves a pause, not just the one that caused it. Escape to
+  // stop and W to go again is the natural thing to reach for, and it works
+  // because the throttle is read from the held-keys map rather than from this
+  // handler — the key that unpauses is already down when the next frame asks.
+  if (SCREEN === PAUSE) {
+    go(RACE);
+    return;
+  }
+  if (e.code === 'Escape' && SCREEN === RACE) {
+    go(PAUSE);
+    return;
+  }
+  // From the winner's screen, back to the top.
+  if (SCREEN === WIN && e.code === 'Enter') go(TITLE);
+});
+// A click does whatever a key would at the one place a player might try it.
+addEventListener('pointerdown', () => {
+  if (SCREEN === TITLE) go(SELECT);
+});
+
+// The source that is currently playing, and which song it is playing, so a
+// state change that asks for the same music does not restart it. Not TRACK: that
+// is the road's centreline, further up this file — everything here shares one
+// scope, so a second TRACK is not a shadow, it is a build failure.
+let PLAYING = null;
+let PLAYING_NAME = null;
+
 function syncMusic() {
   if (!MUSIC_ENABLED) return;
-  MUSIC.resume();
+  const want = SCORE[SCREEN];
+  // Already playing the right thing. **This test is the whole reason pausing
+  // does not restart the menu music**: PAUSE and SELECT and WIN all ask for the
+  // same song, so unpausing mid-bar drops straight back into the race rather
+  // than restarting a track the player was already listening to.
+  if (want === PLAYING_NAME) return;
   if (PLAYING) {
     PLAYING.stop();
     PLAYING = null;
   }
-  if (PAUSED || !SONG) return;
+  PLAYING_NAME = null;
+  // Nothing to play in this state, or the song has not finished rendering yet —
+  // in which case music.js calls back here the moment it has.
+  if (!want || !SONGS[want]) return;
+  // Resumed here rather than on the way in, so the silent title screen never
+  // asks the browser for audio it is not going to use.
+  MUSIC.resume();
   PLAYING = MUSIC.createBufferSource();
-  PLAYING.buffer = SONG;
+  PLAYING.buffer = SONGS[want];
   PLAYING.loop = true;
   PLAYING.connect(MUSIC.destination);
   PLAYING.start();
+  PLAYING_NAME = want;
 }
-// The unicorn's whole existence, and the camera that watches it. Thirteen vec4s:
-// four of body, four of view-projection, three the camera remembers between
-// frames so it can chase rather than snap, and two for the world directions it is
-// actually travelling, which is not the direction it is pointing.
+
+/**
+ * Render one song into a buffer that loops seamlessly.
+ *
+ * ── Trim it to what is actually written ────────────────────────────────────
+ * A SoundBox export carries two numbers that disagree with its own patterns,
+ * and both of them break a loop.
+ *
+ * `endPattern` is how many pattern slots the scheduler cycles through, and it is
+ * set in the editor rather than derived — so a song written as four bars but
+ * left with the length slider at six declares six. The scheduler does
+ * `p[floor(row / 32) % (endPattern + 1)] || 0`, and the slots past the end of
+ * `p` come back undefined, fall through the `||`, and play as silence. That does
+ * not sound like a gap in a loop; it sounds like the music stopped.
+ *
+ * `songLen` is the render length in seconds, also authored by hand, and it
+ * truncates whatever it is shorter than. Derived instead from the tempo the
+ * scheduler actually runs at: `bpm` is *rounded* off rowLen inside sonant-x, so
+ * the row it schedules is 60/bpm/4 rather than rowLen/44100, and computing this
+ * from rowLen directly drifts a few milliseconds by the end of the loop.
+ *
+ * The clamp is one-directional on purpose. A song asking for *fewer* slots than
+ * it has patterns is a deliberately short loop and is left alone; only the
+ * over-declaration is corrected.
+ *
+ * ── Then keep the second time round, not the first ─────────────────────────
+ * Cutting the render at the loop point leaves every note that was still
+ * releasing chopped off mid-decay, and the jump from that to the silence of the
+ * first sample is a click once round.
+ *
+ * The fix is not to render a little extra and add it back over the start. That
+ * was tried and made it worse: the scheduler already wraps its pattern list, so
+ * the samples past the loop point are not the ring-out of the last bar, they are
+ * *the first bar playing again*. Adding them to the start doubled the opening.
+ *
+ * What is wanted is a slice of the song mid-performance, with the previous time
+ * round already ringing through it. So it is rendered twice and the *second*
+ * pass is kept. Its opening carries the tail of the first pass, and because both
+ * passes play identical notes, that tail is exactly what this pass's own ending
+ * hands to whatever follows it. The buffer joins to itself.
+ *
+ * Twice is enough and three times would buy nothing: the tail rings for less
+ * than a bar and every pass is the same music, so pass two is already
+ * indistinguishable from pass two hundred.
+ */
+function renderLoop(song, into) {
+  const slots = Math.min(
+    song.endPattern + 1,
+    Math.max(...song.songData.map((ch) => ch.p.length)),
+  );
+  song.endPattern = slots - 1;
+  const loop = (slots * 32 * 60) / (Math.round(661500 / song.rowLen) * 4);
+  song.songLen = loop * 2;
+  return generateSong(song, MUSIC.sampleRate).then((raw) => {
+    const rate = raw.sampleRate;
+    const len = Math.round(loop * rate);
+    const buffer = MUSIC.createBuffer(raw.numberOfChannels, len, rate);
+    for (let ch = 0; ch < raw.numberOfChannels; ch++) {
+      buffer.getChannelData(ch).set(raw.getChannelData(ch).subarray(len, len * 2));
+    }
+    SONGS[into] = buffer;
+    // Whichever state is up may have been waiting for exactly this one.
+    syncMusic();
+  });
+}
+
+if (MUSIC_ENABLED) {
+  // The menu song first, because it is the one a player hears first: the title
+  // screen is silent, and the very next state wants it. Rendered in series
+  // rather than together — each is a full offline mix, and the frame the page
+  // loads is already busy compiling shaders and building a circuit.
+  renderLoop(MENU_SONG, 'menu').then(() => renderLoop(RACE_SONG, 'race'));
+
+  // Autoplay is not something a page gets to decide. Every current browser
+  // starts an AudioContext suspended until the user has interacted with the
+  // page, and the state machine turns that rule into the start button: the
+  // title screen is silent by design, so the keypress that leaves it is the
+  // gesture that unlocks the audio. Nothing extra is needed here.
+}
+
+
+// The unicorn's whole existence, and the camera that watches it.
 //
 // Zeroed, which is a valid opening position rather than a placeholder: the body
 // starts at the origin, which is ring zero, and every other field — heading,
@@ -777,44 +1122,40 @@ let STATE = null;
 // alpha as its coverage mask. Cleared to 1 the mask reads "unicorn everywhere"
 // and the road mixes toward black across its whole surface.
 bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
-  // Fifteen vec4 slots. Thirteen of body, camera and course; the last two hold
-  // the falling star's arc, frozen in the world when it lights.
+  // Sixteen vec4 slots of player and camera, five each per racer from slot 16,
+  // and five each of livery from slot 80. The first sixteen keep their old
+  // meanings so the road's shadow, the minimap and the debug build go on reading
+  // slot 0 for "where is the unicorn the camera is watching".
   //
-  // Those two are seeded with a pair of unit vectors rather than left at zero.
-  // Nothing reads them until the first star arms — its own life factor is zero
-  // until then — but the sky normalises them every frame regardless, and
-  // normalising a zero vector is NaN, not zero. NaN times a zero life is still
-  // NaN, so an unseeded buffer would have taken the entire sky out for the first
-  // eight tenths of a second, which is exactly long enough to see.
-  // Sixteen vec4 slots of player, camera and falling star, five each for ten
-  // racers from slot 16, and four each of livery from slot 80. The first sixteen keep their old meanings so
-  // the road's shadow, the minimap and the debug build go on reading slot 0 for
-  // "where is the unicorn the camera is watching".
-  const state = new Float32Array(120 * 4);
-  state[53] = 1;
-  state[56] = 1;
+  // Slots 13 and 14 are spare. They used to hold a falling star's arc and had to
+  // be seeded with unit vectors, because the sky normalised them every frame and
+  // normalising a zero vector is NaN rather than zero.
+  const state = new Float32Array((PALETTE + FIELD * 5) * 4);
   // The grid. Position only: everything else is zero, which every field here is
   // genuinely starting at — and a zero course is what tells the physics stage to
   // point each unicorn down the road it finds itself on.
   for (let i = 0; i < FIELD; i++) {
     state.set(GRID[i], (RACER_BASE + i * RACER_SLOTS) * 4);
   }
-  // Each racer's four colours, four slots apiece. Written once and never again:
-  // a livery is not state, it is a constant that happens to differ per instance,
-  // and this buffer is the only channel wide enough to carry ten of them.
+  // Each racer's colours, five slots apiece. Written once and never again: a
+  // livery is not state, it is a constant that happens to differ per instance,
+  // and this buffer is the only channel wide enough to carry the whole field.
   //
-  // `mane: 0` means the original flowing spectrum. The flag rides in the spare
-  // word beside the hide, and the two mane colours are then never read.
-  RACERS.forEach((r, i) => {
-    const p = (PALETTE + i * 4) * 4;
-    state.set([...r.body, r.mane ? 0 : 1], p);
-    state.set(r.wing, p + 4);
-    if (r.mane) {
-      state.set(r.mane.slice(0, 3), p + 8);
-      state.set(r.mane.slice(3), p + 12);
-    }
-  });
-  STATE = bmStore(state);
+  // Through `livery` rather than repeating its layout, which is the second copy
+  // this used to be — and the copy that would have kept writing two mane stops
+  // into a palette that now holds three.
+  RACERS.forEach((r, i) => state.set(livery(r), (PALETTE + i * 5) * 4));
+  // Created here rather than through bmStore, for one flag: COPY_SRC.
+  //
+  // **This is the only path by which anything on the GPU can tell the CPU
+  // something.** The whole design puts the simulation on the GPU so the answer
+  // never has to come back — but a race has to end, and knowing that the player
+  // has crossed the line for the last time is a fact only the physics stage
+  // knows. bmStore makes its buffers STORAGE|COPY_DST, which can be written but
+  // never read; the same buffer with COPY_SRC can be copied into a staging
+  // buffer and mapped.
+  STATE = bmDevice.createBuffer({ size: state.byteLength, usage: 128 | 8 | 4 });
+  bmDevice.queue.writeBuffer(STATE, 0, state);
   const rings = bmStore(TRACK_DATA);
 
   // The simulation. One workgroup of one, dispatched once a frame: there is a
@@ -970,6 +1311,86 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   }
   vctx.putImageData(pix, 0, 0);
 
+  // ── The captions ────────────────────────────────────────────────────────
+  // Every line the game ever shows, baked once into the rows of one texture.
+  //
+  // Baked rather than rasterised in a shader because none of it changes: the
+  // roster is fixed, so even the unicorn names are known at start-up. A lap
+  // counter would want the glyph table in a storage buffer and the bits picked
+  // out per fragment; this wants a canvas and a loop.
+  //
+  // One texture with a row per line, rather than a texture per line, so
+  // switching caption is a uniform rather than a rebind — and so the whole of
+  // the game's text costs one image.
+  //
+  // White on transparent, so the shader gets coverage rather than colour and is
+  // free to paint the letters out of the rainbow. One canvas pixel per font
+  // pixel with a nearest filter, so a 3x5 letter stays a 3x5 letter however
+  // large the quad lands it.
+  // Index comments are not decoration: the `say` calls below address rows by
+  // number, so inserting a line silently repoints every caption after it. That
+  // happened once — splitting the select screen's instructions in two moved
+  // PAUSED and both win lines one row down each, and a pause then read "ENTER TO
+  // RACE".
+  const LINES = [
+    'UNICORN RAINBOW RACER',       // 0
+    'PRESS ANY KEY TO START',      // 1
+    'CHOOSE YOUR RACER',           // 2
+    'ARROWS TO CHOOSE',            // 3
+    'ENTER TO RACE',               // 4
+    'PAUSED',                      // 5
+    'PRESS ANY KEY TO CONTINUE',   // 6
+    'YOU WIN',                     // 7
+    'ENTER FOR TITLE',             // 8
+    ...UNICORNS.map((u) => u.name.toUpperCase()),
+  ];
+  // ── Type sizes ──────────────────────────────────────────────────────────
+  // Three of them, named, so every screen agrees: EXTRA_LARGE for whatever a
+  // screen is *about*, LARGE for the line under it, MEDIUM for instructions.
+  //
+  // The number is the half-width of the caption's quad in NDC, not a height —
+  // and that is what makes one constant give the same *letter* size to every
+  // line. Each row of the atlas is as wide as the longest string in the game and
+  // shorter ones are centred in it, so a row always carries the same number of
+  // font pixels across; scaling the quad therefore scales the glyphs and nothing
+  // else. `PAUSED` at EXTRA_LARGE is six big letters, not one word stretched to
+  // fill the screen.
+  const EXTRA_LARGE = 1;
+  const LARGE = 0.62;
+  const MEDIUM = 0.42;
+
+  /** The row each unicorn's name landed on. */
+  const NAME_ROW = LINES.length - UNICORNS.length;
+  /** Font pixels per glyph cell: three of letter and one of gap. */
+  const CELL = 4;
+  const ROW_H = 6;
+  const CARD_W = Math.max(...LINES.map((l) => l.length)) * CELL;
+  const card = document.createElement('canvas');
+  card.width = CARD_W;
+  card.height = LINES.length * ROW_H;
+  const cctx = card.getContext('2d');
+  const glyphs = cctx.createImageData(card.width, card.height);
+  LINES.forEach((text, row) => {
+    const left = ((CARD_W - text.length * CELL) / 2) | 0;
+    for (let i = 0; i < text.length; i++) {
+      const g = FONT_SET.indexOf(text[i]);
+      if (g < 0) continue;
+      for (let y = 0; y < 5; y++) {
+        const bits = parseInt(FONT[g * 5 + y], 8);
+        for (let x = 0; x < 3; x++) {
+          // Octal digits run most significant bit first, which is leftmost.
+          if (!(bits & (4 >> x))) continue;
+          const k = ((row * ROW_H + y) * CARD_W + left + i * CELL + x) * 4;
+          glyphs.data[k] = glyphs.data[k + 1] = glyphs.data[k + 2] = 255;
+          glyphs.data[k + 3] = 255;
+        }
+      }
+    }
+  });
+  cctx.putImageData(glyphs, 0, 0);
+  // Nearest, or the blow-up smears each font pixel into its neighbours.
+  const cardTex = bmTexture(card, 0);
+
   // The march, at a quarter of the width and a quarter of the height — one
   // sixteenth of the rays. A cloud is the one thing in the scene that loses
   // nothing to that: no edges, no texture, no silhouette, only soft gradients,
@@ -1012,6 +1433,28 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmAttr(map, 0, new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1]));
   bmIndex(map, new Uint16Array([0, 1, 2, 0, 2, 3]));
   bmStorages(map, STATE, rings);
+
+  // The title card. Its own program because it blends — the letters have to sit
+  // over the sky rather than punch a hole in it — and because a blend state is
+  // baked into a pipeline at creation and cannot be switched on for one draw.
+  const text = bmProgram(Text[0], {
+    a: Text[1], i: Text[2], u: Text[3], t: Text[4], s: Text[5],
+    blend: 1,
+    // No depth: it is an overlay, drawn last, over a finished frame.
+    zwrite: 0,
+  });
+  bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
+  // Four captions is the most any screen asks for. Allocated once and written
+  // into every frame rather than rebuilt — bmAttr creates a fresh GPU buffer
+  // each call, which per frame is a leak rather than an upload.
+  const CAPTIONS = 5;
+  const cells = new Float32Array(CAPTIONS * 4);
+  bmAttr(text, 1, cells);
+  const cellBuf = text.b[1];
+  bmIndex(text, new Uint16Array([0, 1, 2, 0, 2, 3]));
+  bmTextures(text, cardTex);
+  const textU = new Float32Array(Text[3] / 4);
+
   const mapU = new Float32Array(Minimap[3] / 4);
   mapU[1] = MAP_X;
   mapU[2] = MAP_Z;
@@ -1026,31 +1469,100 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // happened to be the same sixteen bytes as everyone else's. Giving the unicorn
   // its mane colours grew it to forty-eight, and handing that to a program with a
   // sixteen byte block overruns it — the write is rejected and the uniform simply
-  // never updates. The symptom was the whole sky frozen at time zero: no comet,
+  // never updates. The symptom was the whole sky frozen at time zero:
   // no drift in the road's palette, and nothing in the console to say so.
   const tu = new Float32Array(4);
   // Gallop, always, for as long as there is a track under the hooves. Written
   // once rather than per frame because nothing on this screen can change it; the
   // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
   u[1] = 1;
+  // ── Counting laps ───────────────────────────────────────────────────────
+  // One 16-byte read, six times a second, of the one number that decides when
+  // the race is over: how far round the lap racer zero is.
+  //
+  // Polled rather than pushed, and deliberately slow. A map is asynchronous —
+  // the answer arrives a frame or two later — so this can never be part of the
+  // frame it is asked in, which rules out anything that has to be exact. It does
+  // not have to be: a lap takes about a minute, and the only question being
+  // asked is "has the distance jumped from near the end back to near the
+  // beginning", which is true for several seconds either side of the line.
+  //
+  // The buffer is recycled and a read is never started while one is in flight —
+  // mapAsync on an already-mapped buffer is an error, and allocating a fresh
+  // staging buffer six times a second is a leak with extra steps.
+  /** Laps to race. Crossings needed is one more, for the start. */
+  const LAPS = 2;
+  // MAP_READ | COPY_DST. WebGPU allows MAP_READ to pair with COPY_DST and
+  // nothing else, so a staging buffer is the *destination* of the copy; the
+  // storage buffer is the one that needs COPY_SRC.
+  const lapPeek = bmDevice.createBuffer({ size: 16, usage: 1 | 8 });
+  let peeking = false;
+  let peekAt = 0;
+  let wasAlong = 0;
+
+  const peek = () => {
+    if (peeking || SCREEN !== RACE) return;
+    peeking = true;
+    const enc = bmDevice.createCommandEncoder();
+    // Racer zero's fifth slot, whose spare word is distance round the lap.
+    enc.copyBufferToBuffer(STATE, (RACER_BASE + 4) * 16, lapPeek, 0, 16);
+    bmDevice.queue.submit([enc.finish()]);
+    lapPeek.mapAsync(1).then(() => {
+      const along = new Float32Array(lapPeek.getMappedRange().slice(0))[3];
+      lapPeek.unmap();
+      peeking = false;
+      // A lap turns over when the distance falls off the end and reappears at
+      // the start. Quartered thresholds rather than a bare decrease, so the
+      // little backwards wobbles a nudge or a spin can cause are not finishes.
+      if (wasAlong > LAP * 0.75 && along < LAP * 0.25) {
+        crossings++;
+        // One more crossing than laps raced: the first one is the start.
+        if (crossings > LAPS) go(WIN);
+      }
+      wasAlong = along;
+    });
+  };
+
   bmLoop((t) => {
     const elapsed = prev ? t - prev : 0;
     prev = t;
-    if (!PAUSED) clock += elapsed;
+    if (SCREEN !== PAUSE) clock += elapsed;
+    // Six times a second is plenty for a question whose answer changes once a
+    // minute, and it keeps the copy off most frames entirely.
+    if (SCREEN === RACE && TIME > peekAt) {
+      peekAt = TIME + 1 / 6;
+      peek();
+    }
     TIME = clock;
+    // The carousel eases towards the chosen seat rather than snapping to it, at
+    // a rate rather than a fraction per frame so it turns at the same speed
+    // whatever the frame rate.
+    SPIN += (SPIN_TO - SPIN) * (1 - Math.exp(-9 * elapsed));
+
+    // The pink card lifts over about a third of a second rather than blinking
+    // out, revealing the world that has been rendering behind it all along.
+    PINK = SCREEN === TITLE ? 1 : Math.max(PINK - elapsed * 3, 0);
 
     // A zero step is the pause. The stage still runs — the camera has to keep
     // answering, since the window can be resized while paused and the aspect
     // ratio is baked into the matrix it builds — but nothing integrates, so the
     // unicorn holds exactly where it was rather than resuming somewhere else.
-    step[0] = PAUSED ? 0 : elapsed;
-    step[1] = held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown');
-    step[2] = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft');
+    // Only RACE integrates. Every other state holds the field exactly where it
+    // is and lets the camera do the moving.
+    step[0] = SCREEN === RACE ? elapsed : 0;
+    // Steering and throttle are dead outside the race, so the arrow keys that
+    // pick a unicorn on the select screen do not also drive one.
+    const driving = SCREEN === RACE ? 1 : 0;
+    step[1] = driving * (held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown'));
+    step[2] = driving * (held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft'));
     step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
     step[7] = TIME;
+    // The orbiting camera is up for everything before the race; it is also what
+    // switches off the road's shadow, since there is no unicorn to cast one.
+    step[8] = SCREEN === RACE || SCREEN === PAUSE || SCREEN === WIN ? 0 : 1;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -1065,11 +1577,40 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // The mirrored unicorn, into its own target, before the frame proper. It
     // resolves there against its own depth, so the road later reads one finished
     // image rather than a stack of half-transparent triangles.
+    // The field, and its reflection in the road — but only once there is a race.
+    // On the title screen the circuit is the subject and ten unicorns stood on
+    // the grid are in the way of it, so they are simply not drawn.
+    //
+    // The pass itself still runs. `bmPassTo` clears whatever it points at, and
+    // the road reads this target's alpha as "how much unicorn is here" — so
+    // skipping the pass would leave the last frame's reflection painted on the
+    // road forever, while skipping only the draw leaves the coverage at zero,
+    // which is exactly the truth.
+    // How many unicorns this state wants: none on the title card, one on the
+    // turntable, the whole field in a race.
+    const shown = SCREEN === TITLE ? 0 : SCREEN === SELECT ? UNICORNS.length : FIELD;
+    // Three times the size on the select screen, because it is a close look at
+    // one unicorn rather than a field of them seen from a camera boom.
+    u[3] = SCREEN === SELECT ? 2.3 : 1;
+    u[4] = SCREEN === SELECT ? 1 : 0;
+    u[5] = SPIN;
+    u[6] = UNICORNS.length;
+
+    // The reflection pass still runs even when it draws nothing. `bmPassTo`
+    // clears whatever it points at, and the road reads this target's alpha as
+    // "how much unicorn is here" — so skipping the pass would leave the last
+    // frame's reflection painted on the road forever, while skipping only the
+    // draw leaves the coverage at zero, which is the truth.
     bmPassTo(mirror);
-    u[2] = 1;
-    bmUniforms(refl, u);
-    bmDraw(refl, FIELD);
-    u[2] = 0;
+    // No reflections on the select screen: the carousel hangs in the air with
+    // nothing under it, and the road's mirror is a plane through a body that is
+    // no longer standing on it.
+    if (shown && SCREEN !== SELECT) {
+      u[2] = 1;
+      bmUniforms(refl, u);
+      bmDraw(refl, shown);
+      u[2] = 0;
+    }
 
     bmPassTo(clouds);
     bmUniforms(cloud, tu);
@@ -1077,8 +1618,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmPassTo();
     bmUniforms(sky, tu);
     bmDraw(sky);
-    bmUniforms(prog, u);
-    bmDraw(prog, FIELD);
+    if (shown) {
+      bmUniforms(prog, u);
+      bmDraw(prog, shown);
+    }
     // The same array, and the same sixteen bytes: the track reads uTime out of
     // the front of it and never looks at the gait behind. Each program owns its
     // uniform buffer, so one write does not reach the other — the camera they
@@ -1092,6 +1635,51 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmUniforms(map, mapU);
     bmDraw(map);
 
+    // ── The overlay ─────────────────────────────────────────────────────────
+    // Whatever this screen has to say, gathered into the instance buffer and
+    // drawn in one go. One draw because a uniform cannot change between two of
+    // them inside a pass — see the instance attributes in text.shader.ts.
+    let n = 0;
+    /** A caption: atlas row, centre y, half-width, fade. Row -1 is the card. */
+    const say = (row, y, half, fade) => {
+      cells.set([row, y, half, fade], n * 4);
+      n++;
+    };
 
+    // The title's ground goes first so the text lands on top of it. It is drawn
+    // over a world that is still being rendered underneath, which is what lets
+    // the pink lift off the circuit rather than cut to it.
+    if (PINK > 0.002) say(-1, 0, 1, PINK);
+    if (SCREEN === TITLE) {
+      // Dead centre, both ways: `say` centres the glyphs across the quad and
+      // takes y as the quad's middle, so a title at zero is centred on the
+      // screen rather than merely near the middle of it.
+      say(0, 0, EXTRA_LARGE, 1);
+      say(1, -0.26, MEDIUM, 1);
+    } else if (SCREEN === SELECT) {
+      say(2, 0.88, LARGE, 1);
+      say(NAME_ROW + PICK, 0.55, EXTRA_LARGE, 1);
+      say(3, -0.74, MEDIUM, 1);
+      say(4, -0.9, MEDIUM, 1);
+    } else if (SCREEN === PAUSE) {
+      say(5, 0, EXTRA_LARGE, 1);
+      say(6, -0.26, MEDIUM, 1);
+    } else if (SCREEN === WIN) {
+      say(7, 0, EXTRA_LARGE, 1);
+      say(8, -0.26, MEDIUM, 1);
+    }
+
+    if (n) {
+      // Written straight into the buffer that already exists. A queue write
+      // lands before the pass is submitted, which is exactly the ordering an
+      // instanced draw wants and the one a per-draw uniform cannot give.
+      bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
+      textU[0] = TIME;
+      textU[1] = canvas.width / canvas.height;
+      textU[2] = LINES.length;
+      textU[3] = ROW_H / CARD_W;
+      bmUniforms(text, textU);
+      bmDraw(text, n);
+    }
   });
 });

@@ -90,6 +90,22 @@ function frameUp(fwd: Vec3, up: Vec3): Vec3 {
 }
 
 /**
+ * Normalise, without the hole at zero.
+ *
+ * `normalize` of a zero vector is NaN rather than zero, and NaN does not stay
+ * where it is put: **`mix(a, NaN, 0)` is NaN, not `a`**, because the lerp
+ * multiplies the bad endpoint by zero and adds it, and zero times NaN is still
+ * NaN. So a direction computed for a state the shader is not even in can wipe
+ * out one it is. This bit the select screen's carousel — since moved into the
+ * unicorn shader — where a direction built from a still-zeroed camera came
+ * through a weight-zero `mix` and destroyed the player's position on the title
+ * screen, taking the camera and the entire scene with it.
+ */
+function steady(v: Vec3): Vec3 {
+  return v.scale(1 / max(length(v), 0.0001));
+}
+
+/**
  * A fixed random number per racer, per channel.
  *
  * The field needs to differ from itself — nine identical AIs drive the same line
@@ -135,29 +151,36 @@ export const Physics = shader({
      */
     uPattern: 'float',
     /**
-     * Wall clock, for the falling star's arc. The block was already padded to
-     * eight floats for uPattern's sake and only seven were used, so this rides
-     * along at no cost.
+     * Wall clock, for the parts of the look that drift on their own and for the
+     * title camera's orbit. The block was already padded to eight floats for
+     * uPattern's sake and only seven were used, so this rides along at no cost.
      */
     uTime: 'float',
+    /** 1 before the flag, while the title card is up. See the camera below. */
+    uTitle: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
-  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime }, id) {
+  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime, uTitle }, id) {
     // A tab left in the background delivers one enormous frame on return, and
     // an unclamped step of that size moves the unicorn straight through the
     // road — collision is tested at the new position, not swept to it.
     const dt = min(uDt, 0.05);
 
     // ── Which unicorn this invocation is ───────────────────────────────────
-    // Ten of them now, one per invocation of a single workgroup, and they all
-    // run the code below. Racer zero is the player and the only difference is
+    // One per invocation of a single workgroup, and they all run the code below. Racer zero is the player and the only difference is
     // where its throttle and steering come from — everything after that, the
     // handling model included, is shared. That is the point of doing it this
     // way rather than giving the AI a simpler mover of its own: a field that
     // obeys different physics from the player reads as fake the first time you
     // race alongside it.
+    // The whole roster, one each. Written here as a literal and again in
+    // game.js, which is not a duplication that can be factored out: this file is
+    // compiled from its source, so the workgroup size above and this bound have
+    // to be numbers. They must agree — a FIELD larger than the workgroup leaves
+    // racers unsimulated, and smaller leaves invocations reading slots nobody
+    // fills.
     const FIELD = 10;
     const RACER = 16;
     const SLOTS = 5;
@@ -572,8 +595,41 @@ export const Physics = shader({
     // because the course lags the nose by design and the whole thing is
     // smoothed again below. The unicorn still visibly rotates within the frame,
     // since what gets drawn is exaggerated past the course.
-    const wantEye = pos.sub(courseDir.scale(8)).add(upT.scale(3));
-    const wantAt = pos.add(courseDir.scale(5)).add(upT.scale(1));
+    const chaseEye = pos.sub(courseDir.scale(8)).add(upT.scale(3));
+    const chaseAt = pos.add(courseDir.scale(5)).add(upT.scale(1));
+
+    // ── The title camera ───────────────────────────────────────────────────
+    // Before the flag there is nothing to chase — the field is stood on the grid
+    // and the clock is stopped — so the camera circles the pack instead, holding
+    // them in frame while the circuit turns behind them.
+    //
+    // Aimed a little way up the road rather than at the player itself. The
+    // player starts at the *back* of the grid, so pointing the camera at it puts
+    // nine unicorns off to one side; a third of the grid's length forward is the
+    // middle of the pack.
+    //
+    // The orbit runs off `uTime`, which keeps running before the flag even
+    // though `dt` does not — the clock and the simulation step are different
+    // things, and this is the one place that difference is load-bearing.
+    // High and wide, working its way round the circuit. The selector uses the
+    // same camera — the carousel is placed by the unicorn shader, in front of
+    // whatever this one is doing, so the shot does not change to accommodate it
+    // and the circuit keeps turning behind the roster.
+    //
+    // Aimed a little way up the road rather than at the player itself. The
+    // player starts at the *back* of the grid, so pointing the camera at it puts
+    // nine unicorns off to one side; a third of the grid's length forward is the
+    // middle of the pack.
+    //
+    // The orbit runs off `uTime`, which keeps running before the flag even
+    // though `dt` does not — the clock and the simulation step are different
+    // things, and this is the one place that difference is load-bearing.
+    const ang = uTime * 0.32;
+    const titleAt = pos.add(courseDir.scale(16));
+    const titleEye = titleAt.add(vec3(sin(ang) * 52, 21, cos(ang) * 52));
+
+    const wantEye = mix(chaseEye, titleEye, uTitle);
+    const wantAt = mix(chaseAt, titleAt, uTitle);
 
     // Then chased rather than snapped to. With the floor continuous there is no
     // judder left to hide, so this is not covering for the physics — it is here
@@ -589,12 +645,19 @@ export const Physics = shader({
     // Snap, don't chase, when there is nothing sane to chase from: the first
     // frame, where the stored camera is still zero, and a respawn, where it
     // would otherwise fly the length of the track to catch up.
-    const settle = mix(1 - exp(0 - 14 * dt), 1, max(1 - prevEye.w, lost));
+    // Snapped rather than chased on the title screen, and that is not a
+    // stylistic choice — it is the only thing that makes the orbit move at all.
+    // `dt` is zero before the flag, so `1 - exp(-14 * dt)` is zero, and a camera
+    // that lerps a zero fraction of the way to its target every frame sits
+    // exactly where it was: the orbit was being computed correctly and then
+    // thrown away. There is nothing to smooth here anyway — the flight path is
+    // an analytic circle rather than a body being simulated.
+    const settle = mix(1 - exp(0 - 14 * dt), 1, max(max(1 - prevEye.w, lost), uTitle));
     const eye = mix(prevEye.xyz, wantEye, settle);
     const at = mix(prevAt.xyz, wantAt, settle);
     // The roll is smoothed too, or the camera would still step through the
     // camber changes it is meant to lean into.
-    const camUp = normalize(mix(prevUp.xyz, upT, settle));
+    const camUp = normalize(mix(prevUp.xyz, mix(upT, vec3(0, 1, 0), uTitle), settle));
 
     const zAxis = normalize(eye.sub(at));
     const xAxis = normalize(cross(camUp, zAxis));
@@ -602,10 +665,17 @@ export const Physics = shader({
 
     const f = 1 / tan(0.5);
     const fx = f / uAspect;
-    // near 0.1, far 500, as one expression each: the DSL has no module-level
+    // near 0.1, far 900, as one expression each: the DSL has no module-level
     // constants, and naming them locally costs more than it explains.
-    const za = (500 + 0.1) / (0.1 - 500);
-    const zb = (2 * 500 * 0.1) / (0.1 - 500);
+    //
+    // The far plane was 500 and the road reached it, so the ribbon began at a
+    // hard edge that crawled towards you. Nine hundred pushes that edge past
+    // where the eye is looking. It is not free — depth precision is spent on
+    // the ratio of far to near, and this widens it from five thousand to one
+    // to nine thousand — but the near plane is the expensive end of that
+    // fraction and it has not moved.
+    const za = (900 + 0.1) / (0.1 - 900);
+    const zb = (2 * 900 * 0.1) / (0.1 - 900);
 
     // ── What this racer leaves behind ──────────────────────────────────────
     // Its own five slots, written by every invocation. The render stages read
@@ -622,7 +692,7 @@ export const Physics = shader({
     storageWrite(uState, mine + 4, vec4(headingDir, mix(ca.w, cb.w, along)));
 
     // ── And what only the player leaves behind ─────────────────────────────
-    // The camera, the falling star, and the legacy body slots the road, the
+    // The camera and the legacy body slots that the road, the
     // minimap and the debug build still read from fixed positions. All of it is
     // about the one unicorn being watched, so all of it is racer zero's alone —
     // nine more invocations writing their own camera into slot 4 would be nine
@@ -649,7 +719,13 @@ export const Physics = shader({
       // The camera's own memory. The 1 in the first slot is the "there is a
       // camera here now" flag the snap above reads on the very first frame.
       storageWrite(uState, 8, vec4(eye, 1));
-      storageWrite(uState, 9, vec4(at, 0));
+      // The camera's target, and in the spare word beside it, whether the title
+      // card is up. The road reads that word to know whether to cast the
+      // unicorn's shadow — see track.shader.ts. It rides here rather than in a
+      // uniform of its own because the road already binds this buffer and a
+      // uniform would have to be plumbed through the CPU every frame to say one
+      // thing the GPU already knows.
+      storageWrite(uState, 9, vec4(at, uTitle));
       storageWrite(uState, 10, vec4(camUp, 0));
       // The spare word on the course direction carries how far along the road the
       // unicorn is, in the units the track shader draws in, so the model can be
@@ -661,40 +737,6 @@ export const Physics = shader({
       storageWrite(uState, 11, vec4(courseDir, trackAlong));
       storageWrite(uState, 12, vec4(headingDir, 0));
 
-      // The falling star's arc, aimed by the camera once and then left in the world.
-      //
-      // The sky shader used to build this arc every frame from wherever the camera
-      // was pointing at that moment, which is why the star turned with the player:
-      // it was never in the world at all, it was painted on the inside of the view.
-      // Aiming it is still the camera's job — a star on a fixed compass bearing is
-      // only seen when the player happens to face it, and on a road that is always
-      // turning that was almost never. So it is aimed once, on the frame it lights,
-      // and held in world space for the rest of its flight. Placed by the view, then
-      // left behind by it.
-      //
-      // The slot arithmetic mirrors the sky shader, which owns the star's shape:
-      // same 7.5 second block, same per-slot offset, so "has it started yet" is the
-      // same question answered the same way in both places. If one changes the other
-      // has to follow.
-      const beat = uTime / 7.5;
-      const slotIx = floor(beat);
-      const begin = mix(fract(sin(slotIx * 33.71) * 12345.678) * 2.4, 0.8, step(slotIx, 0.5));
-      const armed = storageRead(uState, 13);
-      // Fire on the frame the star lights, once per slot. The spare word carries the
-      // slot the stored arc belongs to, offset by one so that a zeroed buffer reads
-      // as "nothing armed yet" rather than as "slot zero is already done" — which
-      // would have cost the opening star, the one the player is guaranteed to see.
-      const fire = step(begin, fract(beat) * 7.5) * (1 - step(abs(armed.w - slotIx - 1), 0.5));
-      // Enough vertical scatter that consecutive stars do not trace one groove.
-      const wander = fract(sin(slotIx * 91.7) * 43758.5453) * 0.22 - 0.11;
-      // zAxis runs from the target back to the eye, so forward is its negation.
-      const gaze = vec3(0, 0, 0).sub(zAxis);
-      // A 64 degree sweep, entering high on the left and leaving lower on the right
-      // — it is a falling star, so it has to lose height as it crosses.
-      const enterDir = normalize(gaze.sub(xAxis.scale(0.62)).add(yAxis.scale(0.58 + wander)));
-      const leaveDir = normalize(gaze.add(xAxis.scale(0.62)).add(yAxis.scale(0.46 + wander)));
-      storageWrite(uState, 13, vec4(mix(armed.xyz, enterDir, fire), mix(armed.w, slotIx + 1, fire)));
-      storageWrite(uState, 14, vec4(mix(storageRead(uState, 14).xyz, leaveDir, fire), 0));
     }
   },
 });

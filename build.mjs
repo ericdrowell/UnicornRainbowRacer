@@ -58,22 +58,22 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
     process.exit(1);
   }
 }
-// The inspector is appended only for `npm run debug`, so it cannot creep into a
-// release: the file simply is not in the program that gets minified.
-const sources = ['dist/brometal.js', 'dist/shaders.js', 'src/mesh.js', 'src/circuits.js', 'src/game.js'];
-if (process.env.DEBUG) sources.push('src/debug.js');
-let combined = sources
-  .map((f) => readFileSync(join(root, f), 'utf8'))
-  .join('\n');
-
-// Sound. Three pieces that only make sense together, so they are assembled here
-// rather than listed above with the rest.
+// ── One program ─────────────────────────────────────────────────────────────
+// Runtime, shaders, data, sound, then the game.
+//
+// **The sound has to come before game.js and that is not cosmetic.** The songs
+// arrive as `const RACE_SONG = {...}`, and game.js reads them at the top level
+// while it renders them — a const referenced before its own declaration line has
+// run is a ReferenceError, not a hoist. They used to sit after game.js and it
+// worked only because the code using them lived in a src/music.js appended after
+// them; that file was a wrapper around four functions and has been folded into
+// game.js, which is what forced this order.
 //
 // sonantx ships as an ES module and everything here is concatenated into one
 // plain script, so its two `export` keywords are stripped — nothing else about
 // the file needs touching, it has no imports and no other module syntax. The
-// song is JSON on disk, which is the format Sonant-X Live exports and therefore
-// the format worth keeping it in; it becomes a literal on the way in.
+// songs are JSON on disk, which is the format Sonant-X Live exports and
+// therefore the format worth keeping them in; they become literals on the way in.
 //
 // ZzFX is NOT inlined. It was, for the jump sound, and when jump went so did the
 // last live `zzfx(...)` call in the project — src/soundEffects.js is now entirely
@@ -85,11 +85,24 @@ let combined = sources
 //   readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),
 //
 // Music is unaffected — that is sonantx, and it has nothing to do with ZzFX.
-combined += '\n' + [
-  readFileSync(join(root, 'node_modules', 'sonantx', 'sonantx.js'), 'utf8').replace(/^export /gm, ''),
-  `const RACE_SONG = ${readFileSync(join(root, 'src', 'songs', 'dizzy-beats.json'), 'utf8')};`,
-  readFileSync(join(root, 'src', 'music.js'), 'utf8'),
-].join('\n');
+const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
+const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
+
+// The inspector is appended only for `npm run debug`, so it cannot creep into a
+// release: the file simply is not in the program that gets minified.
+const parts = [
+  read('dist', 'brometal.js'),
+  read('dist', 'shaders.js'),
+  read('src', 'mesh.js'),
+  read('src', 'circuits.js'),
+  read('src', 'font.js'),
+  read('node_modules', 'sonantx', 'sonantx.js').replace(/^export /gm, ''),
+  song(['RACE_SONG', 'dizzy-beats.json']),
+  song(['MENU_SONG', 'dizzy-land-beginning.json']),
+  read('src', 'game.js'),
+];
+if (process.env.DEBUG) parts.push(read('src', 'debug.js'));
+let combined = parts.join('\n');
 
 // Two changes the inspector needs and the release must never have. Flying the
 // camera inside the model shows nothing with back faces culled — the inside of
