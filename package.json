@@ -5,12 +5,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs",
     "dev": "node build.mjs && npx serve dist",
+    "build": "node build.mjs",
+    "prod": "PACK=1 node build.mjs",
+    "search": "PACK=search node build.mjs",
     "debug": "DEBUG=1 node build.mjs && open dist/debug.html"
   },
   "devDependencies": {
     "brometal": "^0.18.0",
+    "roadroller": "^2.1.0",
     "terser": "^5.31.0"
   },
   "dependencies": {

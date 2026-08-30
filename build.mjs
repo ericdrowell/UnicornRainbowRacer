@@ -6,6 +6,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, rmSync, statSync, existsSync } from 'node:fs';
+import { Packer } from 'roadroller';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -146,7 +147,53 @@ run('npx', [
   '-o', outPath,
 ]);
 
-// 4. Inline the script into the page. One file rather than two: a js13k entry
+// 4. Pack it. This is the single largest saving in the whole build and it costs
+// no features: 3.9 kB off a 20.8 kB entry when it went in.
+//
+// **Terser and this are not doing the same job.** Terser rewrites the program;
+// RoadRoller compresses it, with a context-mixing model far stronger than the
+// DEFLATE inside the zip, and ships a decoder that unpacks it at load. The zip
+// then has almost nothing left to find, which is the point — the 13 kB is
+// measured on the archive.
+//
+// The parameters below were found by RoadRoller's own search (`-O2`, about fifty
+// seconds) and are cached here because re-searching every build is fifty seconds
+// to rediscover the same twelve numbers. They drift slowly as the code changes:
+// `PACK=search npm run build` runs the search again and prints what it found, and
+// is worth doing after any large change. Everything else is `optimize()` picking
+// its defaults, which is measurably worse than these.
+//
+// **Off by default, and that is the point of having two builds.** `npm run dev`
+// and `npm run build` skip it; `npm run prod` is the one that packs and therefore
+// the only one whose number means anything. Not for speed — with the parameters
+// cached this costs about a second — but for debuggability: a packed page is a
+// decoder and a blob, so an exception in it reports as `eval` at no line number,
+// which is a bad trade while you are still changing things. The inspector build
+// never packs.
+const PACK = process.env.PACK ?? '0';
+const CACHED = {
+  numAbbreviations: 31,
+  recipLearningRate: 1000,
+  modelMaxCount: 4,
+  modelRecipBaseCount: 42,
+  sparseSelectors: [0, 1, 2, 3, 7, 13, 15, 42, 123, 195, 304, 401],
+};
+
+let script = readFileSync(outPath, 'utf8');
+if (!process.env.DEBUG && PACK !== '0') {
+  const packer = new Packer([{ data: script, type: 'js', action: 'eval' }], CACHED);
+  if (PACK === 'search') {
+    console.log('  packing      searching for parameters, this takes about a minute');
+    const found = await packer.optimize(2);
+    console.log(`  packing      ${JSON.stringify(found.best)}`);
+  }
+  const { firstLine, secondLine } = packer.makeDecoder();
+  script = `${firstLine}\n${secondLine}`;
+} else if (!process.env.DEBUG) {
+  console.log('  packing      skipped — run `npm run prod` for the shippable number');
+}
+
+// 5. Inline the script into the page. One file rather than two: a js13k entry
 // is judged as a zip, and every extra member carries its own header and central
 // directory record — so two files cost more than the same bytes in one. It also
 // makes the result openable straight from disk, since file:// is a secure
@@ -155,7 +202,7 @@ const page = readFileSync(join(root, 'src', 'index.html'), 'utf8').replace(
   /<script src=g\.js><\/script>/,
   // Escaping the closing tag guards the case where minified code contains it
   // inside a string, which would end the block early and truncate the game.
-  () => `<script>${readFileSync(outPath, 'utf8').replace(/<\/script/gi, '<\\/script')}</script>`,
+  () => `<script>${script.replace(/<\/script/gi, '<\\/script')}</script>`,
 );
 writeFileSync(join(dist, OUT), page);
 
@@ -170,10 +217,35 @@ if (process.env.DEBUG) {
   process.exit(0);
 }
 
-// 5. Zip — js13k measures the archive, not the files.
+// 6. Zip — js13k measures the archive, not the files.
+//
+// **Then recompress it, because `zip -9` is not the best DEFLATE there is.**
+// advzip re-encodes the same stream with Zopfli, which searches much harder for
+// the cheapest way to say the same bytes; the archive still unzips anywhere,
+// since Zopfli emits ordinary DEFLATE. Worth 390 bytes here, which is the
+// difference between two features and one.
+//
+// It also normalises the headers on its way through, and that quietly collects a
+// second saving. Info-ZIP on macOS and Linux writes Unix extra fields into every
+// entry — a high-resolution timestamp and a uid/gid pair, 24 bytes a header —
+// that a zip written on Windows simply does not have. `zip -X` suppresses them
+// and is the usual advice; advzip drops them regardless, so the flag is
+// redundant once this runs. Measured both ways: identical to the byte.
+//
+// Optional on purpose. It is `brew install advancecomp` (or apt advancecomp) and
+// a machine without it still produces a valid, submittable archive — 390 bytes
+// larger, and the build says so rather than quietly reporting a number that was
+// never going to be the real one.
 let zipBytes = null;
+let packedZip = false;
 try {
   run('zip', ['-9', '-q', '-j', 'game.zip', 'index.html'], { cwd: dist });
+  try {
+    run('advzip', ['-z', '-4', '-i', '200', '-q', 'game.zip'], { cwd: dist });
+    packedZip = true;
+  } catch {
+    // No advzip. Not an error — the plain archive is still the deliverable.
+  }
   zipBytes = statSync(join(dist, 'game.zip')).size;
 } catch {
   // No zip binary (Windows, minimal CI image). Fall back to the raw total so
@@ -197,7 +269,9 @@ rmSync(outPath, { force: true });
 
 const pct = ((measured / LIMIT) * 100).toFixed(1);
 console.log(`  index.html   ${jsBytes} bytes`);
-if (zipBytes !== null) console.log(`  game.zip     ${zipBytes} bytes`);
+if (zipBytes !== null) {
+  console.log(`  game.zip     ${zipBytes} bytes${packedZip ? '' : '  (no advzip — about 390 more than it needs to be)'}`);
+}
 console.log(`  budget       ${measured} / ${LIMIT}  (${pct}%)`);
 
 // Reported, never enforced. The gate used to fail the build, which sounds like
