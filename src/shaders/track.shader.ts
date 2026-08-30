@@ -5,10 +5,14 @@ import {
   sin,
   cos,
   abs,
+  dot,
   floor,
   fract,
+  length,
+  max,
   mix,
   mod,
+  normalize,
   pow,
   smoothstep,
   storageRead,
@@ -207,30 +211,48 @@ export const Track = shader({
     // the silhouette against black space, and it was a hairline visible only in
     // the far distance where perspective stacked it up. Widened to a fifth of
     // the half-width and driven to 3.4, it is a light source with a body to it.
-    // ── The unicorn's shadow ─────────────────────────────────────────────
-    // A blob directly beneath the animal, not a projection of the moon. Kart
+    // ── The unicorns' shadows ────────────────────────────────────────────
+    // A blob directly beneath each animal, not a projection of the moon. Kart
     // games have done it this way forever and it is not a shortcut they settled
     // for: a shadow that tracks the light slides out from under the thing casting
     // it, and the moment it does, it stops reading as contact. What the player
-    // needs from this shadow is to know where on the road the unicorn is standing
+    // needs from this shadow is to know where on the road a unicorn is standing
     // — especially in the air off a crest — and only a blob pinned under the feet
     // answers that.
     //
-    // Distance is measured in the road's own plane, so a shadow on a banked or
-    // climbing stretch stays a disc lying on the surface instead of the ellipse a
-    // world-space distance would smear it into.
-    const body = storageRead(uState, 0).xyz;
-    const up = storageRead(uState, 2).xyz;
-    const flat = vWorld.sub(body);
-    const onPlane = flat.sub(up.scale(dot(flat, up)));
+    // **The whole field casts, not only the player.** The rivals had none, and
+    // the cue a shadow gives is worth more on them than on the player: a unicorn
+    // seen from behind at speed has nothing else pinning it to the surface, so
+    // without one it hovers over the road and reads as a decal on the camera
+    // rather than as something out in front of you on the same ribbon.
     //
+    // Each caster is read from its own racer slot — position from the first,
+    // road normal from the third — which is the same layout the physics stage
+    // writes and the unicorn stage draws from. The bound is the roster written
+    // down a third time; the compiler works from this source, so it has to be a
+    // literal here as it is in physics.shader.ts. Change one and change all.
+    //
+    // Distance is measured in the caster's own road plane, so a shadow on a
+    // banked or climbing stretch stays a disc lying on the surface instead of the
+    // ellipse a world-space distance would smear it into.
+    let dark = 0;
+    for (let j = 0; j < 10; j += 1) {
+      const body = storageRead(uState, 16 + j * 5).xyz;
+      const up = storageRead(uState, 16 + j * 5 + 2).xyz;
+      const flat = vWorld.sub(body);
+      const onPlane = flat.sub(up.scale(dot(flat, up)));
+      // The strongest caster wins rather than the sum of them. Two unicorns
+      // running abreast overlap their blobs in the gap between them, and adding
+      // there lays a dark seam across the road exactly where the surface is in
+      // plain view between two bodies at the same height above it.
+      dark = max(dark, 1 - smoothstep(0.35, 1.1, length(onPlane)));
+    }
     // Switched off with the unicorns. On the title screen the field is not drawn
-    // at all, and a shadow is cast by a body — left on, this one sat on the road
-    // under a unicorn that was not there, which reads as a smudge rather than as
+    // at all, and a shadow is cast by a body — left on, these sat on the road
+    // under unicorns that were not there, which reads as a smudge rather than as
     // a shadow. The flag comes from the state buffer's spare word rather than a
     // uniform, because this stage already binds that buffer.
-    const shade =
-      (1 - smoothstep(0.35, 1.1, length(onPlane))) * 0.5 * (1 - storageRead(uState, 9).w);
+    const shade = dark * 0.5 * (1 - storageRead(uState, 9).w);
 
     // ── The reflection ────────────────────────────────────────────────────
     // Sampled at this fragment's own place on screen, which is where the mirrored

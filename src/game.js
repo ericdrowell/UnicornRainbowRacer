@@ -140,8 +140,13 @@ const UNICORNS = [
   },
 ];
 
-/** Who the player rides. Change this line to change unicorn. */
-const SELECTED_UNICORN = 1;
+/**
+ * Who the player rides before anything is chosen — and so which seat the select
+ * screen's carousel opens on. First in the roster, because the screen has to
+ * open on the top of the list for the arrows to read as moving through it; any
+ * other index opens mid-list and looks like the ring has already been turned.
+ */
+const SELECTED_UNICORN = 0;
 
 const SKIN = UNICORNS[SELECTED_UNICORN];
 
