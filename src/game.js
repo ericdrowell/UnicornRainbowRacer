@@ -81,7 +81,7 @@ const LEGS = [
 
 const UNICORNS = [
   { name: 'Starlight', body: [1, 0.97, 0.99], mane: 0 },
-  { name: 'Ember', body: [1, 0.72, 0.42], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
+  { name: 'Ember', body: [1, 0.55, 0.15], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
   { name: 'Midnight', body: [0.1, 0.09, 0.15], horn: [1, 1, 1], mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58] },
   { name: 'Bubble Gum', body: [1, 0.8, 0.88], mane: [0.72, 0.09, 0.38, 0.88, 0.22, 0.52] },
   {
