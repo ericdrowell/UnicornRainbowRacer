@@ -318,21 +318,12 @@ const TRACK_WIDTH = 27;
  */
 const SELECTED_CIRCUIT = 0;
 
-// Unpacked into triples once, here, because every loop below wants a point
-// rather than three numbers — and because doing it here means the literal above
-// never has to carry the brackets. A point list is the biggest thing in this
-// file and `[484, 0, 0], ` is four characters of punctuation for three numbers.
-//
-// The literal holds *steps*, not places: each triple is added to the one before,
-// starting from the origin. See circuits.js. The running sum is over integers,
-// so a hundred and forty-two additions reproduce the original coordinates
-// exactly rather than approximately.
-const TRACK = [];
-const STEPS = CIRCUITS[SELECTED_CIRCUIT].points;
-for (let i = 0; i < STEPS.length; i += 3) {
-  const at = TRACK[TRACK.length - 1] || [0, 0, 0];
-  TRACK.push([at[0] + STEPS[i], at[1] + STEPS[i + 1], at[2] + STEPS[i + 2]]);
-}
+// The course, as a list of places the road passes through. Built from a seed
+// rather than read from a literal — see src/circuits.js — which is why there is
+// no unpacking left here: the generator hands back triples in absolute
+// coordinates, where the authored file held a flat run of steps that had to be
+// summed. Both the unpacking and the running sum went with it.
+const TRACK = CIRCUITS[SELECTED_CIRCUIT];
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -908,6 +899,10 @@ function go(next) {
   // countdown ran with 1ST on screen until the first readback landed and
   // corrected it — the one moment in the race when the number is a promise
   // rather than a report.
+  // The flag itself, held for two seconds. Only from the grid: unpausing is also
+  // a way into RACE_STATE, and a race resuming mid-corner should not announce
+  // itself as if it were starting.
+  if (next === RACE_STATE && SCREEN === FLAG_STATE) flash = 2;
   if (next === FLAG_STATE) {
     ROUND.fill(0);
     DONE.fill(0);
@@ -953,6 +948,14 @@ const playReady = shot(READY_SIGNAL, 2);
 // is behind on, in order, however late it notices.
 let lights = 0;
 let rung = 0;
+/**
+ * Seconds of "GO!" left on screen.
+ *
+ * Set when the flag drops and counted down like everything else, rather than
+ * compared against a timestamp: pausing stops the clock, and a player who pauses
+ * two frames into a race should come back to the same two seconds of it.
+ */
+let flash = 0;
 const SIGNALS = 4;
 
 // The grid keeps the menu song. The race song arriving *with* the flag is what
@@ -1292,6 +1295,17 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // ratio is what matters, so the type stays the size it looks on screen however
   // long the longest caption gets.
   const TYPE = CARD_W / 116;
+  /**
+   * The countdown, and nothing else.
+   *
+   * **Far wider than the screen, on purpose.** A caption's half-width sizes its
+   * glyphs, and these rows are one and three characters long in an atlas
+   * forty-three wide — so nearly all of the quad is empty padding either side of
+   * the ink, and only the middle of it is ever on screen. Sizing this off the
+   * type scale like everything else would give a numeral the height of a
+   * caption; the countdown wants to be a third of the display.
+   */
+  const HUGE = 5.2 * TYPE;
   const EXTRA_LARGE = TYPE;
   const LARGE = 0.62 * TYPE;
   const MEDIUM = 0.42 * TYPE;
@@ -1300,6 +1314,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const NAME_ROW = LINES.length - UNICORNS.length;
   /** The row of the numeral "1"; the other nine follow it. */
   const PLACE_ROW = NAME_ROW - 16;
+  /** "CIRCUIT 1 / 2" and its siblings, one a circuit, just above the numerals. */
+  const CIRCUIT_ROW = PLACE_ROW - CIRCUITS.length;
+  /** The countdown's own glyphs: 3, 2, 1, GO!. */
+  const COUNT_ROW = 12;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
   const SUFFIX_ROW = NAME_ROW - 6;
   /** The row of "LAP 1/2"; one row a lap. */
@@ -1326,13 +1344,22 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // caption would run straight through the gaps between its words.
       if (g < 1) continue;
       const x0 = left + i * CELL;
+      // No plate on the countdown. Every other caption is a line of small text
+      // over a moving scene and wants the box behind it; these four are drawn at
+      // five times the size, and the plate scales with the caption — a "3" came
+      // with a dark panel a third of the screen wide, and "GO!" with a band
+      // across the middle of the race it was announcing. At that size the glyph
+      // is its own contrast.
+      const plated = row < COUNT_ROW || row > COUNT_ROW + 3;
       // The plate first, so the letter overwrites the middle of it. Five wide
       // and seven tall against a cell that is four by seven, which means the
       // plate of one letter overlaps its neighbour's by a pixel: adjacent
       // letters merge into one continuous bar behind the word, which is the
       // point. A per-letter box with hairline gaps would read as stripes.
-      for (let y = 0; y < ROW_H; y++) {
-        for (let x = 0; x < 5; x++) put(row, Math.max(x0 + x - 1, 0), y, 0);
+      if (plated) {
+        for (let y = 0; y < ROW_H; y++) {
+          for (let x = 0; x < 5; x++) put(row, Math.max(x0 + x - 1, 0), y, 0);
+        }
       }
       for (let y = 0; y < 5; y++) {
         const bits = parseInt(FONT[g * 5 + y], 8);
@@ -1362,16 +1389,16 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     zwrite: 0,
   });
   bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
-  // Six is the most any screen asks for: the select screen draws a banner, a
-  // name, two instructions and the arrows, with the title card still fading over
-  // the top of them; the grid draws two instructions over a place, a suffix and
-  // a lap. Allocated once and written into every frame rather than rebuilt —
+  // Eight is the most any screen asks for, and it is the grid: a place, a
+  // suffix, a lap, a circuit title, a countdown glyph and two instructions —
+  // seven — with the title card still fading over the top of them if a player
+  // went from the title to the grid in under a third of a second. Allocated once and written into every frame rather than rebuilt —
   // bmAttr creates a fresh GPU buffer each call, which per frame is a leak
   // rather than an upload.
   //
   // Too small is not a slow frame, it is `Float32Array.set` throwing `offset is
   // out of bounds` from inside the render loop, and a black screen.
-  const CAPTIONS = 6;
+  const CAPTIONS = 8;
   const cells = new Float32Array(CAPTIONS * 4);
   bmAttr(text, 1, cells);
   const cellBuf = text.b[1];
@@ -1492,6 +1519,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // The pink card lifts over about a third of a second rather than blinking
     // out, revealing the world that has been rendering behind it all along.
     PINK = SCREEN === TITLE_STATE ? 1 : Math.max(PINK - elapsed * 3, 0);
+    flash = Math.max(flash - elapsed, 0);
 
     // A zero step is the pause. The stage still runs — the camera has to keep
     // answering, since the window can be resized while paused and the aspect
@@ -1664,8 +1692,21 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(3, -0.74, MEDIUM, 1);
       say(4, -0.9, MEDIUM, 1);
     } else if (SCREEN === FLAG_STATE) {
+      // Between the two corner readouts rather than over either: thirteen
+      // characters at LARGE reach about a quarter of the way out from the
+      // middle, and the lap and the place stop at 0.63 and 0.69.
+      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.88, LARGE, 1);
+      // Three, two, one — one glyph a signal, and `rung` is already counting
+      // them for the sound. Nothing on the first frame, when `rung` is zero:
+      // there is a beat of quiet before the first tone, and a "3" hanging there
+      // through it would be a countdown that starts early.
+      if (rung) say(COUNT_ROW + rung - 1, 0.2, HUGE, 1);
       say(10, -0.74, MEDIUM, 1);
       say(11, -0.9, MEDIUM, 1);
+    } else if (SCREEN === RACE_STATE && flash) {
+      // Fading over the last second of the two, which is `min(flash, 1)` and
+      // needs no second timer.
+      say(COUNT_ROW + 3, 0.2, HUGE, Math.min(flash, 1));
     } else if (SCREEN === PAUSE_STATE) {
       heading(5, 6);
     } else if (SCREEN === WIN_STATE) {

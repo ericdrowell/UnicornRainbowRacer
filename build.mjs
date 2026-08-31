@@ -116,8 +116,9 @@ const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 // Four orderings are load-bearing and a search must not break them:
 //   - game.js last: it is the only file that *runs* at load rather than
 //     declaring things, and it touches all of the others.
-//   - unicorns before text: text.js spells the roster's names into the atlas at
-//     module scope, so UNICORNS has to exist by then.
+//   - unicorns and circuits before text: text.js spells the roster's names and
+//     one caption per circuit into the atlas at module scope, so both lists have
+//     to exist by then.
 //   - both songs before soundEffects: an effect names the song it borrows its
 //     instrument from, and that is a const initialiser, not a call.
 //   - everything before game.js, obviously, but nothing else here evaluates
@@ -128,12 +129,12 @@ const parts = [
   read('src', 'mesh.js'),
   song(['RACE_SONG', 'dizzy-beats.json']),
   read('src', 'unicorns.js'),
+  read('src', 'circuits.js'),
   read('src', 'text.js'),
   read('src', 'sonantx-custom.js'),
   read('dist', 'brometal.js'),
   read('dist', 'shaders.js'),
   read('src', 'soundEffects.js'),
-  read('src', 'circuits.js'),
   read('src', 'game.js'),
 ];
 if (process.env.DEBUG) parts.push(read('src', 'debug.js'));

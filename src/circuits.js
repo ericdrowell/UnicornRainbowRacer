@@ -1,76 +1,172 @@
-// The circuits, and nothing else. A data file, the way src/mesh.js is a data
-// file: the build concatenates it ahead of game.js, which picks one and turns it
-// into a road.
+// The circuits, and nothing else. A data file the way src/mesh.js is a data
+// file — except that it holds no data: it holds a seed and the machine that
+// turns one into a road.
+//
+// **A track is a number now.** The circuit this replaced was 142 hand-placed
+// control points, delta-encoded, and it cost 252 zipped bytes. This costs about
+// 110, and every *further* track costs two — a seed — where another authored one
+// would have cost another 250. That is the whole argument: the saving on the
+// first track is small, and the saving on the second and third is the feature.
+//
+// **Deterministic, and that is the point.** The same seed builds the same road
+// down to the last decimal on every machine and every run: an integer LCG and
+// arithmetic on doubles, with nothing read from the clock or the platform. A
+// player learns a track and it stays learned.
+//
+// **Seeds are chosen here, not discovered by a player.** That is what makes a
+// generator safe to ship. Generate a hundred, drive them, keep the ones that are
+// worth racing; a bad one never reaches anybody. Everything below is written so
+// that a *bad* seed is a boring track rather than a broken one — see the two
+// guarantees in `circuit`.
 
 /**
- * The circuits: each one a list of places the road passes through, in order,
- * with the last joining back to the first.
+ * A deterministic stream of numbers in 0..1 from one integer.
  *
- * Flat — x, y, z, x, y, z — rather than a list of triples. Three numbers is a
- * point and the reader below knows it, which is worth doing here and almost
- * nowhere else: this is by a distance the largest literal in the game, and the
- * brackets and commas around each triple cost more than the coordinates inside
- * them.
- *
- * **And they are steps, not places.** Each triple is how far the road moves from
- * the previous point, starting from the origin, so the first triple is the first
- * point and every one after it is a difference. Absolute coordinates run to
- * three digits and wander over a 900-unit course; the steps between them are all
- * within thirty of zero, which is one or two digits and a much narrower set of
- * values for the packer to model. Worth 203 bytes, and the reconstruction is
- * exact — these are integers, so the running sum cannot drift.
- *
- * The cost is that you can no longer read a position off this list, and moving
- * one point shifts every point after it. Editing is easier done by decoding to
- * absolutes, moving what you want, and re-encoding.
- *
- * A Catmull-Rom spline through them is what makes this a usable authoring
- * format — the curve *hits* every point rather than being pulled vaguely
- * towards it, so a point dropped at a corner apex is where the road actually
- * goes, and a point moved ten units moves the road ten units.
- *
- * **The loop is in here too, as points.** It is the run of tightly-spaced
- * entries around the 200 mark: the road climbs, goes over inverted, and comes
- * back down beside where it went up. Two things about it are worth knowing
- * before editing them.
- *
- * A loop has to double back on itself — a road is inverted only where its
- * tangent has swung past vertical, and a path whose forward motion never
- * reverses never gets there — so the climbing branch and the descending branch
- * want the same piece of air. They miss each other by 37 units because the road
- * steps sideways on the way in and crosses back at the crown. Squeeze that out
- * and the two branches interpenetrate, which the ribbon shows and the physics
- * cannot resolve at all: it finds the surface under a unicorn by nearest ring,
- * and would pick the wrong branch every time somebody drove in.
- *
- * The points are close together through it for the same reason they are close
- * together in a hairpin — a spline needs them where the curvature is. Thinning
- * them out flattens the loop into a bump.
- *
- * The road is level across the start line, and wants to stay that way: ten
- * unicorns are placed on a grid stretching back from it, and a slope there
- * means the race begins with the whole field sliding backwards.
+ * The oldest LCG there is. It is not a good generator — the low bits are
+ * famously poor — and for shaping a race track it does not need to be one: the
+ * numbers only pick radii and phases, and any of them look like a track.
  */
-const CIRCUITS = [{
-  points: [
-      484, 0, 0, -12, 0, 28, -14, 1, 26, -17, 2, 25, -12, 1, 18, -5, 2, 17, -6, 3, 29, -6, 2, 13,
-      -6, 4, 10, -4, 5, 7, -4, 6, 6, -4, 9, 5, -3, 9, 2, -2, 10, 1, 0, 7, -2, -1, 8, -3, 0, 6,
-      -4, 1, 5, -6, 1, 4, -8, 1, 1, -5, 1, 0, -6, 1, -2, -6, 0, -3, -5, 0, -5, -6, -1, -6, -5,
-      -1, -8, -3, -2, -7, -1, -2, -8, 1, -3, -9, 3, -4, -8, 5, -4, -6, 7, -4, -4, 8, -5, -3, 11,
-      -4, 0, 11, -3, 2, 11, -2, 5, 30, -3, 4, 21, -4, 1, 9, -11, 3, 14, -20, 5, 16, -17, 3, 9,
-      -17, 3, 4, -28, 4, 0, -29, 3, -5, -28, 3, -10, -27, 3, -14, -25, 2, -16, -24, 3, -18, -22,
-      2, -21, -21, 2, -21, -20, 2, -22, -19, 2, -23, -8, 1, -7, -5, 1, -2, -2, 0, -1, -2, 0, 1,
-      -2, 1, 0, -2, 0, 3, -6, 0, 9, -9, 1, 28, -10, 0, 28, -12, 0, 28, -13, 0, 27, -17, -1, 25,
-      -18, 0, 24, -20, 0, 22, -23, -1, 19, -26, 0, 16, -27, -1, 12, -29, 0, 8, -30, 0, 4, -30, 0,
-      1, -29, 0, -4, -30, 0, -6, -28, 1, -9, -27, 0, -13, -25, 1, -17, -23, 1, -20, -18, 1, -23,
-      -14, 1, -27, -9, 1, -28, -3, 1, -30, -1, 1, -30, 4, 1, -30, 5, 0, -29, 7, 1, -30, 7, 1,
-      -29, 5, 0, -29, 6, 0, -30, 6, 0, -29, 9, -1, -29, 13, 0, -27, 12, -1, -16, 23, -1, -19, 27,
-      -1, -14, 28, -1, -8, 30, -1, -5, 30, -1, -2, 30, -1, 1, 30, -1, -1, 19, 0, -2, 6, -1, -2,
-      4, 0, -4, 4, 0, -5, 2, -1, -8, 3, 0, -28, -2, 0, -29, 0, 0, -30, 2, 0, -30, 4, 0, -30, 8,
-      1, -29, 14, 0, -27, 12, 1, -15, 11, 0, -9, 15, 0, -7, 15, 0, -3, 16, 1, 0, 15, 0, 4, 27, 0,
-      13, 24, 0, 18, 21, 0, 22, 21, -1, 22, 20, -2, 21, 24, -2, 18, 22, -3, 10, 28, -4, 7, 29,
-      -5, 6, 29, -5, 7, 28, -6, 8, 28, -6, 10, 27, -5, 12, 27, -5, 12, 27, -5, 13, 26, -4, 13,
-      26, -4, 15, 24, -4, 18, 23, -3, 19, 19, -3, 23, 15, -2, 26, 8, -1, 27, 2, -1, 24, -3, -1,
-      29
-    ],
-}];
+const seeded = (n) => () => ((n = (n * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+/**
+ * A closed circuit from a seed: a list of places the road passes through, in
+ * order, with the last joining back to the first.
+ *
+ * Absolute coordinates, not the steps the authored file used to hold. That
+ * encoding existed to shrink a literal — small numbers with a narrow spread
+ * model better than three-digit ones — and there is no literal any more, so the
+ * running sum that decoded it is gone from game.js as well.
+ *
+ * ── Two guarantees ──────────────────────────────────────────────────────────
+ *
+ * **The ground path cannot cross itself.** It is drawn in polar form: an angle
+ * that only ever increases, and a radius that stays positive. A shape like that
+ * is star-shaped about the origin and has no way to intersect itself, whatever
+ * the seed says. This matters more than it looks: the physics finds the surface
+ * under a unicorn by nearest ring, so two pieces of road sharing the same air is
+ * not a graphical glitch, it is a car falling through the world.
+ *
+ * **And the road is level where the grid stands.** The elevation is faded out
+ * across the first and last few points, because ten unicorns are placed on a
+ * grid stretching back from the start line and a slope there means the race
+ * opens with the whole field sliding backwards.
+ */
+const circuit = (seed) => {
+  const rnd = seeded(seed);
+  // Six harmonics for the radius and six for the height, each with its own
+  // phase. Higher harmonics get proportionally smaller amplitudes, which is what
+  // keeps the result a race track rather than a sawblade: the first term is the
+  // long sweep of the circuit, and the sixth is a kink inside one corner.
+  const shape = [];
+  for (let k = 0; k < 12; k++) shape.push(rnd());
+
+  // ── Where the loops go ──────────────────────────────────────────────────
+  // Between two and five, spread around the lap and never within a few points
+  // of the start line. Chosen before the path is walked so the walk can simply
+  // ask "is there a loop here".
+  const RUNGS = 96;
+  const loops = {};
+  const count = 2 + Math.floor(rnd() * 4);
+  for (let k = 0; k < count; k++) {
+    // Spaced by construction rather than by rejection: each loop lands in its
+    // own equal slice of the lap, so two can never end up on top of each other
+    // however the seed falls.
+    const slot = 6 + Math.floor(((k + rnd()) * (RUNGS - 14)) / count);
+    // How big the loop is, and how wide the corkscrew opens as it goes over.
+    //
+    // **The width has a floor, and it is a safety floor rather than a taste
+    // one.** It is what holds the climbing branch off the descending one; at 18
+    // the two came within 25 metres on a road 27 wide, and at 34 they clear by
+    // 40 — wider than the authored circuit this replaced managed. The ceiling is
+    // taste: past about 50 the loop opens out into a lazy spiral and stops
+    // reading as a loop at all, and by 60 the road never goes inverted.
+    loops[slot] = [34 + rnd() * 26, 34 + rnd() * 14];
+  }
+
+  const ground = (i) => {
+    const a = ((i % RUNGS) / RUNGS) * Math.PI * 2;
+    let rad = 430;
+    let y = 0;
+    for (let k = 0; k < 6; k++) {
+      rad += Math.sin(a * (k + 1) + shape[k] * 6.28318) * (86 / (k + 1));
+      y += Math.sin(a * (k + 1) + shape[k + 6] * 6.28318) * (30 / (k + 1));
+    }
+    // The start line, flattened. `flat` is 0 for the first and last five points
+    // and 1 in the middle, eased so the road does not kink where it lands.
+    const e = Math.min((i % RUNGS) / 5, (RUNGS - (i % RUNGS)) / 5, 1);
+    return [Math.cos(a) * rad, y * e * e * (3 - 2 * e), Math.sin(a) * rad];
+  };
+
+  const points = [];
+  // ── Walking the lap ─────────────────────────────────────────────────────
+  // One ground point at a time, except where a loop stands up: a loop swallows
+  // SPAN of them, because its entry and its exit have to end up far enough apart
+  // that the two are unambiguously different pieces of road.
+  //
+  // **That distance is the whole safety argument, and it was got wrong first.**
+  // The first version put the loop between one pair of ground points, about 28
+  // metres. Measured, the climbing branch and the descending branch came within
+  // 9 metres of each other near the bottom — on a road 27 wide, which is two
+  // surfaces sharing the same air. The physics finds the ground under a unicorn
+  // by nearest ring and would have picked whichever branch happened to be
+  // closer. Over three ground points the same measurement is comfortably wider
+  // than the road, which is where the authored circuit this replaced sat.
+  const SPAN = 3;
+  for (let i = 0; i < RUNGS; ) {
+    const here = ground(i);
+    points.push(here);
+    const loop = loops[i];
+    if (!loop) {
+      i += 1;
+      continue;
+    }
+
+    // ── Standing one loop up ────────────────────────────────────────────────
+    // A vertical circle in the plane of travel, walked from the road and back to
+    // it, replacing the run to the point SPAN ahead.
+    //
+    //     forward = R sin θ + A θ/2π      up = R (1 - cos θ)
+    //
+    // At θ = π the forward term is back to zero while the height is 2R: the road
+    // has doubled back over itself, which is the only way to be inverted. A path
+    // whose forward motion never reverses never gets there, however steeply it
+    // climbs — it is a hill, not a loop. The `A θ/2π` term is the drift along
+    // the track that carries the exit out to the far side.
+    //
+    // **The sideways term opens it into a corkscrew.** `W sin θ` pushes the
+    // climbing and descending branches apart — at any height they are `2W sin θ`
+    // apart — and returns to zero at both ends, so the loop rejoins the ground
+    // path exactly rather than leaving a lateral kink for the rest of the lap to
+    // absorb. A wider `W` is a lazier, more open loop.
+    const [R, W] = loop;
+    const next = ground(i + SPAN);
+    const away = [next[0] - here[0], next[1] - here[1], next[2] - here[2]];
+    const A = Math.hypot(away[0], away[1], away[2]);
+    const t = away.map((c) => c / A);
+    // Sideways is the tangent turned a quarter turn about world up. The loop
+    // stands in the vertical plane containing the direction of travel, so world
+    // up is the right up to use — the road is level here by construction
+    // everywhere except mid-slope, where the tilt is a few degrees.
+    const s = [-t[2], 0, t[0]];
+    const sl = Math.hypot(s[0], s[2]) || 1;
+    // Sixteen points around, because a spline needs them where the curvature is:
+    // this is the tightest thing on the course by a long way, and thinning them
+    // flattens the loop into a bump.
+    for (let k = 1; k < 16; k++) {
+      const th = (k / 16) * Math.PI * 2;
+      const f = R * Math.sin(th) + (A * th) / (Math.PI * 2);
+      const u = R * (1 - Math.cos(th));
+      const w = (W * Math.sin(th)) / sl;
+      points.push([
+        here[0] + t[0] * f + s[0] * w,
+        here[1] + t[1] * f + u,
+        here[2] + t[2] * f + s[2] * w,
+      ]);
+    }
+    i += SPAN;
+  }
+  return points;
+};
+
+/** The circuits this game ships, one seed each. */
+const CIRCUITS = [circuit(20260830)];

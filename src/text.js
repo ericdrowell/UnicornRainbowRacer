@@ -103,6 +103,16 @@ const SAYS = [
   // drops.
   'PRESS UP TO GO',                         // 10
   'PRESS LEFT AND RIGHT TO STEER',          // 11
+  // The countdown, and then the flag. One glyph a beat, drawn huge in the middle
+  // of the screen — see the note on sizing where game.js draws them.
+  //
+  // Separate rows from the place numerals further down, which are the same three
+  // characters. Those are padded to sit against the right-hand edge, and ink at
+  // the edge of its quad is exactly what a centred caption must not have.
+  '3',                                      // 12
+  '2',                                      // 13
+  '1',                                      // 14
+  'GO!',                                    // 15
 ];
 
 /**
@@ -125,6 +135,13 @@ const WIDE = 43;
 
 const LINES = [
   ...SAYS,
+  // Which circuit this is, one row each. Built from the roster of seeds rather
+  // than written out, so adding a track adds its own caption — and the "/ 2"
+  // on every one of them corrects itself, which a hand-written list would not.
+  //
+  // This is why circuits.js is concatenated ahead of this file: the count is
+  // read here, at module scope, not at some later call.
+  ...CIRCUITS.map((_, i) => `CIRCUIT ${i + 1} / ${CIRCUITS.length}`),
   // The running order, top right, in two pieces.
   //
   // **The number and its suffix are separate rows because they are different
