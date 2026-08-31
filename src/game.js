@@ -41,17 +41,6 @@ const MUSIC_ENABLED = true;
 // in the build, because the songs are `const` and a const referenced before its
 // declaration line has run is a ReferenceError, not a hoist.
 const MUSIC = MUSIC_ENABLED && new (AudioContext || webkitAudioContext)();
-/**
- * Everything musical goes through here, so the grid can duck it.
- *
- * A node between the song and the speakers rather than a level baked into the
- * render: the song is one long buffer looping, so there is nothing to re-render
- * when the volume should change, and a gain is the only thing that can move
- * underneath a sound already playing. Sound effects skip it — they are supposed
- * to sit on top.
- */
-const MIX = MUSIC_ENABLED && MUSIC.createGain();
-if (MUSIC_ENABLED) MIX.connect(MUSIC.destination);
 
 
 // ── Skeleton, measured from the model ───────────────────────────────────────
@@ -928,16 +917,23 @@ function go(next) {
     resetGrid();
   }
   SCREEN = next;
-  // Ducked on the grid, so the countdown sits on top of the menu song rather
-  // than inside it, and back up the moment the race song takes over.
-  if (MUSIC_ENABLED) MIX.gain.value = next === FLAG_STATE ? 0.5 : 1;
   syncMusic();
 }
 
-// The two rendered loops, filled in by music.js as each finishes, and the song
-// each state asks for. TITLE_STATE is deliberately absent: silence is a choice there,
-// not an oversight — it is what makes the first keypress the moment the game
-// starts making noise.
+// The two rendered loops, and the song each state asks for.
+//
+// **Two states are absent, and both are silence on purpose.** TITLE_STATE,
+// because that is what makes the first keypress the moment the game starts
+// making noise. And FLAG_STATE, so the grid is quiet: three ready signals and a
+// countdown land on nothing at all, which is the loudest they can be, and the
+// race song then cuts in on the flag rather than replacing something already
+// playing.
+//
+// The grid used to hold the menu song at half volume, and half a song is still a
+// song to sit a countdown on. There was a gain node between the music and the
+// speakers for that ducking; with nothing left to duck it went too, and the
+// looping source now goes straight to the destination the way an effect always
+// did.
 const SONGS = {};
 
 // Each effect is rendered once at start-up and handed back as a function that
@@ -969,7 +965,7 @@ const SIGNALS = 4;
 
 // The grid keeps the menu song. The race song arriving *with* the flag is what
 // makes the flag an event.
-const SCORE = { 1: 'menu', 2: 'race', 3: 'menu', 4: 'menu', 5: 'menu' };
+const SCORE = { 1: 'menu', 2: 'race', 3: 'menu', 4: 'menu' };
 
 addEventListener('keydown', (e) => {
   if (SCREEN === TITLE_STATE) {
@@ -1044,7 +1040,7 @@ function syncMusic() {
   PLAYING = MUSIC.createBufferSource();
   PLAYING.buffer = SONGS[want];
   PLAYING.loop = true;
-  PLAYING.connect(MIX);
+  PLAYING.connect(MUSIC.destination);
   PLAYING.start();
   PLAYING_NAME = want;
 }
