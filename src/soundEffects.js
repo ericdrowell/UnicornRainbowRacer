@@ -1,6 +1,6 @@
-// The sound effects, and nothing else. A data file, the way src/mesh.js and
-// src/circuits.js are data files: the build concatenates it ahead of game.js,
-// which renders every entry once at start-up and plays them by name.
+// The sound effects, and the one function that turns one into something you can
+// call. The build concatenates this ahead of game.js, which names the three it
+// wants and plays them.
 //
 // **An effect is a song, a channel and a note, not a waveform.** sonantx is
 // already in the program for the music, and it already carries `generateSound` —
@@ -50,3 +50,54 @@ const UNICORN_SELECT_PREV = [MENU_SONG, 4, 89];
 // like a flag the instant the track cuts in. Playing a note over the top of it
 // muddied the one moment in the game that wants to be clean.
 const READY_SIGNAL = [RACE_SONG, 1, 55];
+
+// ── Playing one ─────────────────────────────────────────────────────────────
+// An effect goes in, a function that plays it comes out.
+//
+// **Rendered at start-up, not on demand.** Synthesising a note takes a
+// millisecond or so, which is nothing at load and far too much at the moment a
+// key goes down. A buffer is instant. Nothing waits on it either — the returned
+// function simply does nothing until the buffer exists.
+//
+// A fresh source per play, because an AudioBufferSourceNode is single-use:
+// `start()` twice on one throws, and holding one to reuse is the bug where the
+// second press is silent. They are cheap and self-disposing.
+//
+// **This reads `MUSIC` and `MUSIC_ENABLED` out of game.js, which is
+// concatenated after this file.** That works because nothing here runs on the
+// way past: `shot` is only ever *called* from game.js, by which point both
+// exist. Rendering an effect at this point in the file instead — at the top
+// level, where the constants above are declared — would be a ReferenceError.
+// Rendered rather than played on demand: `generateSound` mixes through an
+// OfflineAudioContext and hands back a promise, which is no use at the moment a
+// key goes down. A buffer is. Nothing waits on it either — the play function
+// simply does nothing until the buffer lands, which is a few milliseconds after
+// load and long before a player reaches a screen that uses one.
+//
+// A fresh source per play, because an AudioBufferSourceNode is single-use:
+// `start()` twice on one throws, and holding one to reuse is the bug where the
+// second press is silent. They are cheap and self-disposing.
+const shot = ([song, track, note], loud) => {
+  let buf = null;
+  if (MUSIC_ENABLED) {
+    buf = renderNote(MUSIC, song.songData[track], note);
+  }
+  return () => {
+    if (!buf) return;
+    const s = MUSIC.createBufferSource();
+    s.buffer = buf;
+    // Straight to the speakers, past MIX: an effect is a cue, and a cue that
+    // ducks with the music it is competing with is no cue at all. `loud` lifts
+    // the ones that have to carry over a track — a single note of an instrument
+    // written to sit inside a mix is very quiet on its own.
+    if (loud) {
+      const g = MUSIC.createGain();
+      g.gain.value = loud;
+      s.connect(g);
+      g.connect(MUSIC.destination);
+    } else {
+      s.connect(MUSIC.destination);
+    }
+    s.start();
+  };
+};

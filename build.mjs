@@ -99,20 +99,41 @@ const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 
 // The inspector is appended only for `npm run debug`, so it cannot creep into a
 // release: the file simply is not in the program that gets minified.
+// **The order is a compression result, not a reading order.** Every file here is
+// concatenated into one program and minified as one program, so the boundaries
+// are gone by the time anything ships — merging them all into a single .js would
+// change nothing at all. What *does* change is this sequence, in two ways:
+// terser hands out short mangled names in an order that depends on it, and
+// RoadRoller's model predicts each byte from the ones before it, so what sits
+// next to what is worth real bytes.
+//
+// Searched rather than reasoned about: forty random valid orders spanned 75
+// bytes, and a hill-climb from the best of them landed here, 63 below the
+// arrangement that read most sensibly to a human (runtime, shaders, data, game).
+// Re-run that search after any large change, the way the packer parameters are
+// re-run — this drifts with the corpus.
+//
+// Four orderings are load-bearing and a search must not break them:
+//   - game.js last: it is the only file that *runs* at load rather than
+//     declaring things, and it touches all of the others.
+//   - unicorns before text: text.js spells the roster's names into the atlas at
+//     module scope, so UNICORNS has to exist by then.
+//   - both songs before soundEffects: an effect names the song it borrows its
+//     instrument from, and that is a const initialiser, not a call.
+//   - everything before game.js, obviously, but nothing else here evaluates
+//     anything — sonantx-custom.js and brometal only declare, so they are free
+//     to sit anywhere the packer likes them.
 const parts = [
-  read('dist', 'brometal.js'),
-  read('dist', 'shaders.js'),
+  song(['MENU_SONG', 'dizzy-land-beginning.json']),
   read('src', 'mesh.js'),
-  read('src', 'circuits.js'),
+  song(['RACE_SONG', 'dizzy-beats.json']),
   read('src', 'unicorns.js'),
   read('src', 'text.js'),
   read('src', 'sonantx-custom.js'),
-  song(['RACE_SONG', 'dizzy-beats.json']),
-  song(['MENU_SONG', 'dizzy-land-beginning.json']),
-  // After the songs, not before them: an effect names the song it borrows its
-  // instrument from, and a const referenced above its own declaration is a
-  // ReferenceError rather than a hoist.
+  read('dist', 'brometal.js'),
+  read('dist', 'shaders.js'),
   read('src', 'soundEffects.js'),
+  read('src', 'circuits.js'),
   read('src', 'game.js'),
 ];
 if (process.env.DEBUG) parts.push(read('src', 'debug.js'));
@@ -171,7 +192,12 @@ run('npx', [
 //
 // The parameters below were found by RoadRoller's own search (`-O2`, about fifty
 // seconds) and are cached here because re-searching every build is fifty seconds
-// to rediscover the same twelve numbers. They drift slowly as the code changes:
+// to rediscover the same twelve numbers.
+//
+// **A search prints only what it changed, not the whole configuration.** It
+// starts from whatever is cached here, so the object it reports is a diff —
+// pasting it over this block wholesale sets everything it did not mention back
+// to library defaults, which measured 181 bytes worse. Merge it in. They drift slowly as the code changes:
 // `PACK=search npm run build` runs the search again and prints what it found, and
 // is worth doing after any large change. Everything else is `optimize()` picking
 // its defaults, which is measurably worse than these.
@@ -186,9 +212,9 @@ run('npx', [
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
   numAbbreviations: 27,
-  recipLearningRate: 1459,
-  modelMaxCount: 4,
-  modelRecipBaseCount: 112,
+  recipLearningRate: 1910,
+  modelMaxCount: 3,
+  modelRecipBaseCount: 117,
   sparseSelectors: [0, 1, 2, 3, 7, 13, 27, 49, 95, 172, 338, 409],
 };
 

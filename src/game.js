@@ -936,43 +936,9 @@ function go(next) {
 // starts making noise.
 const SONGS = {};
 
-// ── Sound effects ───────────────────────────────────────────────────────────
 // Each effect is rendered once at start-up and handed back as a function that
-// plays it. The effects themselves live in src/soundEffects.js.
-//
-// Rendered rather than played on demand: `generateSound` mixes through an
-// OfflineAudioContext and hands back a promise, which is no use at the moment a
-// key goes down. A buffer is. Nothing waits on it either — the play function
-// simply does nothing until the buffer lands, which is a few milliseconds after
-// load and long before a player reaches a screen that uses one.
-//
-// A fresh source per play, because an AudioBufferSourceNode is single-use:
-// `start()` twice on one throws, and holding one to reuse is the bug where the
-// second press is silent. They are cheap and self-disposing.
-const shot = ([song, track, note], loud) => {
-  let buf = null;
-  if (MUSIC_ENABLED) {
-    buf = renderNote(MUSIC, song.songData[track], note);
-  }
-  return () => {
-    if (!buf) return;
-    const s = MUSIC.createBufferSource();
-    s.buffer = buf;
-    // Straight to the speakers, past MIX: an effect is a cue, and a cue that
-    // ducks with the music it is competing with is no cue at all. `loud` lifts
-    // the ones that have to carry over a track — a single note of an instrument
-    // written to sit inside a mix is very quiet on its own.
-    if (loud) {
-      const g = MUSIC.createGain();
-      g.gain.value = loud;
-      s.connect(g);
-      g.connect(MUSIC.destination);
-    } else {
-      s.connect(MUSIC.destination);
-    }
-    s.start();
-  };
-};
+// plays it. Both the effects and `shot`, which renders them, live in
+// src/soundEffects.js.
 const playSelectNext = shot(UNICORN_SELECT_NEXT);
 const playSelectPrev = shot(UNICORN_SELECT_PREV);
 const playReady = shot(READY_SIGNAL, 2);
