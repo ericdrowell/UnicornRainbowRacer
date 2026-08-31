@@ -88,9 +88,7 @@ export const Unicorn = shader({
     /** 1 on the select screen, where the roster rides a carousel. */
     uSelect: 'float',
     /** How far round the ring has wound, in seats. Eased, so fractional. */
-    uPick: 'float',
     /** How many unicorns are on the ring, for the wrap above. */
-    uCount: 'float',
   },
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
@@ -113,7 +111,7 @@ export const Unicorn = shader({
     vEye: 'vec3',
   },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uScale, uSelect, uPick, uCount }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uScale, uSelect }, v) {
     // This racer's block. The layout mirrors the player's old fixed slots —
     // position, drawn facing with speed, surface normal with gait — so
     // everything below reads exactly as it did when there was only one.
@@ -193,71 +191,32 @@ export const Unicorn = shader({
     // centre line puts the body entirely in the top half of the frame, which is
     // where the first attempt at this put the heads: out of shot. Half the
     // model's height down centres the unicorn instead of its feet.
-    const hub = camEye.add(gaze.scale(20)).sub(screenUp.scale(1.6));
-
-    // Where this unicorn sits relative to the chosen one, wrapped into the
-    // half-open range either side of it. **The wrap is what makes the carousel
-    // endless**: `uPick` counts turns of the wheel rather than an index into the
-    // roster, so it climbs forever, and taking it modulo the count means the
-    // unicorn that has just left one edge is already arriving at the other. Hold
-    // the right arrow and it goes round and round.
-    const rel = aRacer - uPick;
-    const d = rel - uCount * floor(rel / uCount + 0.5);
-
-    // A shallow arc rather than a full circle. Only three seats are ever meant
-    // to be on screen — the choice and the one either side of it — so the ring
-    // only has to bend far enough to push the neighbours back and away, not far
-    // enough to bring a fourth round behind them.
-    // A gentle arc. Steep enough to read as a ring in depth, shallow enough that
-    // the neighbours stay well inside the frame — swing it wider and the size
-    // difference grows, but they slide off the edges long before it is enough.
-    const phi = d * 0.95;
-    const seat = hub.add(ringSide.scale(sin(phi) * 7)).sub(gaze.scale(cos(phi) * 7));
-
-    // How much this one *is* the choice: 1 at the front, 0 at a neighbour.
-    const chosen = 1 - min(abs(d), 1);
-
-    // Neighbours are shrunk on purpose as well as by distance. Perspective alone
-    // cannot do this job: a ring deep enough to halve their size is also wide
-    // enough to push them off the sides, so the depth sells the shape and this
-    // sells the hierarchy.
-    // Anything past a neighbour collapses to nothing. Scaling it away rather
-    // than skipping the draw keeps the instance count fixed at the whole roster,
-    // which is what lets one of them be mid-hand-over from one edge to the other
-    // without the draw call changing under it.
-    const near = 1 - smoothstep(1.15, 1.55, abs(d));
-    // The neighbours are *not* dimmed. They were, briefly, and it was wrong: a
-    // multiply over the whole model does not read as "further back", it reads as
-    // a different unicorn — a lilac one goes grey and a cream one goes brown, so
-    // the two liveries either side of the choice were being misreported at the
-    // exact moment the player was trying to compare them. Size alone carries the
-    // hierarchy, and size is the one cue that cannot lie about colour.
-    // Facing out of the ring, so the one at the front looks at the camera and
-    // the rest are caught turning away from it.
-    const outRaw = seat.sub(hub);
-    const outward = normalize(outRaw);
-
-    // Every seat turns on the spot, at one shared rate, so you can see what you
-    // are choosing from every side.
+    // One seat, twenty metres in front of the camera and a little below its
+    // line, whatever the camera happens to be doing.
     //
-    // **The rate cannot be weighted by which one is chosen, and that is not a
-    // stylistic call.** It was `uTime * 1.15 * chosen`, so that only the front
-    // one spun — and multiplying a clock that grows without bound by a weight
-    // that changes is a trap: when `chosen` swings from 0 to 1 thirty seconds in,
-    // the angle swings thirty-four radians with it, in whatever fraction of a
-    // second the ring takes to turn. The unicorns whipped round harder the longer
-    // the screen had been open. Fixing it by integrating the rate would need
-    // somewhere to keep the accumulated angle, and this stage has no state at
-    // all; one rate for everybody needs none and cannot drift.
+    // **This used to be a ring.** Every racer took a seat on a circle centred
+    // here, offset from the chosen one by its distance round the roster, and the
+    // whole ring eased sideways as the arrows moved it: neighbours slid past,
+    // shrank with distance, and the one in front grew. It cost 134 zipped bytes
+    // — the seat angle, the wrap-around offset, the two scale terms for the
+    // neighbours, an eased position on the CPU, and two uniforms to carry the
+    // pick and the roster size.
     //
-    // A plain two-term rotation is enough because `outward` is square to
-    // `screenUp` by construction: the ring lies in the plane of the gaze and the
-    // sideways, and both of those are perpendicular to screen up. The third term
-    // of a general axis-angle rotation would be multiplied by zero.
+    // What replaced it draws the chosen unicorn and only the chosen unicorn,
+    // which is why `shown` is 1 on that screen and why the palette's first slot
+    // is rewritten as the arrows move. The cost is that a selection now *cuts*
+    // rather than slides, and the arrows are the only thing left saying there
+    // are others.
+    // **Thirteen metres, not twenty.** The ring was centred at twenty and every
+    // seat sat seven in front of it — `seat = hub - gaze * 7` at the chosen
+    // angle — so the unicorn you were looking at was always thirteen away. Left
+    // at the ring's own distance the model came out about a third smaller, which
+    // is the ring's radius showing up as a size change.
+    const hub = camEye.add(gaze.scale(13)).sub(screenUp.scale(1.6));
     const turn = uTime * 1.15;
-    const turned = outward.scale(cos(turn)).add(cross(screenUp, outward).scale(sin(turn)));
+    const turned = ringSide.scale(cos(turn)).add(cross(screenUp, ringSide).scale(sin(turn)));
 
-    const body = vec4(mix(onRoad.xyz, seat, uSelect), onRoad.w);
+    const body = vec4(mix(onRoad.xyz, hub, uSelect), onRoad.w);
     const facing = vec4(mix(facingRoad.xyz, turned, uSelect), facingRoad.w);
     // Legs at a steady canter. The gait is a distance, so this is the distance a
     // unicorn would have covered by now at a believable speed.
@@ -352,7 +311,7 @@ export const Unicorn = shader({
     // flips handedness mirrors the mesh and turns every face inside out.
     const across = cross(facing.xyz, normal.xyz);
     // Size, and the collapse that hides everything past a neighbour.
-    const grow = uScale * mix(1, near * mix(0.58, 1, chosen), uSelect);
+    const grow = uScale;
     const world = body.xyz
       .add(facing.xyz.scale(local.x * grow))
       .add(normal.xyz.scale(local.y * grow))

@@ -100,9 +100,14 @@ const SAYS = [
   //
   // Where they land depends only on how long *this* row is, not on how wide the
   // atlas ends up: a row is centred in the padding and the type scales with the
-  // atlas, and the two cancel. Twenty-nine characters puts them at ±0.78.
-  // Lengthen the row to push them apart.
-  '<                           >', // 9
+  // atlas, and the two cancel. Sixteen characters puts them at ±0.43. Lengthen
+  // the row to push them apart, at about 0.027 a character.
+  //
+  // It was twenty-nine, out at ±0.78, when the screen was a carousel and the
+  // arrows had to clear the neighbours either side of the chosen unicorn. With
+  // one unicorn left they were marooned at the edges of the display, pointing at
+  // nothing in particular.
+  '<              >',                       // 9
   // What to do with the keys, shown on the grid and gone the moment the flag
   // drops.
   'PRESS UP TO GO',                         // 10

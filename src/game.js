@@ -797,8 +797,6 @@ let PICK = SELECTED_UNICORN;
  * through the whole roster — so this tracks an unbounded winding rather than an
  * index, and the shader takes it modulo the seats.
  */
-let SPIN = SELECTED_UNICORN;
-let SPIN_TO = SELECTED_UNICORN;
 
 /** Fades the title card's pink out from under the world when SELECT_STATE arrives. */
 let PINK = 1;
@@ -855,12 +853,23 @@ function livery(r) {
  * anything, it is twenty-four numbers written over twenty-four, and the next
  * frame draws different unicorns.
  *
- * The same slots serve two purposes, which is why this takes a roster rather
- * than assuming one. On the select screen they are the carousel, in roster
- * order, one per seat; in a race they are the grid, which is the same four
- * rotated so the player's pick leads. Racer zero is the player either way, so
- * the seat you were looking at really is the unicorn that leaves the grid.
+ * This one dresses the whole field, for the grid: the roster rotated so the
+ * player's pick leads, which is what makes racer zero the player. The select
+ * screen wants one slot rather than ten and has `showPick` above for it.
  */
+/**
+ * The chosen unicorn's colours, into the one palette slot the select screen
+ * draws from.
+ *
+ * That screen shows a single model, so walking the roster is a matter of
+ * rewriting twenty-four numbers rather than moving anything: the arrows change
+ * `PICK`, this puts the new livery in slot zero, and the next frame draws a
+ * different unicorn in the same place. Called on the way in and on every press.
+ */
+function showPick() {
+  bmDevice.queue.writeBuffer(STATE, PALETTE * 16, livery(UNICORNS[PICK]));
+}
+
 function dress(list) {
   for (let i = 0; i < FIELD; i++) {
     bmDevice.queue.writeBuffer(STATE, (PALETTE + i * 6) * 16, livery(list[i]));
@@ -910,7 +919,7 @@ function go(next) {
   }
   // The palettes are shared between the carousel and the grid, so they are
   // rewritten on the way into each.
-  if (next === SELECT_STATE) dress(UNICORNS);
+  if (next === SELECT_STATE) showPick();
   if (next === FLAG_STATE) {
     lights = 0;
     rung = 0;
@@ -975,10 +984,10 @@ addEventListener('keydown', (e) => {
     if (step) {
       // The winding moves by one whatever happens; the index wraps. That is what
       // makes the ring turn the short way round the ends.
-      SPIN_TO += step;
       PICK = (PICK + step + UNICORNS.length) % UNICORNS.length;
       // Up for forward, down for back.
       (step > 0 ? playSelectNext : playSelectPrev)();
+      showPick();
     }
     if (e.code === 'Enter' || e.code === 'Space') go(FLAG_STATE);
     return;
@@ -1309,6 +1318,23 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const EXTRA_LARGE = TYPE;
   const LARGE = 0.62 * TYPE;
   const MEDIUM = 0.42 * TYPE;
+  /**
+   * The "ST" beside the place, and the one size that is derived rather than
+   * chosen.
+   *
+   * It used to be LARGE, and LARGE is 0.62 — which put the suffix's plate four
+   * thousandths *inside* the numeral's. The two are separate captions, so their
+   * plates are separate quads at half alpha, and where they overlapped the black
+   * doubled into a hard line down the gap.
+   *
+   * The two plates touch exactly at 0.6234, which falls out of where the ink
+   * sits in each row: the numeral's ends at atlas pixel 133 of 172 and the
+   * suffix's begins at 164, and each plate reaches one atlas pixel further,
+   * scaled by its own half-width. Sitting on that number would leave the join a
+   * rounding error away from a seam in either direction, so this is far enough
+   * past it to read as two boxes with a gap rather than one box with a fault.
+   */
+  const SUFFIX = 0.64 * TYPE;
 
   /** The row each unicorn's name landed on. */
   const NAME_ROW = LINES.length - UNICORNS.length;
@@ -1511,10 +1537,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       peek();
     }
     TIME = clock;
-    // The carousel eases towards the chosen seat rather than snapping to it, at
-    // a rate rather than a fraction per frame so it turns at the same speed
-    // whatever the frame rate.
-    SPIN += (SPIN_TO - SPIN) * (1 - Math.exp(-9 * elapsed));
 
     // The pink card lifts over about a third of a second rather than blinking
     // out, revealing the world that has been rendering behind it all along.
@@ -1576,7 +1598,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // they are simply not drawn.
     // How many unicorns this state wants: none on the title card, one on the
     // turntable, the whole field in a race.
-    const shown = SCREEN === TITLE_STATE ? 0 : SCREEN === SELECT_STATE ? UNICORNS.length : FIELD;
+    // One on the select screen, since that screen shows one: the roster is
+    // walked by rewriting the first palette slot rather than by drawing a ring
+    // of ten and sliding it.
+    const shown = SCREEN === TITLE_STATE ? 0 : SCREEN === SELECT_STATE ? 1 : FIELD;
     // Three times the size on the select screen, because it is a close look at
     // one unicorn rather than a field of them seen from a camera boom.
     // Slots 2 to 5, not 3 to 6: dropping `uMirror` from the shader closed the
@@ -1585,8 +1610,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // uScale 0, which is to say invisible.
     u[2] = SCREEN === SELECT_STATE ? 2.3 : 1;
     u[3] = SCREEN === SELECT_STATE ? 1 : 0;
-    u[4] = SPIN;
-    u[5] = UNICORNS.length;
 
     bmPassTo();
     bmUniforms(sky, tu);
@@ -1667,7 +1690,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // line up, which takes a different centre for each because a caption's
       // height follows its half-width.
       say(PLACE_ROW + place, 0.86, EXTRA_LARGE, 1);
-      say(SUFFIX_ROW + Math.min(place, 3), 0.89, LARGE, 1);
+      say(SUFFIX_ROW + Math.min(place, 3), 0.89, SUFFIX, 1);
       // The crossing that starts lap one happens as the grid rolls over the
       // line, so before it there is no lap yet — hence the floor at 1.
       //
