@@ -76,16 +76,24 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 // songs are JSON on disk, which is the format Sonant-X Live exports and
 // therefore the format worth keeping them in; they become literals on the way in.
 //
-// ZzFX is NOT inlined. It was, for the jump sound, and when jump went so did the
-// last live `zzfx(...)` call in the project — src/soundEffects.js is now entirely
-// commented-out sound design, so the library was 1.2 kB of synthesiser shipping
-// for nobody. The file stays in the tree because it is the scratchpad the effects
-// get auditioned in; put both lines back the moment one of them is wired up:
+// ZzFX is NOT inlined, and src/soundEffects.js — a page of commented-out ZzFX
+// parameter arrays — has been deleted along with the idea.
 //
-//   readFileSync(join(root, 'node_modules', 'zzfx', 'ZzFXMicro.min.js'), 'utf8'),
-//   readFileSync(join(root, 'src', 'soundEffects.js'), 'utf8'),
+// **Sound effects come out of sonantx instead, and it is not close.** Measured
+// with three effects wired up: ZzFX cost 598 zipped bytes, sonantx 170. The
+// reason is that sonantx is already here for the music, and it already contains
+// `generateSound` — a one-shot player for a single note of any instrument —
+// which terser has been quietly dropping as unreferenced. Turning it on adds
+// that one function; the oscillators, the envelope and the filter are paid for.
 //
-// Music is unaffected — that is sonantx, and it has nothing to do with ZzFX.
+// And an effect then needs no sound design at all: it is a channel index and a
+// note number, with the instrument coming out of a song that is also already
+// here. ZzFX would have been 1.2 kB of second synthesiser plus twenty numbers a
+// sound.
+//
+// The one thing it cannot do is sound un-musical. Every effect is a note of a
+// dizzy-beats instrument, so a scrape or a thud is out of reach; that is when
+// ZzFX's noise oscillator would earn its keep.
 const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
 const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 
@@ -96,10 +104,15 @@ const parts = [
   read('dist', 'shaders.js'),
   read('src', 'mesh.js'),
   read('src', 'circuits.js'),
-  read('src', 'font.js'),
+  read('src', 'unicorns.js'),
+  read('src', 'text.js'),
   read('node_modules', 'sonantx', 'sonantx.js').replace(/^export /gm, ''),
   song(['RACE_SONG', 'dizzy-beats.json']),
   song(['MENU_SONG', 'dizzy-land-beginning.json']),
+  // After the songs, not before them: an effect names the song it borrows its
+  // instrument from, and a const referenced above its own declaration is a
+  // ReferenceError rather than a hoist.
+  read('src', 'soundEffects.js'),
   read('src', 'game.js'),
 ];
 if (process.env.DEBUG) parts.push(read('src', 'debug.js'));
@@ -205,6 +218,37 @@ const page = readFileSync(join(root, 'src', 'index.html'), 'utf8').replace(
   () => `<script>${script.replace(/<\/script/gi, '<\\/script')}</script>`,
 );
 writeFileSync(join(dist, OUT), page);
+
+// 5b. dist/sounds.html — the effect bench.
+//
+// The source lives in tools/, with the decimator and the mesh converter, because
+// that is what it is: a thing for making the game rather than a part of it.
+// Everything in src/ ends up concatenated into the entry; this never does.
+//
+// It is a build output all the same, and has to be. The bench needs the
+// synthesiser and both songs, and `import` and `fetch` are both blocked on
+// file:// — so opening tools/sounds.html directly gives a blank page. Inlining
+// is the same answer the game page gives to the same problem, and it is what
+// lets the built page be double-clicked with no server.
+//
+// Never zipped and never measured — step 6 names index.html explicitly. It also
+// carries `soundEffects.js` twice: once as code, so the effects can be played,
+// and once as text, so their names can be listed. That is a page nobody ships
+// spending a few hundred bytes to stay honest about what is in the file.
+if (!process.env.DEBUG) {
+  const deps = [
+    read('node_modules', 'sonantx', 'sonantx.js').replace(/^export /gm, ''),
+    song(['RACE_SONG', 'dizzy-beats.json']),
+    song(['MENU_SONG', 'dizzy-land-beginning.json']),
+    read('src', 'soundEffects.js'),
+    `const SFX_SOURCE = ${JSON.stringify(read('src', 'soundEffects.js'))};`,
+  ].join('\n');
+  writeFileSync(
+    join(dist, 'sounds.html'),
+    read('tools', 'sounds.html').replace('/*DEPS*/', () => deps),
+  );
+  console.log(`  dist/sounds.html  ${statSync(join(dist, 'sounds.html')).size} bytes  (effect bench, not measured)`);
+}
 
 // The debug build is not a deliverable — it carries the inspector and has been
 // patched away from how the release renders — so it is neither zipped nor

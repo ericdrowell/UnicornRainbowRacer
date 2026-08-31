@@ -211,49 +211,63 @@ export const Track = shader({
     // the silhouette against black space, and it was a hairline visible only in
     // the far distance where perspective stacked it up. Widened to a fifth of
     // the half-width and driven to 3.4, it is a light source with a body to it.
-    // ── The unicorns' shadows ────────────────────────────────────────────
-    // A blob directly beneath each animal, not a projection of the moon. Kart
-    // games have done it this way forever and it is not a shortcut they settled
-    // for: a shadow that tracks the light slides out from under the thing casting
-    // it, and the moment it does, it stops reading as contact. What the player
-    // needs from this shadow is to know where on the road a unicorn is standing
-    // — especially in the air off a crest — and only a blob pinned under the feet
-    // answers that.
+    // ── Who is standing on this piece of road ─────────────────────────────
+    // There was a contact shadow here — a blob under each animal, the way kart
+    // games have always done it. It is gone because the road already says where
+    // a unicorn is: the ribbon glows, and every racer lays a reflection on it
+    // that moves with them and is brighter and easier to read than a dark
+    // smudge was.
     //
-    // **The whole field casts, not only the player.** The rivals had none, and
-    // the cue a shadow gives is worth more on them than on the player: a unicorn
-    // seen from behind at speed has nothing else pinning it to the surface, so
-    // without one it hovers over the road and reads as a decal on the camera
-    // rather than as something out in front of you on the same ribbon.
-    //
-    // Each caster is read from its own racer slot — position from the first,
-    // road normal from the third — which is the same layout the physics stage
-    // writes and the unicorn stage draws from. The bound is the roster written
-    // down a third time; the compiler works from this source, so it has to be a
-    // literal here as it is in physics.shader.ts. Change one and change all.
-    //
+    // The loop survives the shadow, because the reflection needs exactly what it
+    // was computing — which racers are near this fragment, and on which side.
     // Distance is measured in the caster's own road plane, so a shadow on a
     // banked or climbing stretch stays a disc lying on the surface instead of the
     // ellipse a world-space distance would smear it into.
-    let dark = 0;
+    // Where the camera is, wanted twice below: once to decide which face of the
+    // road this fragment is, and again for the fresnel further down.
+    const eye = storageRead(uState, 8).xyz;
+    // How much of a unicorn's reflection this piece of road is entitled to show.
+    // Gathered in the same loop as the shadow because it wants the same two
+    // numbers, and a second pass over ten racers to ask a nearly identical
+    // question would be the expensive way to write this.
+    let owns = 0;
     for (let j = 0; j < 10; j += 1) {
       const body = storageRead(uState, 16 + j * 5).xyz;
       const up = storageRead(uState, 16 + j * 5 + 2).xyz;
       const flat = vWorld.sub(body);
       const onPlane = flat.sub(up.scale(dot(flat, up)));
+      // **How far this road is from the caster perpendicularly, which the line
+      // above deliberately throws away.** Projecting into the caster's plane is
+      // what keeps a shadow a disc on a banked surface, but it also means a
+      // unicorn a hundred units overhead — on the far side of a loop, or on the
+      // track above this one — sits at zero in-plane distance and casts a
+      // full-strength blob straight through the road below it.
+      //
+      // A body is about two units tall, so anything more than a few units off
+      // this surface is not standing on it. Airborne over a crest still darkens
+      // the road, which is right: that is the one time a shadow is doing real
+      // work, telling you how far up you are.
+      const lift = 1 - smoothstep(1, 7, abs(dot(flat, up)));
+      // **And which face of the road you are looking at.** Everything the road
+      // paints on itself — the blob, the reflection — belongs to the surface the
+      // unicorn is standing on, and a surface has two sides. Without this the
+      // underside of the road carries them too, so a loop overhead shows you the
+      // field walking about on the far side of it as though the road were glass.
+      //
+      // The caster's own up vector answers it, and it is already read: the camera
+      // and the unicorn are on the same side when the camera is above the plane
+      // the unicorn stands on. No surface normal per fragment is needed, which is
+      // as well, because this stage has no attribute carrying one.
+      const side = step(0, dot(eye.sub(body), up));
       // The strongest caster wins rather than the sum of them. Two unicorns
       // running abreast overlap their blobs in the gap between them, and adding
       // there lays a dark seam across the road exactly where the surface is in
       // plain view between two bodies at the same height above it.
-      dark = max(dark, 1 - smoothstep(0.35, 1.1, length(onPlane)));
+      // Wider than the shadow, because a reflection is as tall as the thing
+      // casting it and stretches away down the surface, where the shadow is a
+      // disc under its feet.
+      owns = max(owns, (1 - smoothstep(3, 11, length(onPlane))) * lift * side);
     }
-    // Switched off with the unicorns. On the title screen the field is not drawn
-    // at all, and a shadow is cast by a body — left on, these sat on the road
-    // under unicorns that were not there, which reads as a smudge rather than as
-    // a shadow. The flag comes from the state buffer's spare word rather than a
-    // uniform, because this stage already binds that buffer.
-    const shade = dark * 0.5 * (1 - storageRead(uState, 9).w);
-
     // ── The reflection ────────────────────────────────────────────────────
     // Sampled at this fragment's own place on screen, which is where the mirrored
     // unicorn was drawn, so the road picks up whatever of it lands here. No depth
@@ -262,12 +276,21 @@ export const Track = shader({
     //
     // `w` is the coverage the reflection pass wrote. Multiplying by it keeps the
     // road untouched everywhere the unicorn does not reach.
+    //
+    // **And `owns` is what keeps it on the right piece of road.** Having no depth
+    // test is what makes the lookup simple and is also its one hole: the target
+    // is in screen space, so *any* road drawn at a pixel picks up whatever
+    // reflection landed there — including the underside of a loop, or a stretch
+    // of track hundreds of units away that happens to sit behind the field. From
+    // below it reads as seeing the unicorns straight through the road. Asking
+    // whether a caster is actually near this fragment costs one more term off a
+    // loop that is already running.
     const mirrorUv = targetUv(vec4(vClip.x / vClip.w, vClip.y / vClip.w, 0, 1));
-    const mirrorPx = texture(uMirrorTex, mirrorUv);
+    const mirrorPx = texture(uMirrorTex, mirrorUv).mul(vec4(1, 1, 1, owns));
     // Fresnel: a glancing look at glass is nearly a mirror, straight down at it is
     // nearly clear. Without it the reflection is as strong underfoot as out at the
     // horizon, which reads as a decal rather than as a surface.
-    const gaze = normalize(vWorld.sub(storageRead(uState, 8).xyz));
+    const gaze = normalize(vWorld.sub(eye));
     const gloss = 0.25 + 0.45 * pow(1 - abs(dot(gaze, storageRead(uState, 2).xyz)), 3);
 
     const edge = abs(vU);
@@ -275,7 +298,7 @@ export const Track = shader({
     const lip = smoothstep(0.78, 0.97, edge);
     const halo = pow(smoothstep(0.3, 1, edge), 2);
     return vec4(
-      mix(lit.scale(1 - shade), mirrorPx.xyz, mirrorPx.w * gloss)
+      mix(lit, mirrorPx.xyz, mirrorPx.w * gloss)
         .add(glass.scale(halo * 0.8))
         .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
         .add(vec3(1, 0.97, 1).scale(core * 3.4)),

@@ -62,20 +62,26 @@ export const Text = shader({
     // never stretch. The card ignores all of that and covers the screen.
     const half = mix(aCell.z, 1, solid);
     const tall = mix(aCell.z * uRatio * uAspect, 1, solid);
-    // Nudged down by half a row. A glyph is five pixels tall in a six-pixel cell
-    // with the spare one below it, so its ink is centred an twelfth of the cell
-    // *above* the quad's middle — which puts a "vertically centred" caption
-    // visibly high. Shifting the quad by that twelfth centres the letters rather
-    // than the box they are drawn in. The card skips it: it has no ink to centre.
-    const sit = aCell.y - tall * (1 - solid) / 6;
-    return vec4((aCorner.x * 2 - 1) * half, sit + (aCorner.y * 2 - 1) * tall, 0, 1);
+    // No vertical fudge: a glyph is five pixels in a seven-pixel cell with a
+    // spare above and below, so its ink already sits at the middle of the quad.
+    // At the old pitch of six the spare was all below, the ink rode a twelfth
+    // high, and this line had to push every caption back down.
+    return vec4((aCorner.x * 2 - 1) * half, aCell.y + (aCorner.y * 2 - 1) * tall, 0, 1);
   },
 
   fragment({ uTime, uGlyphs }, { vUv, vFade, vSolid }) {
-    // Coverage, not colour: the baked canvas is white-on-transparent, so its
-    // alpha is the letterform and everything below is free to paint it however
-    // it likes.
-    const ink = texture(uGlyphs, vUv).w;
+    // One sample, two answers. Alpha is coverage — the plate and the letter
+    // together — and red is which: 1 on the letterform, 0 on the black
+    // rectangle behind it. Both are baked into the atlas by game.js, so the
+    // plate costs this stage nothing but the swizzle.
+    //
+    // It used to be a second sample of the same texture a texel up and left,
+    // which drew a drop shadow instead of a plate. That reads well over flat
+    // colour and badly over a rainbow: half the letter still lands on whatever
+    // the road is doing. A box under the whole glyph does not care.
+    const px = texture(uGlyphs, vUv);
+    const ink = px.x;
+    const plate = px.w;
 
     // The road's own palette, running across the text rather than along it, so
     // the words read as cut out of the rainbow the game is made of. Slow — text
@@ -99,6 +105,17 @@ export const Text = shader({
       vec3(0.95, 0.36, 0.62),
       vSolid,
     );
-    return vec4(paint, mix(ink, 1, vSolid) * vFade);
+    // The letter out of the rainbow, the plate black behind it at half alpha —
+    // enough to hold a letterform against a white road without stamping a solid
+    // block over the scene.
+    //
+    // Half of the *plate*, not of the pair: where the letter covers a pixel the
+    // alpha is still 1, so the glyph itself stays fully opaque.
+    //
+    // The card takes neither: it is a flat fill with no ink and no box.
+    return vec4(
+      mix(vec3(0, 0, 0), paint, max(ink, vSolid)),
+      mix(max(ink, plate * 0.5), 1, vSolid) * vFade,
+    );
   },
 });

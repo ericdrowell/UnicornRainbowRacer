@@ -138,7 +138,7 @@ export const Sky = shader({
     /** One oversized triangle in clip space: (-1,-1), (3,-1), (-1,3). */
     aCorner: 'vec2',
   },
-  uniforms: { uTime: 'float', uClouds: 'sampler2D' },
+  uniforms: { uTime: 'float' },
   storage: { uState: 'vec4' },
   varyings: { vNdc: 'vec2' },
 
@@ -149,7 +149,7 @@ export const Sky = shader({
     return vec4(aCorner.x, aCorner.y, 0.5, 1);
   },
 
-  fragment({ uState, uTime, uClouds }, { vNdc }) {
+  fragment({ uState, uTime }, { vNdc }) {
     const c0 = storageRead(uState, 4);
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
@@ -242,20 +242,61 @@ export const Sky = shader({
     const air = max(1 - r2 * 42, 0);
     const glow = vec3(0.7, 0.85, 1).scale(air * air * air * 0.45);
 
-    // The clouds, marched at quarter resolution into a target and composited
-    // here rather than in a pass of their own — the sky already covers every
-    // pixel exactly once, so this costs fetches and saves a whole program.
+    // ── The clouds ──────────────────────────────────────────────────────
+    // A flat deck, found by intersecting the view ray with one horizontal plane
+    // and shading whatever it hits. No volume, no march, no target.
     //
-    // Four taps on a diagonal cross: the march dithers each ray's start to break
-    // up banding, and averaging neighbours removes exactly the noise that dither
-    // introduced. Through targetUv, because a target's rows run top to bottom
-    // while NDC +y points at the first of them.
-    const cloud = texture(uClouds, targetUv(vec4(vNdc.x - 0.004, vNdc.y - 0.006, 0, 1)))
-      .add(texture(uClouds, targetUv(vec4(vNdc.x + 0.004, vNdc.y - 0.006, 0, 1))))
-      .add(texture(uClouds, targetUv(vec4(vNdc.x - 0.004, vNdc.y + 0.006, 0, 1))))
-      .add(texture(uClouds, targetUv(vec4(vNdc.x + 0.004, vNdc.y + 0.006, 0, 1))))
-      .scale(0.25);
+    // **What this replaces was a real volumetric renderer** — sixty-four steps a
+    // ray through a 64-cubed noise texture built on the CPU, lit by a second
+    // march towards the sun, drawn into a quarter-size target and composited
+    // back here. It looked better than this does. It also cost about a kilobyte
+    // once the shader, the volume builder, the render target and the extra
+    // program were counted, which is most of a feature on a budget this tight.
+    //
+    // The deck sits below the road, which is the one thing the old clouds and
+    // this have in common and the reason either works: you are always looking
+    // *down* on them from a rainbow in the sky, so a plane with texture on it
+    // reads as a cloud layer. Seen from underneath it would read as a painted
+    // ceiling, and the camera never goes there.
+    const eye = storageRead(uState, 8).xyz;
+    // Only rays heading downward meet the plane. Clamping the divisor rather
+    // than branching keeps the horizon from dividing by zero and sends
+    // near-horizontal rays somewhere far away instead, which is where the deck
+    // should vanish anyway.
+    const drop = min(dir.y, 0 - 0.02);
+    const reach = (0 - 55 - eye.y) / drop;
+    const at = eye.add(dir.scale(reach));
+    // Three waves at different rates and angles, the same trick as the nebula
+    // above: two give a single smooth swell, and it takes a third to break the
+    // banks into something with an inside and an edge. Scaled small because the
+    // deck is hundreds of units across.
+    const drift = uTime * 0.006;
+    // Warped before it is sampled. Straight sine waves on a plane seen almost
+    // edge-on come out as horizontal ribbons — perspective squashes the whole
+    // distance into a few pixels near the horizon, and ribbons read as water,
+    // not weather. Offsetting the sample point by a slower wave bends them into
+    // lobes, which is the cheapest thing that stops it looking like a lake.
+    const warp = sin(at.z * 0.004 - drift) * 26 + sin(at.x * 0.0031 + drift * 1.7) * 22;
+    const wx = at.x + warp;
+    const wz = at.z + sin(at.x * 0.0052 + drift * 0.9) * 24;
+    const puff =
+      sin(wx * 0.009 + wz * 0.007 + drift) * 0.62 +
+      sin(wz * 0.013 - wx * 0.005 - drift * 1.3) * 0.5 +
+      sin((wx + wz) * 0.024 + drift * 0.7) * 0.3 +
+      sin((wx - wz) * 0.047 - drift * 2.1) * 0.16;
+    // Thresholded low, so the deck is mostly cloud with holes in it rather than
+    // mostly holes with cloud in them. Four waves summing to about ±1.6 means a
+    // floor of -1.05 leaves roughly three quarters covered — enough that the
+    // black underneath reads as gaps rather than as the default.
+    const cover = smoothstep(0 - 1.05, 0.42, puff);
+    // Held off the horizon. The band right at eye level is where the plane is
+    // most foreshortened and least convincing, so the deck simply is not drawn
+    // there — it fades in once you are looking down at it properly.
+    const near = smoothstep(0.04, 0.26, 0 - dir.y);
+    const lit = mix(vec3(0.55, 0.59, 0.74), vec3(1.05, 1.05, 1.12), cover);
+    const veilAmt = cover * near;
+
     const sky = haze.add(field.scale(behind)).add(glow).add(moon);
-    return vec4(sky.scale(1 - cloud.w).add(cloud.xyz), 1);
+    return vec4(sky.scale(1 - veilAmt).add(lit.scale(veilAmt)), 1);
   },
 });

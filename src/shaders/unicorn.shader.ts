@@ -157,7 +157,23 @@ export const Unicorn = shader({
   // Written by the physics stage, read-only here: where the body is, which way
   // it faces, which way the road says is up, and the camera it is seen through.
   storage: { uState: 'vec4' },
-  varyings: { vNormal: 'vec3', vColor: 'vec3', vFace: 'vec3', vHair: 'float', vAlong: 'float' },
+  varyings: {
+    vNormal: 'vec3',
+    vColor: 'vec3',
+    vFace: 'vec3',
+    vHair: 'float',
+    vAlong: 'float',
+    /**
+     * This racer's eye colour, fetched in the vertex stage and carried down.
+     *
+     * The palette is read where every other livery colour is read — up there,
+     * once per vertex — because `aRacer` is an instance attribute and the
+     * fragment stage cannot see it. Handing the answer down costs an
+     * interpolator; handing the *index* down and reading the palette per pixel
+     * would cost a storage fetch on every fragment of every unicorn instead.
+     */
+    vEye: 'vec3',
+  },
 
   vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uMirror, uScale, uSelect, uPick, uCount }, v) {
     // This racer's block. The layout mirrors the player's old fixed slots —
@@ -166,14 +182,15 @@ export const Unicorn = shader({
     const mine = 16 + aRacer * 5;
     // This racer's colours, written once at start-up and never touched again:
     // hide with the mane's spectrum flag, the three stops the mane runs through,
-    // and the horn.
-    const pal = 80 + aRacer * 5;
+    // the horn, and the eye.
+    const pal = 80 + aRacer * 6;
     const aHide = storageRead(uState, pal).xyz;
     const aRainbow = storageRead(uState, pal).w;
     const aManeA = storageRead(uState, pal + 1).xyz;
     const aManeB = storageRead(uState, pal + 2).xyz;
     const aManeC = storageRead(uState, pal + 3).xyz;
     const aHorn = storageRead(uState, pal + 4).xyz;
+    v.vEye = storageRead(uState, pal + 5).xyz;
     const onRoad = storageRead(uState, mine);
     const facingRoad = storageRead(uState, mine + 1);
     const normalRoad = storageRead(uState, mine + 2);
@@ -487,7 +504,7 @@ export const Unicorn = shader({
     return c0.scale(shown.x).add(c1.scale(shown.y)).add(c2.scale(shown.z)).add(c3);
   },
 
-  fragment({ uState, uTime, uMirror, uSelect }, { vNormal, vColor, vFace, vHair, vAlong }) {
+  fragment({ uState, uTime, uMirror, uSelect }, { vNormal, vColor, vFace, vHair, vAlong, vEye }) {
     // ── The pile ───────────────────────────────────────────────────────────
     // What makes a plush toy read as plush is not its colour, it is that the
     // surface never resolves: light lands on thousands of fibre tips at slightly
@@ -654,6 +671,6 @@ export const Unicorn = shader({
     // Alpha 1 either way. In the reflection pass this is coverage rather than
     // opacity — the target clears transparent, so solid alpha is what tells the
     // road which pixels the unicorn actually reaches.
-    return vec4(mix(vColor.mul(bounce.add(key)).scale(locks), vec3(0.02, 0.02, 0.03), pupil), 1);
+    return vec4(mix(vColor.mul(bounce.add(key)).scale(locks), vEye, pupil), 1);
   },
 });

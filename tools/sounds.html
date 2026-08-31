@@ -1,0 +1,230 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Sound effects — Unicorn Rainbow Racer</title>
+<!--
+  A bench for picking sound effects. Not part of the game and not in the build:
+  it reads the same songs and the same synthesiser the game does, plays any
+  instrument at any note, and hands back the two numbers to paste into
+  src/soundEffects.js.
+
+  Source lives here in tools/ because it is a thing for making the game, not a
+  part of it — nothing in this directory reaches the entry. It is built into
+  dist/sounds.html with the synthesiser, both songs and the effects file inlined,
+  so the built page opens straight off the disk with no server:
+
+      npm run sounds
+
+  The inlining is not optional: `import` and `fetch` are both blocked on file://,
+  and this page needs sonantx and two songs, so opening *this* file directly
+  gives a blank page. The game page has the same problem and solves it the same
+  way.
+
+  An effect in this game is an instrument and a note, and both halves of that
+  are visible here — change the song at the top and every button changes what it
+  sounds like, because the instruments belong to the song.
+-->
+<style>
+  :root {
+    --bg: #14101c; --panel: #1e1830; --line: #362c52; --ink: #efe8ff;
+    --dim: #a094c0; --hot: #ff6fb5; --ok: #6fe3c4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif;
+    padding: 24px 28px 60px;
+  }
+  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: .02em; }
+  .sub { color: var(--dim); margin: 0 0 22px; max-width: 78ch; }
+  .sub code { color: var(--ink); background: #2a2240; padding: 1px 5px; border-radius: 4px; }
+  .bar { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-bottom: 22px; }
+  label { color: var(--dim); }
+  select, input[type=number] {
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; font: inherit;
+  }
+  .track { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; overflow: hidden; }
+  .head {
+    display: flex; align-items: baseline; gap: 12px; padding: 9px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .head b { font-weight: 600; }
+  .head span { color: var(--dim); font-size: 12px; }
+  .keys { display: flex; flex-wrap: wrap; gap: 3px; padding: 12px 14px; }
+  button.note {
+    background: #241d3a; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 5px; min-width: 40px; padding: 6px 4px; cursor: pointer;
+    font: 12px ui-monospace, monospace;
+  }
+  button.note:hover { border-color: var(--hot); }
+  button.note.on { background: var(--hot); border-color: var(--hot); color: #1a1226; }
+  button.note.sharp { opacity: .62; }
+  .out {
+    position: sticky; bottom: 0; margin-top: 26px; padding: 14px 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .out input {
+    flex: 1 1 380px; min-width: 260px; background: #14101c; color: var(--ok);
+    border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px;
+    font: 13px ui-monospace, monospace;
+  }
+  .out button {
+    background: var(--hot); color: #1a1226; border: 0; border-radius: 6px;
+    padding: 9px 16px; font: 600 13px inherit; cursor: pointer;
+  }
+  .note-of { color: var(--dim); font-size: 12px; }
+  .existing { margin-bottom: 22px; }
+  .existing button {
+    background: #241d3a; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 12px; margin-right: 8px; cursor: pointer; font: inherit;
+  }
+  .existing button:hover { border-color: var(--ok); }
+</style>
+
+<h1>Sound effects</h1>
+<p class=sub>
+  An effect is <code>[song, track, note]</code> — which song to borrow an
+  instrument from, which of its tracks, and which note to hit it at. Click any key below to hear it; the line at the bottom
+  is what goes in <code>src/soundEffects.js</code>. Rendering happens once per
+  button and is then cached, so the first click on a key is a beat slower than
+  the rest.
+</p>
+
+<div class=bar>
+  <label>Song <select id=song></select></label>
+  <label>Lowest note <input id=lo type=number value=36 min=0 max=120 step=1></label>
+  <label>Highest note <input id=hi type=number value=96 min=0 max=120 step=1></label>
+  <span class=note-of id=status></span>
+</div>
+
+<div class=existing id=existing></div>
+<div id=tracks></div>
+
+<div class=out>
+  <input id=line readonly value="const MY_EFFECT = [RACE_SONG, 1, 72];">
+  <button id=copy>Copy</button>
+  <span class=note-of id=detail></span>
+</div>
+
+<script type=module>
+// sonantx, both songs, src/soundEffects.js, and its source as SFX_SOURCE — all
+// pasted in by build.mjs. A module rather than a classic script because of the
+// top-level await further down; an *inline* module is fine on file://, it is
+// only importing from one that is not.
+/*DEPS*/
+
+// The songs the game ships, by the name the game knows each one by — which is
+// what goes into the effect, since an effect names its song and the same track
+// number means a different instrument depending on which it borrows from.
+const SONGS = { RACE_SONG, MENU_SONG };
+
+// What src/soundEffects.js already defines, read out of its own source so this
+// page cannot drift from the file.
+function existingEffects() {
+  return [...SFX_SOURCE.matchAll(/^const ([A-Z0-9_]+) = \[\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/gm)]
+    .map((m) => ({ name: m[1], song: m[2], track: +m[3], note: +m[4] }));
+}
+
+const ctx = new AudioContext();
+const cache = new Map();
+const status = document.getElementById('status');
+const line = document.getElementById('line');
+const detail = document.getElementById('detail');
+
+let song = null;
+let songName = '';
+
+// sonantx adds 75 to the note it is given, and its own scale puts F3 at 128.
+// So the number in soundEffects.js is 53 semitones below F3, and this turns it
+// into something a human can read.
+const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const nameOf = (n) => {
+  const midi = n + 75 - 128 + 53 + 12; // F3 is MIDI 53
+  return NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+};
+const isSharp = (n) => nameOf(n).includes('#');
+
+async function play(track, note, label, fromSong) {
+  const which = fromSong || songName;
+  const data = SONGS[which];
+  const key = `${which}|${track}|${note}`;
+  let buf = cache.get(key);
+  if (!buf) {
+    status.textContent = 'rendering…';
+    buf = await generateSound(data.songData[track], note, ctx.sampleRate);
+    cache.set(key, buf);
+    status.textContent = `${buf.duration.toFixed(2)}s buffer`;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+  line.value = `const ${label || 'MY_EFFECT'} = [${which}, ${track}, ${note}];`;
+  detail.textContent =
+    `${which} · track ${track} · note ${note} · ${nameOf(note)} · ${buf.duration.toFixed(2)}s`;
+  document.querySelectorAll('button.note.on').forEach((b) => b.classList.remove('on'));
+  document.querySelector(`button.note[data-k="${track}:${note}"]`)?.classList.add('on');
+}
+
+function describe(t) {
+  const wave = ['sine', 'square', 'saw', 'triangle'];
+  const bits = [`osc1 ${wave[t.osc1_waveform]}`, `osc2 ${wave[t.osc2_waveform]}`];
+  if (t.noise_fader) bits.push(`noise ${t.noise_fader}`);
+  if (t.fx_filter) bits.push(`filter ${t.fx_filter}`);
+  bits.push(`a${t.env_attack} s${t.env_sustain} r${t.env_release}`);
+  return bits.join(' · ');
+}
+
+function draw() {
+  const lo = +document.getElementById('lo').value;
+  const hi = +document.getElementById('hi').value;
+  const host = document.getElementById('tracks');
+  host.textContent = '';
+  song.songData.forEach((t, i) => {
+    const box = document.createElement('div');
+    box.className = 'track';
+    const head = document.createElement('div');
+    head.className = 'head';
+    head.innerHTML = `<b>track ${i}</b><span>${describe(t)}</span>`;
+    const keys = document.createElement('div');
+    keys.className = 'keys';
+    for (let n = lo; n <= hi; n++) {
+      const b = document.createElement('button');
+      b.className = 'note' + (isSharp(n) ? ' sharp' : '');
+      b.dataset.k = `${i}:${n}`;
+      b.textContent = n;
+      b.title = nameOf(n);
+      b.onclick = () => play(i, n);
+      keys.append(b);
+    }
+    box.append(head, keys);
+    host.append(box);
+  });
+}
+
+function load(name) {
+  songName = name;
+  song = SONGS[name];
+  status.textContent = `${song.songData.length} tracks`;
+  draw();
+}
+
+const picker = document.getElementById('song');
+Object.keys(SONGS).forEach((k) => picker.add(new Option(k, k)));
+picker.onchange = () => load(picker.value);
+document.getElementById('lo').onchange = draw;
+document.getElementById('hi').onchange = draw;
+document.getElementById('copy').onclick = () => navigator.clipboard.writeText(line.value);
+
+load(picker.value);
+
+// The effects already in the game, so a new one can be judged against them
+// rather than in isolation.
+const host = document.getElementById('existing');
+for (const e of existingEffects()) {
+  const b = document.createElement('button');
+  b.textContent = `${e.name}  [${e.song}, ${e.track}, ${e.note}]`;
+  b.onclick = () => play(e.track, e.note, e.name, e.song);
+  host.append(b);
+}
+</script>

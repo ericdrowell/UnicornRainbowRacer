@@ -1,59 +1,52 @@
-// Sound effects, via ZzFX.
+// The sound effects, and nothing else. A data file, the way src/mesh.js and
+// src/circuits.js are data files: the build concatenates it ahead of game.js,
+// which renders every entry once at start-up and plays them by name.
 //
-// Each effect is the parameter list ZzFX's designer emits, kept verbatim so a
-// sound tweaked in the tool can be pasted straight back in. The holes are
-// deliberate: a gap in an array literal is `undefined`, which ZzFX reads as
-// "use the default for this one", so only the parameters that matter are
-// written down.
+// **An effect is a song, a channel and a note, not a waveform.** sonantx is
+// already in the program for the music, and it already carries `generateSound` —
+// a one-shot player for a single note of any instrument. So an effect borrows an
+// instrument that is already here and says which note to hit it at.
+//
+// Either song can be borrowed from, and they are not interchangeable: the race
+// song's instruments are the ones playing underneath a race, so an effect built
+// from them sits in the mix; the menu song's are softer and cut through better
+// over quiet. Naming the song rather than assuming one is why this file is
+// concatenated after them — see build.mjs.
+//
+// The file this replaced was a page of ZzFX parameter arrays, twenty numbers a
+// sound, against a synthesiser that would have had to ship alongside them.
+// Measured with three effects wired up: ZzFX 598 zipped bytes, this 170. What
+// the cheap route cannot do is sound un-musical — every effect is a note of a
+// dizzy-beats instrument, so a scrape or a thud is out of reach.
+//
+// The channel is an index into that song's `songData`, so what an effect sounds
+// like is decided by whatever the track's instrument is; edit the song and the
+// effects move with it. The note is sonantx's own numbering, where 128 is F3 —
+// so 72 is a good way up the register, which is what makes a click a click
+// rather than a thud.
+// One const per effect rather than a table keyed by name: a key is a string, and
+// a string survives the minifier at full length, so a map of five effects ships
+// five names for nothing. These get mangled to a letter each.
+//
+// The channel is an index into that song's `songData`, so what an effect sounds
+// like is decided by whatever the track's instrument is; edit the song and the
+// effects move with it. The note is sonantx's own numbering, where 128 is F3 —
+// so 72 is a good way up the register, which is what makes a click a click
+// rather than a thud.
 
-// jumps
-/*
-zzfx(...[1.3,,316,.02,.05,.09,,1.3,,21,,,,,,,.01,.88,.05,,-1400]); // Jump 107
-zzfx(...[,,259,.03,.01,,,.4,9,,,,,.3,,,,.92,.02]); // Jump 115
-zzfx(...[1.9,,539,.01,.03,.02,,.4,14,,-197,,,,,,.44,.85,.01,.1,-1467]); // Blip 285
-zzfx(...[1.1,,119,.02,.03,.09,1,2,1,,,,,.5,,.1,,.63,.03]); // Jump 697
-zzfx(...[,,154,.03,.04,.09,,1.7,,16,,,,,,.1,,.86,.03]); // Jump 753
-[,,197,.01,.03,.09,,2.1,,90,,,,,,.1,,.55,.05]
-zzfx(...[,,86,.02,.08,.07,1,.8,-18,7,,,,1,,,,.67,.09]); // Shoot 782
-zzfx(...[.6,,129,.03,.05,.07,5,1.088440777963569,18,15,,,,,,,.19,.57,.08,,350]); // Shoot 812
-*/
+// The carousel, one seat at a time. Two effects rather than one, four semitones
+// apart: the higher note goes with moving right and the lower with moving left,
+// so the direction you are travelling is audible without looking. It is the
+// oldest trick a menu has, and it costs a second entry in this file and nothing
+// else — the instrument is already rendered either way.
+const UNICORN_SELECT_NEXT = [MENU_SONG, 4, 93];
+const UNICORN_SELECT_PREV = [MENU_SONG, 4, 89];
 
-// runnning sounds
-/**
- zzfx(...[1.1,,57,.01,.03,.02,1,1.9,,,,,,,,,,.69,.02]); // Blip 235
- zzfx(...[,,68,.01,,.01,,3.5,,1,,,,.9,,.1,,.98,.01,.2]); // Blip 243
- zzfx(...[1.7,,58,.03,.01,.03,1,1.8,,7,,,,.1,.1,,.05,.91,.03,,-649]); // Blip 259
- */
-
-// race life cycle sounds
-/*
-zzfx(...[1.9,0,65.40639,.05,.2,.13,,2.8,,,,,,.1,,,,.94,.14,,101]); // Music 344
-zzfx(...[1.9,0,261.6256,.03,.93,.15,1,1.1,,,,,,,,,.1,.88,.08,,-1289]); // Music 378
-zzfx(...[,,217,.08,.15,.11,,,4,-391,,,.02,,48,,,.94,.21]); // Powerup 516
- */
-
-// speed boosts
-/*
-zzfx(...[.6,,642,.07,.22,.16,,2.3,,-276,54,.16,,,,.1,,.71,.17,,124]); // Powerup 419
-zzfx(...[.9,,504,.06,.11,.35,1,2.6,,234,-78,.18,,,,,,.93,.19,,241]); // Powerup 451
-zzfx(...[,,666,.05,.15,.38,,3.3,,-168,88,.08,.04,,,,,.89,.13,.04]); // Powerup 470
-zzfx(...[1.1,,292,.04,.13,.31,1,3,-8,343,,,,,,.1,,.73,.17]); // Powerup 515
-zzfx(...[1.3,,687,.02,.25,.15,,2.2,17,,,,,,,,.07,.89,.26]); // Powerup 551
-*/
-
-// slip stream
-/*
-zzfx(...[,,566,.07,.2,.31,,,1,,,,,.5,,,,.8,.23]); // Powerup 496
-*/
-
-// other interesting sounds
-/*
-zzfx(...[1.7,,681,.05,.27,.21,1,.9,,,-54,.13,.04,,,,.11,.55,.25,.2]); // Powerup 452
-zzfx(...[1.3,,159,.02,.16,.21,5,.7,,3,,,,,.9,,.14,.85,.17]); // Powerup 461
-zzfx(...[,,557,.08,.21,.09,,.3,,-2,,,,,,,,.96,.23]); // Powerup 569
-*/
-
-/* sounds that mean you did something wrong
-zzfx(...[,,324,.06,.23,.22,,2.6,,,371,.16,,,38,,,.87,.29]); // Powerup 609
-
-*/
+// The start line. Three of these, a second apart, and then a fourth beat of
+// silence on which the race begins.
+//
+// **There is no start signal, and that is deliberate.** There was one, and it
+// doubled: the race song opens on a hit of its own, so the flag already sounds
+// like a flag the instant the track cuts in. Playing a note over the top of it
+// muddied the one moment in the game that wants to be clean.
+const READY_SIGNAL = [RACE_SONG, 1, 55];

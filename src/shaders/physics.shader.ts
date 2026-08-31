@@ -158,11 +158,24 @@ export const Physics = shader({
     uTime: 'float',
     /** 1 before the flag, while the title card is up. See the camera below. */
     uTitle: 'float',
+    /**
+     * 1 once the flag drops, 0 on the grid during the countdown.
+     *
+     * A gate on the throttle rather than on `dt`, and that is the point of it.
+     * Stopping the clock would hold the field still, but it would also freeze
+     * the camera — the chase is an exponential settle on `dt`, so a zero step
+     * leaves it wherever it was, which is out at the carousel. Everything has to
+     * keep integrating so the camera can fly in; only the accelerating waits.
+     */
+    uGo: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
-  compute({ uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime, uTitle }, id) {
+  compute(
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime, uTitle, uGo },
+    id,
+  ) {
     // A tab left in the background delivers one enormous frame on return, and
     // an unclamped step of that size moves the unicorn straight through the
     // road — collision is tested at the new position, not swept to it.
@@ -310,7 +323,10 @@ export const Physics = shader({
     // frame — the shove landed, the buffer was written, and the ceiling took it
     // straight back off. Easing lets it run over its own limit for a second and
     // coast back down, which is what being rear-ended is supposed to look like.
-    const throttle = mix(aiThrottle * (1 - smoothstep(cap - 5, cap, speed)), uThrottle, player);
+    // Gated for everyone, player and AI alike. A grid where the field creeps
+    // away while you wait is not a grid.
+    const throttle =
+      mix(aiThrottle * (1 - smoothstep(cap - 5, cap, speed)), uThrottle, player) * uGo;
     const steer = mix(aiSteer, uSteer, player);
 
     // ── Where it points, and where it goes ─────────────────────────────────

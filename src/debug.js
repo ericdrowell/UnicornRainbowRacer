@@ -193,7 +193,7 @@
   // Slots 0 to 83: the legacy body and camera, racer zero's own block at 16,
   // and its livery at 80. The render stages read the racer block, so an identity
   // body written only to slot 0 would leave the model collapsed to a point.
-  const body = new Float32Array(85 * 4);
+  const body = new Float32Array(86 * 4);
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0, /* across */ 0, 0, 1, 0]);
   // The same identity, where the vertex stage actually looks for it.
   body.set([0, 0, 0, 0, /* facing +x */ 1, 0, 0, 0, /* up +y */ 0, 1, 0, 0], 16 * 4);

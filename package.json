@@ -9,7 +9,8 @@
     "build": "node build.mjs",
     "prod": "PACK=1 node build.mjs",
     "search": "PACK=search node build.mjs",
-    "debug": "DEBUG=1 node build.mjs && open dist/debug.html"
+    "debug": "DEBUG=1 node build.mjs && open dist/debug.html",
+    "sounds": "node build.mjs && open dist/sounds.html"
   },
   "devDependencies": {
     "brometal": "^0.18.0",
