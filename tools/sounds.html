@@ -151,7 +151,7 @@ async function play(track, note, label, fromSong) {
   let buf = cache.get(key);
   if (!buf) {
     status.textContent = 'rendering…';
-    buf = await generateSound(data.songData[track], note, ctx.sampleRate);
+    buf = renderNote(ctx, data.songData[track], note);
     cache.set(key, buf);
     status.textContent = `${buf.duration.toFixed(2)}s buffer`;
   }

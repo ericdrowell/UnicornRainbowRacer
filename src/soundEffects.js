@@ -13,11 +13,11 @@
 // over quiet. Naming the song rather than assuming one is why this file is
 // concatenated after them — see build.mjs.
 //
-// The file this replaced was a page of ZzFX parameter arrays, twenty numbers a
-// sound, against a synthesiser that would have had to ship alongside them.
-// Measured with three effects wired up: ZzFX 598 zipped bytes, this 170. What
-// the cheap route cannot do is sound un-musical — every effect is a note of a
-// dizzy-beats instrument, so a scrape or a thud is out of reach.
+// The alternative was a page of parameter arrays, twenty numbers a sound,
+// against a second synthesiser that would have had to ship alongside them.
+// Measured with three effects wired up: 598 zipped bytes that way, 170 this
+// way. What the cheap route cannot do is sound un-musical — every effect is a
+// note of a dizzy-beats instrument, so a scrape or a thud is out of reach.
 //
 // The channel is an index into that song's `songData`, so what an effect sounds
 // like is decided by whatever the track's instrument is; edit the song and the

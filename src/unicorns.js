@@ -29,7 +29,18 @@
 const UNICORNS = [
   { name: 'Starlight', body: [1, 0.97, 0.99], mane: 0 },
   { name: 'Ember', body: [1, 0.55, 0.15], mane: [0.88, 0.15, 0.12, 1, 0.8, 0.2] },
-  { name: 'Midnight', body: [0.1, 0.09, 0.15], horn: [1, 1, 1], eye: [1, 1, 1], mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58] },
+  // The eye is the mane's lighter stop, exactly — the one place on the roster
+  // where an eye is picked to match something else on the model rather than to
+  // contrast with it. It carries because the eye is painted unlit: `vEye`
+  // replaces the shaded colour rather than tinting it, so a mid purple stays a
+  // mid purple against a hide that the lighting has taken down to nearly black.
+  {
+    name: 'Midnight',
+    body: [0.1, 0.09, 0.15],
+    horn: [1, 1, 1],
+    eye: [0.42, 0.18, 0.58],
+    mane: [0.25, 0.09, 0.4, 0.42, 0.18, 0.58],
+  },
   { name: 'Bubble Gum', body: [1, 0.8, 0.88], mane: [0.72, 0.09, 0.38, 0.88, 0.22, 0.52] },
   {
     name: 'Sparkle',
@@ -55,17 +66,24 @@ const UNICORNS = [
     horn: [1, 0.72, 0.82],
     mane: [1, 0.45, 0.72, 0.42, 0.6, 1],
   },
-  // The palest of the roster: hide and mane are within a few hundredths of each
-  // other, so the gold horn is the only thing on it with any contrast, and it
-  // takes the default rather than naming one. The mane still runs between two
-  // tones rather than sitting on one — cream to a warmer peach — because a
-  // single colour on a crest that already has a band coordinate through it
-  // comes out matte and stops reading as hair. Two near-identical tones are
-  // enough to keep it.
+  // White, and white, and white — the only one on the roster with no colour in
+  // it at all, which is what makes it recognisable in a field of pastels.
+  //
+  // **The one place the two-tone rule above is deliberately broken.** Both stops
+  // are the same colour, so the band gradient along the crest does nothing. It
+  // still reads as hair rather than as a white shape, because the gradient is
+  // not what makes a mane look like one: the fragment stage perturbs the normal
+  // with a strand noise and multiplies the whole crest by it, so the shading
+  // carries the texture. The gradient only ever added hue on top of that.
+  //
+  // The horn is named rather than left to the default gold, which is the whole
+  // point of this one: nothing on it has any hue at all, and the only things
+  // that read are the shading, the dark eye and the hooves.
   {
-    name: 'Seashell',
-    body: [1, 0.82, 0.85],
-    mane: [1, 0.89, 0.8, 0.96, 0.8, 0.68],
+    name: 'Koda',
+    body: [1, 1, 1],
+    horn: [1, 1, 1],
+    mane: [1, 1, 1, 1, 1, 1],
   },
   // The first mane that genuinely needs three stops. Blue to red on its own runs
   // through purple, and blue to green runs through teal — there is no pair whose

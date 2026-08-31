@@ -952,7 +952,7 @@ const SONGS = {};
 const shot = ([song, track, note], loud) => {
   let buf = null;
   if (MUSIC_ENABLED) {
-    generateSound(song.songData[track], note, MUSIC.sampleRate).then((b) => (buf = b));
+    buf = renderNote(MUSIC, song.songData[track], note);
   }
   return () => {
     if (!buf) return;
@@ -1123,11 +1123,11 @@ function renderLoop(song, into) {
   song.endPattern = slots - 1;
   const loop = (slots * 32 * 60) / (Math.round(661500 / song.rowLen) * 4);
   song.songLen = loop * 2;
-  return generateSong(song, MUSIC.sampleRate).then((raw) => {
-    const rate = raw.sampleRate;
-    const len = Math.round(loop * rate);
-    const buffer = MUSIC.createBuffer(raw.numberOfChannels, len, rate);
-    for (let ch = 0; ch < raw.numberOfChannels; ch++) {
+  const rate = MUSIC.sampleRate;
+  const len = Math.round(loop * rate);
+  return renderSong(MUSIC, song, len * 2).then((raw) => {
+    const buffer = MUSIC.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) {
       buffer.getChannelData(ch).set(raw.getChannelData(ch).subarray(len, len * 2));
     }
     SONGS[into] = buffer;

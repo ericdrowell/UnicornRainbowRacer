@@ -70,30 +70,30 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 // them; that file was a wrapper around four functions and has been folded into
 // game.js, which is what forced this order.
 //
-// sonantx ships as an ES module and everything here is concatenated into one
-// plain script, so its two `export` keywords are stripped — nothing else about
-// the file needs touching, it has no imports and no other module syntax. The
-// songs are JSON on disk, which is the format Sonant-X Live exports and
+// **The synthesiser is ours now.** It used to be the sonantx package, inlined
+// here with its two `export` keywords stripped; src/sonantx-custom.js replaced it
+// and took 473 zipped bytes with it. Same instrument format, same songs, same
+// arithmetic — see the header of that file for what it does differently and for
+// the measured difference in the samples that come out.
+//
+// The songs are JSON on disk, which is the format Sonant-X Live exports and
 // therefore the format worth keeping them in; they become literals on the way in.
 //
-// ZzFX is NOT inlined, and src/soundEffects.js — a page of commented-out ZzFX
-// parameter arrays — has been deleted along with the idea.
-//
-// **Sound effects come out of sonantx instead, and it is not close.** Measured
-// with three effects wired up: ZzFX cost 598 zipped bytes, sonantx 170. The
-// reason is that sonantx is already here for the music, and it already contains
-// `generateSound` — a one-shot player for a single note of any instrument —
-// which terser has been quietly dropping as unreferenced. Turning it on adds
-// that one function; the oscillators, the envelope and the filter are paid for.
+// **Sound effects come out of the same synthesiser, and it is not close.**
+// Measured with three effects wired up against a dedicated effect synthesiser:
+// 598 zipped bytes for the second synth, 170 for this. The reason is that the
+// synth is already here for the music, and one note of an instrument is the same
+// code path as a song with one note in it.
 //
 // And an effect then needs no sound design at all: it is a channel index and a
 // note number, with the instrument coming out of a song that is also already
-// here. ZzFX would have been 1.2 kB of second synthesiser plus twenty numbers a
+// here. The alternative was a kilobyte of synthesiser plus twenty numbers a
 // sound.
 //
 // The one thing it cannot do is sound un-musical. Every effect is a note of a
-// dizzy-beats instrument, so a scrape or a thud is out of reach; that is when
-// ZzFX's noise oscillator would earn its keep.
+// dizzy-beats instrument, so a scrape or a thud is out of reach; that is the day
+// a noise oscillator would earn its keep.
+
 const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
 const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 
@@ -106,7 +106,7 @@ const parts = [
   read('src', 'circuits.js'),
   read('src', 'unicorns.js'),
   read('src', 'text.js'),
-  read('node_modules', 'sonantx', 'sonantx.js').replace(/^export /gm, ''),
+  read('src', 'sonantx-custom.js'),
   song(['RACE_SONG', 'dizzy-beats.json']),
   song(['MENU_SONG', 'dizzy-land-beginning.json']),
   // After the songs, not before them: an effect names the song it borrows its
@@ -185,11 +185,11 @@ run('npx', [
 // never packs.
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
-  numAbbreviations: 31,
-  recipLearningRate: 1000,
+  numAbbreviations: 27,
+  recipLearningRate: 1459,
   modelMaxCount: 4,
-  modelRecipBaseCount: 42,
-  sparseSelectors: [0, 1, 2, 3, 7, 13, 15, 42, 123, 195, 304, 401],
+  modelRecipBaseCount: 112,
+  sparseSelectors: [0, 1, 2, 3, 7, 13, 27, 49, 95, 172, 338, 409],
 };
 
 let script = readFileSync(outPath, 'utf8');
@@ -237,7 +237,7 @@ writeFileSync(join(dist, OUT), page);
 // spending a few hundred bytes to stay honest about what is in the file.
 if (!process.env.DEBUG) {
   const deps = [
-    read('node_modules', 'sonantx', 'sonantx.js').replace(/^export /gm, ''),
+    read('src', 'sonantx-custom.js'),
     song(['RACE_SONG', 'dizzy-beats.json']),
     song(['MENU_SONG', 'dizzy-land-beginning.json']),
     read('src', 'soundEffects.js'),
