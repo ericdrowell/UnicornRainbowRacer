@@ -4,12 +4,12 @@ import {
   vec4,
   sin,
   cos,
-  tan,
   abs,
   min,
   max,
   exp,
   step,
+  tan,
   floor,
   fract,
   clamp,
@@ -103,20 +103,6 @@ function frameUp(fwd: Vec3, up: Vec3): Vec3 {
  */
 function steady(v: Vec3): Vec3 {
   return v.scale(1 / max(length(v), 0.0001));
-}
-
-/**
- * A fixed random number per racer, per channel.
- *
- * The field needs to differ from itself — nine identical AIs drive the same line
- * at the same speed and arrive as one wide unicorn — and the differences have to
- * be *stable*, because a lane that changed frame to frame is a twitch, not a
- * preference. Deriving them from the invocation index gives both for free: no
- * uniform to upload, no buffer to seed, and racer 4 is the same racer 4 every
- * frame of every run.
- */
-function vary(i: number, k: number): number {
-  return fract(sin(i * 12.9898 + k * 78.233) * 43758.5453);
 }
 
 /**
@@ -289,15 +275,27 @@ export const Physics = shader({
     const LOOK = 14;
     const aim = mod(nearest + LOOK, uRings);
     const ac = storageRead(uTrack, aim * 3);
-    const aimT = storageRead(uTrack, aim * 3 + 1);
-    const aimU = storageRead(uTrack, aim * 3 + 2);
     // A lane of its own, held for the whole race. Nine racers all aiming at the
     // centreline is a single-file train that never overtakes and never touches,
     // which makes both the field and the collisions below invisible. Spread
     // across 55% of the width, they run abreast, and the closing speeds between
     // different lanes are what actually produce contact.
-    const lane = (vary(me, 1) - 0.5) * uWidth * 0.55;
-    const aimPt = ac.xyz.add(cross(normalize(aimT.xyz), frameUp(normalize(aimT.xyz), aimU.xyz)).scale(lane));
+    // Where in the road this one likes to sit, and how fast it is willing to go
+    // — both straight off the racer's index rather than out of a hash.
+    //
+    // **The golden ratio is what makes an index good enough.** Multiplying by
+    // 0.618 and taking the fraction walks the unit interval in the most evenly
+    // spread order there is: ten racers land at 0, .62, .24, .85, .47, .09, .71,
+    // .33, .94, .56 — better distributed than the `fract(sin(...))` hash this
+    // replaced, which cost a function and two calls to be arbitrary rather than
+    // even.
+    const lane = (fract(me * 0.618) - 0.5) * uWidth * 0.55;
+    // Offset in *this* segment's frame rather than the aim ring's. Rebuilding a
+    // frame fourteen rings ahead cost a normalise, a frameUp and a cross to
+    // answer a question that only decides which side of the road to aim at: on a
+    // straight the two frames agree exactly, and in a corner the lane lands a
+    // metre or so off where it meant to, which is a racing line either way.
+    const aimPt = ac.xyz.add(sideT.scale(lane));
 
     // How far off the nose the target sits, measured along the exact axis
     // positive steering rotates towards. Taking the sign from the steering's own
@@ -316,7 +314,7 @@ export const Physics = shader({
     // neighbours, so the field spreads out over a lap instead of staying a lump,
     // and so winning is possible without being trivial. The player is capped at
     // 60 as before — the drag settles it near 55 long before that.
-    const cap = mix(46 + vary(me, 2) * 9, 60, player);
+    const cap = mix(46 + fract(me * 0.382) * 9, 60, player);
     // The cap eases the throttle off rather than clamping the speed, and that
     // matters now that a shunt can add speed the racer did not ask for. Clamped,
     // an AI sitting at its cap had any push from behind erased on the very next
@@ -675,12 +673,14 @@ export const Physics = shader({
     // camber changes it is meant to lean into.
     const camUp = normalize(mix(prevUp.xyz, mix(upT, vec3(0, 1, 0), uTitle), settle));
 
+    const f = 1 / tan(0.5);
+    const fx = f / uAspect;
+    const za = (900 + 0.1) / (0.1 - 900);
+    const zb = (2 * 900 * 0.1) / (0.1 - 900);
     const zAxis = normalize(eye.sub(at));
     const xAxis = normalize(cross(camUp, zAxis));
     const yAxis = cross(zAxis, xAxis);
 
-    const f = 1 / tan(0.5);
-    const fx = f / uAspect;
     // near 0.1, far 900, as one expression each: the DSL has no module-level
     // constants, and naming them locally costs more than it explains.
     //
@@ -690,14 +690,6 @@ export const Physics = shader({
     // the ratio of far to near, and this widens it from five thousand to one
     // to nine thousand — but the near plane is the expensive end of that
     // fraction and it has not moved.
-    const za = (900 + 0.1) / (0.1 - 900);
-    const zb = (2 * 900 * 0.1) / (0.1 - 900);
-
-    // ── What this racer leaves behind ──────────────────────────────────────
-    // Its own five slots, written by every invocation. The render stages read
-    // the first three of these — position, the direction to draw it facing, and
-    // the surface it is standing on — at `RACER + instance * SLOTS`, which is
-    // why their order here mirrors the player's old slots 0, 1 and 2 exactly.
     const trackAlong = mix(ca.w, cb.w, along) * uPattern;
     storageWrite(uState, mine, vec4(pos, vy));
     storageWrite(uState, mine + 1, vec4(dir, speed));

@@ -148,17 +148,40 @@ export const Unicorn = shader({
     // Sizes come from the ring rather than a scale per seat: the front one sits
     // five units from the eye and its neighbours fifteen, so perspective alone
     // makes the choice three times the size of the ones beside it.
+    // ── The carousel ────────────────────────────────────────────────────────
+    // Plain `normalize` on all four of these, where they used to divide by
+    // `max(length(v), 0.0001)`. That guard was against normalising a zero
+    // vector, which is NaN rather than zero and takes the whole model with it —
+    // real enough that the sky shader was bitten by it. None of these four can
+    // be zero here, and it is worth writing down which argument protects which,
+    // because the guard is what a later change would otherwise have to
+    // rediscover:
+    //
+    //   gaze     the camera's target minus its eye. The chase camera puts those
+    //            eight metres apart along the track and the orbit camera fifty
+    //            out; they are never the same point.
+    //   ringSide gaze crossed with the camera's up. Zero only if the camera
+    //            looks straight along its own up vector — the up *is* the road
+    //            normal and the gaze runs along the road, so they are
+    //            perpendicular by construction.
+    //   screenUp the same pair, so the same argument.
+    //   outward  a seat minus the hub, which the line below places exactly seven
+    //            metres out whatever the angle.
+    //
+    // And none of it runs before the compute stage has filled those slots: the
+    // model is not drawn at all on the title screen, which is the only frame
+    // where the state buffer is still the zeroes it was created with.
     const camEye = storageRead(uState, 8).xyz;
     const gazeRaw = storageRead(uState, 9).xyz.sub(camEye);
-    const gaze = gazeRaw.scale(1 / max(length(gazeRaw), 0.0001));
+    const gaze = normalize(gazeRaw);
     const camUp = storageRead(uState, 10).xyz;
     const sideRaw = cross(gaze, camUp);
-    const ringSide = sideRaw.scale(1 / max(length(sideRaw), 0.0001));
+    const ringSide = normalize(sideRaw);
     // Up on *screen*, not up in the world: the shot looks down at the circuit,
     // so world up runs into the frame at an angle and lifting by it moves the
     // ring sideways as much as upward.
     const upRaw = camUp.sub(gaze.scale(dot(camUp, gaze)));
-    const screenUp = upRaw.scale(1 / max(length(upRaw), 0.0001));
+    const screenUp = normalize(upRaw);
     // Far enough out that the camera is not standing inside the choice. At
     // scale 4 the model is about five units long, so a front seat five units
     // from the eye put the lens in its ribcage — and with back faces culled an
@@ -212,7 +235,7 @@ export const Unicorn = shader({
     // Facing out of the ring, so the one at the front looks at the camera and
     // the rest are caught turning away from it.
     const outRaw = seat.sub(hub);
-    const outward = outRaw.scale(1 / max(length(outRaw), 0.0001));
+    const outward = normalize(outRaw);
 
     // Every seat turns on the spot, at one shared rate, so you can see what you
     // are choosing from every side.

@@ -82,7 +82,11 @@ const SAYS = [
   'PRESS ENTER TO RACE',          // 4
   'PAUSED',                      // 5
   'PRESS ANY KEY TO CONTINUE',   // 6
-  'YOU WIN',                     // 7
+  // Not "YOU WIN" — this screen shows up whenever racer zero crosses the line
+  // for the last time, in whatever place it managed, so a win is exactly the
+  // one case it cannot claim. "FINISH!" is the flag, and the position readout
+  // in the corner is left to say how it went.
+  'FINISH!',                     // 7
   'PRESS ENTER KEY FOR TITLE',   // 8
   // The selector's arrows, and they are a caption because that is far the
   // cheapest thing they can be.
