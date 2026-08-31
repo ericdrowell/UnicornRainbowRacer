@@ -1244,36 +1244,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmIndex(prog, idx);
   bmStorages(prog, STATE);
 
-  // The same model again, drawn as its own reflection in the road.
-  //
-  // A second program rather than a second draw of the first, because blending is
-  // baked into the pipeline at creation and this one needs it: alpha, so the road
-  // shows through, and no depth write, so the reflection cannot occlude anything
-  // — least of all the unicorn casting it.
-  //
-  // Culling off as well. The projection onto the road plane turns the model
-  // inside out on the way through, so half the faces come back wound the other
-  // way and back-face culling would eat them.
-  const refl = bmProgram(Unicorn[0], {
-    a: Unicorn[1],
-    i: Unicorn[2],
-    u: Unicorn[3],
-    t: Unicorn[4],
-    s: Unicorn[5],
-    // Draws into a target, not the canvas, and the two have different colour
-    // formats — the pipeline bakes one in, so without this the draw is a
-    // validation error and the whole frame goes black.
-    fmt: 1,
-  });
-  bmAttr(refl, 0, new Float32Array(P));
-  bmAttr(refl, 1, new Float32Array(NR));
-  bmAttr(refl, 2, new Float32Array(RT));
-  bmAttr(refl, 3, new Float32Array(SK));
-  bmAttr(refl, 4, new Float32Array(CL));
-  herd(refl);
-  bmIndex(refl, idx);
-  bmStorages(refl, STATE);
-
   // Drawn without culling: the ribbon is one surface with nothing under it, and
   // half a lap of it is above the camera on the climb, so the underside is on
   // screen as often as the top.
@@ -1415,13 +1385,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // sixteenth of the rays. A cloud is the one thing in the scene that loses
   // nothing to that: no edges, no texture, no silhouette, only soft gradients,
   // and the target samples back linearly.
-  // Full resolution, unlike the cloud target: this one carries the model's
-  // silhouette, and a quarter-size buffer would fray every edge of it.
-  const mirror = bmTarget(
-    (canvas.clientWidth * devicePixelRatio) | 0,
-    (canvas.clientHeight * devicePixelRatio) | 0,
-  );
-  bmTextures(track, mirror);
 
   // The title card. Its own program because it blends — the letters have to sit
   // over the sky rather than punch a hole in it — and because a blend state is
@@ -1614,43 +1577,22 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
-    // The mirrored unicorn, into its own target, before the frame proper. It
-    // resolves there against its own depth, so the road later reads one finished
-    // image rather than a stack of half-transparent triangles.
-    // The field, and its reflection in the road — but only once there is a race.
-    // On the title screen the circuit is the subject and ten unicorns stood on
-    // the grid are in the way of it, so they are simply not drawn.
-    //
-    // The pass itself still runs. `bmPassTo` clears whatever it points at, and
-    // the road reads this target's alpha as "how much unicorn is here" — so
-    // skipping the pass would leave the last frame's reflection painted on the
-    // road forever, while skipping only the draw leaves the coverage at zero,
-    // which is exactly the truth.
+    // The field — but only once there is a race. On the title screen the circuit
+    // is the subject and ten unicorns stood on the grid are in the way of it, so
+    // they are simply not drawn.
     // How many unicorns this state wants: none on the title card, one on the
     // turntable, the whole field in a race.
     const shown = SCREEN === TITLE_STATE ? 0 : SCREEN === SELECT_STATE ? UNICORNS.length : FIELD;
     // Three times the size on the select screen, because it is a close look at
     // one unicorn rather than a field of them seen from a camera boom.
-    u[3] = SCREEN === SELECT_STATE ? 2.3 : 1;
-    u[4] = SCREEN === SELECT_STATE ? 1 : 0;
-    u[5] = SPIN;
-    u[6] = UNICORNS.length;
-
-    // The reflection pass still runs even when it draws nothing. `bmPassTo`
-    // clears whatever it points at, and the road reads this target's alpha as
-    // "how much unicorn is here" — so skipping the pass would leave the last
-    // frame's reflection painted on the road forever, while skipping only the
-    // draw leaves the coverage at zero, which is the truth.
-    bmPassTo(mirror);
-    // No reflections on the select screen: the carousel hangs in the air with
-    // nothing under it, and the road's mirror is a plane through a body that is
-    // no longer standing on it.
-    if (shown && SCREEN !== SELECT_STATE) {
-      u[2] = 1;
-      bmUniforms(refl, u);
-      bmDraw(refl, shown);
-      u[2] = 0;
-    }
+    // Slots 2 to 5, not 3 to 6: dropping `uMirror` from the shader closed the
+    // gap it left, and these indices are positions in that block rather than
+    // names. Nothing warns when they are wrong — the model simply came back at
+    // uScale 0, which is to say invisible.
+    u[2] = SCREEN === SELECT_STATE ? 2.3 : 1;
+    u[3] = SCREEN === SELECT_STATE ? 1 : 0;
+    u[4] = SPIN;
+    u[5] = UNICORNS.length;
 
     bmPassTo();
     bmUniforms(sky, tu);

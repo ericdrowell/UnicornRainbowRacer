@@ -21,32 +21,6 @@ import {
 } from 'brometal';
 
 /**
- * Where the moon hangs, and where its shadow does.
- *
- * Both are worked out here in TypeScript, at build time, and reach the shader as
- * plain numbers — the crescent is carved by a second disc offset from the first,
- * and *offset* is the whole trick: subtracting a shifted copy of a circle from a
- * circle is a crescent, with none of the trigonometry that drawing one as a
- * shape would need. Nudging the centre sideways and renormalising displaces it
- * very nearly tangentially, which is all the accuracy a shadow needs.
- *
- * The offset sets which way the crescent faces and how fat it is: at 0.45 of the
- * radius the moon is a little under half lit, which is the pose that reads as
- * "crescent" rather than as "circle with a dent" or "fingernail".
- */
-// The two directions are written out as literals rather than computed up here,
-// because a shader body can see nothing but its own parameters and local consts
-// — no module-level values at all, which the compiler says plainly rather than
-// compiling to something wrong. They are unit vectors, and this is the recipe:
-//
-//   moon    = normalize(1, 0.26, -0.45)  — up and left of the opening view
-//   shadow  = normalize(moon + (0.45, 0.3, 0) * 0.037)
-//
-// Moving the moon means running those two lines again, in a REPL, not editing
-// the numbers by hand: the second depends on the first, and a shadow that is no
-// longer a unit vector stops being a circle on the sky.
-
-/**
  * The same cosine palette the road runs on, so the sky is made of the same
  * light. Written out again rather than imported from track.shader.ts: each
  * shader compiles to its own WGSL and there is nothing to import across, but the
@@ -193,55 +167,6 @@ export const Sky = shader({
       .scale(3.2)
       .add(starLayer(dir, 165, 0.93, uTime * 5.1).scale(1.4));
 
-    // The moon: one disc with a second, shifted disc taken out of it.
-    //
-    // `1 - smoothstep(in, out, r2)` and never `smoothstep(out, in, r2)`, which is
-    // the obvious way to write a disc and is undefined in WGSL when the first
-    // edge is the larger — it happens to work on some drivers, which is worse
-    // than if it never did.
-    // Both compared against *squared chord length* rather than angle: for unit
-    // vectors the chord is the angle to well within a moon's width at this size,
-    // and it costs a subtract and a dot where an acos would cost an acos. The
-    // radius is 0.037 radians, a little over four degrees across — a storybook
-    // moon rather than the half-degree coin the real one is.
-    const toMoon = dir.sub(vec3(0.8873, 0.2307, -0.3993));
-    const r2 = dot(toMoon, toMoon);
-    const toShadow = dir.sub(vec3(0.8885, 0.2377, -0.3925));
-    const disc = 1 - smoothstep(0.001177, 0.001369, r2);
-    const bite = 1 - smoothstep(0.001068, 0.001232, dot(toShadow, toShadow));
-
-    // **The moon is a body, not a light.** It stands in front of the star field
-    // and stops it: `behind` multiplies the stars out, so none survives inside
-    // the disc on either side of the terminator. It used to be additive, and the
-    // stars carried on straight through the moon as though it were coloured
-    // glass.
-    //
-    // What the dark limb then shows is `haze` and the halo — not a colour picked
-    // to resemble the sky but the same two expressions the sky itself is made of,
-    // sampled at the same direction. They cannot drift apart and there is no
-    // seam at the limb to find.
-    //
-    // Which is exactly why the mask stops at the stars. Masking the halo too was
-    // tried, on the reasoning that a halo belongs to the moon rather than to the
-    // sky, and it turned the dark side into a hole: visibly darker than the lit
-    // sky an inch away from it, a black disc rather than an unlit limb. The
-    // stars are the only thing the moon is in front of. Everything else is the
-    // sky, and the sky is continuous.
-    const behind = 1 - disc;
-    // Driven to two and a half so the crescent clips and blooms into the sky the
-    // way the rails do, since there is no pass that could blur it afterwards.
-    // Warm, against a sky biased cold — a moon that shares the nebula's colour
-    // stops reading as a body and becomes a bright patch of it.
-    const moon = vec3(1, 0.96, 0.9).scale(disc * (1 - bite) * 2.5);
-    // And its halo, wide and cool and very faint. This is what makes it look
-    // bright — nothing on screen is brighter than the clipped crescent itself,
-    // so the light has to be implied by what it does to the sky around it.
-    //
-    // Centred on the moon and running right across it, unmasked, so the dark
-    // limb sits in the same wash of light as the sky around it.
-    const air = max(1 - r2 * 42, 0);
-    const glow = vec3(0.7, 0.85, 1).scale(air * air * air * 0.45);
-
     // ── The clouds ──────────────────────────────────────────────────────
     // A flat deck, found by intersecting the view ray with one horizontal plane
     // and shading whatever it hits. No volume, no march, no target.
@@ -296,7 +221,12 @@ export const Sky = shader({
     const lit = mix(vec3(0.55, 0.59, 0.74), vec3(1.05, 1.05, 1.12), cover);
     const veilAmt = cover * near;
 
-    const sky = haze.add(field.scale(behind)).add(glow).add(moon);
+    // No moon any more. It was a crescent carved by subtracting a shifted disc
+    // from a disc, with a wide cool halo around it and a mask that held the star
+    // field out of the lit side — about forty lines and 127 zipped bytes for a
+    // four-degree shape in one corner of a sky that is mostly rainbow and cloud.
+    // git log has it if it is ever wanted back.
+    const sky = haze.add(field);
     return vec4(sky.scale(1 - veilAmt).add(lit.scale(veilAmt)), 1);
   },
 });

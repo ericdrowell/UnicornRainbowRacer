@@ -5,19 +5,13 @@ import {
   sin,
   cos,
   abs,
-  dot,
   floor,
   fract,
-  length,
-  max,
   mix,
   mod,
-  normalize,
   pow,
   smoothstep,
   storageRead,
-  targetUv,
-  texture,
   type Vec3,
 } from 'brometal';
 
@@ -88,7 +82,7 @@ export const Track = shader({
   // Sampled here rather than blended into the frame directly, so the road can lay
   // down one resolved image instead of every overlapping triangle of the model in
   // turn.
-  uniforms: { uTime: 'float', uMirrorTex: 'sampler2D' },
+  uniforms: { uTime: 'float' },
   // Read-only here. Physics writes it, and a read_write binding could not be
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
@@ -118,7 +112,7 @@ export const Track = shader({
     return clip;
   },
 
-  fragment({ uTime, uState, uMirrorTex }, { vU, vV, vWorld, vClip }) {
+  fragment({ uTime, uState }, { vU, vV, vWorld, vClip }) {
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
@@ -211,94 +205,31 @@ export const Track = shader({
     // the silhouette against black space, and it was a hairline visible only in
     // the far distance where perspective stacked it up. Widened to a fifth of
     // the half-width and driven to 3.4, it is a light source with a body to it.
-    // ── Who is standing on this piece of road ─────────────────────────────
-    // There was a contact shadow here — a blob under each animal, the way kart
-    // games have always done it. It is gone because the road already says where
-    // a unicorn is: the ribbon glows, and every racer lays a reflection on it
-    // that moves with them and is brighter and easier to read than a dark
-    // smudge was.
+    // ── What used to be here ──────────────────────────────────────────────
+    // A contact shadow first — a blob under each animal — and then, when that
+    // went, a reflection: every racer drawn a second time into a full-screen
+    // target, mirrored through its own road plane, and sampled back here at this
+    // fragment's own place on screen.
     //
-    // The loop survives the shadow, because the reflection needs exactly what it
-    // was computing — which racers are near this fragment, and on which side.
-    // Distance is measured in the caster's own road plane, so a shadow on a
-    // banked or climbing stretch stays a disc lying on the surface instead of the
-    // ellipse a world-space distance would smear it into.
-    // Where the camera is, wanted twice below: once to decide which face of the
-    // road this fragment is, and again for the fresnel further down.
-    const eye = storageRead(uState, 8).xyz;
-    // How much of a unicorn's reflection this piece of road is entitled to show.
-    // Gathered in the same loop as the shadow because it wants the same two
-    // numbers, and a second pass over ten racers to ask a nearly identical
-    // question would be the expensive way to write this.
-    let owns = 0;
-    for (let j = 0; j < 10; j += 1) {
-      const body = storageRead(uState, 16 + j * 5).xyz;
-      const up = storageRead(uState, 16 + j * 5 + 2).xyz;
-      const flat = vWorld.sub(body);
-      const onPlane = flat.sub(up.scale(dot(flat, up)));
-      // **How far this road is from the caster perpendicularly, which the line
-      // above deliberately throws away.** Projecting into the caster's plane is
-      // what keeps a shadow a disc on a banked surface, but it also means a
-      // unicorn a hundred units overhead — on the far side of a loop, or on the
-      // track above this one — sits at zero in-plane distance and casts a
-      // full-strength blob straight through the road below it.
-      //
-      // A body is about two units tall, so anything more than a few units off
-      // this surface is not standing on it. Airborne over a crest still darkens
-      // the road, which is right: that is the one time a shadow is doing real
-      // work, telling you how far up you are.
-      const lift = 1 - smoothstep(1, 7, abs(dot(flat, up)));
-      // **And which face of the road you are looking at.** Everything the road
-      // paints on itself — the blob, the reflection — belongs to the surface the
-      // unicorn is standing on, and a surface has two sides. Without this the
-      // underside of the road carries them too, so a loop overhead shows you the
-      // field walking about on the far side of it as though the road were glass.
-      //
-      // The caster's own up vector answers it, and it is already read: the camera
-      // and the unicorn are on the same side when the camera is above the plane
-      // the unicorn stands on. No surface normal per fragment is needed, which is
-      // as well, because this stage has no attribute carrying one.
-      const side = step(0, dot(eye.sub(body), up));
-      // The strongest caster wins rather than the sum of them. Two unicorns
-      // running abreast overlap their blobs in the gap between them, and adding
-      // there lays a dark seam across the road exactly where the surface is in
-      // plain view between two bodies at the same height above it.
-      // Wider than the shadow, because a reflection is as tall as the thing
-      // casting it and stretches away down the surface, where the shadow is a
-      // disc under its feet.
-      owns = max(owns, (1 - smoothstep(3, 11, length(onPlane))) * lift * side);
-    }
-    // ── The reflection ────────────────────────────────────────────────────
-    // Sampled at this fragment's own place on screen, which is where the mirrored
-    // unicorn was drawn, so the road picks up whatever of it lands here. No depth
-    // test is involved: the reflection cannot be clipped by the road it is lying
-    // on, which is what used to cut it in half wherever the surface rose.
+    // Both are gone, and the loop that fed them with them: ten storage reads a
+    // fragment to ask which racers were near this piece of road and on which
+    // side of it, plus a fresnel to keep the reflection from reading as a decal.
+    // 351 zipped bytes across this stage, the model's vertex stage, and the pass
+    // and render target in game.js — the single largest visual saving available,
+    // on a road that is already a lit rainbow and does not much need to be a
+    // mirror too.
     //
-    // `w` is the coverage the reflection pass wrote. Multiplying by it keeps the
-    // road untouched everywhere the unicorn does not reach.
-    //
-    // **And `owns` is what keeps it on the right piece of road.** Having no depth
-    // test is what makes the lookup simple and is also its one hole: the target
-    // is in screen space, so *any* road drawn at a pixel picks up whatever
-    // reflection landed there — including the underside of a loop, or a stretch
-    // of track hundreds of units away that happens to sit behind the field. From
-    // below it reads as seeing the unicorns straight through the road. Asking
-    // whether a caster is actually near this fragment costs one more term off a
-    // loop that is already running.
-    const mirrorUv = targetUv(vec4(vClip.x / vClip.w, vClip.y / vClip.w, 0, 1));
-    const mirrorPx = texture(uMirrorTex, mirrorUv).mul(vec4(1, 1, 1, owns));
-    // Fresnel: a glancing look at glass is nearly a mirror, straight down at it is
-    // nearly clear. Without it the reflection is as strong underfoot as out at the
-    // horizon, which reads as a decal rather than as a surface.
-    const gaze = normalize(vWorld.sub(eye));
-    const gloss = 0.25 + 0.45 * pow(1 - abs(dot(gaze, storageRead(uState, 2).xyz)), 3);
-
+    // It is worth knowing what the reflection was solving, if it ever comes
+    // back: the target is in screen space and has no depth test, so *any* road
+    // at a pixel picked up whatever landed there, including the underside of a
+    // loop. `owns` — the near-and-on-this-side term off that same loop — is what
+    // stopped you seeing the field through the road from below.
     const edge = abs(vU);
     const core = smoothstep(0.9, 1, edge);
     const lip = smoothstep(0.78, 0.97, edge);
     const halo = pow(smoothstep(0.3, 1, edge), 2);
     return vec4(
-      mix(lit, mirrorPx.xyz, mirrorPx.w * gloss)
+      lit
         .add(glass.scale(halo * 0.8))
         .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
         .add(vec3(1, 0.97, 1).scale(core * 3.4)),
