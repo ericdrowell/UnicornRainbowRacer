@@ -72,15 +72,43 @@ const circuit = (seed) => {
     // own equal slice of the lap, so two can never end up on top of each other
     // however the seed falls.
     const slot = 6 + Math.floor(((k + rnd()) * (RUNGS - 14)) / count);
+    // How far apart the loop's entrance and exit sit, in ground points. Three
+    // was the only value there used to be, and it is still the floor.
+    //
+    // **That distance is the whole safety argument, and it was got wrong once.**
+    // The first version put a loop between one pair of ground points, about 28
+    // metres. Measured, the climbing branch and the descending branch came
+    // within 9 metres of each other near the bottom — on a road 27 wide, which
+    // is two surfaces sharing the same air, and the physics finds the ground
+    // under a unicorn by nearest ring. Over three points the same measurement is
+    // comfortably wider than the road. Everything above three is further apart
+    // still, so the range only ever moves away from the danger.
+    //
+    // Six is the ceiling on taste rather than on safety. Loops land one to a
+    // slice of the lap and so arrive in order, but two can still fall either
+    // side of a shared boundary and end up neighbours — and if the gap is
+    // smaller than the span, the walk below steps straight over the second one
+    // and the lap comes out with a loop fewer. That is a seed producing a
+    // slightly plainer track, not a broken one, which is the bar every other
+    // number here is held to.
+    const span = 3 + Math.floor(rnd() * 4);
     // How big the loop is, and how wide the corkscrew opens as it goes over.
+    //
+    // **The old range is now the floor and a seed can open it to five times
+    // that.** Squared rather than uniform, so most loops are ordinary and the
+    // occasional one is enormous — a lap of nothing but 170-metre loops is a
+    // spiral, not a circuit, and the point of the tail is that you remember the
+    // one that had it.
     //
     // **The width has a floor, and it is a safety floor rather than a taste
     // one.** It is what holds the climbing branch off the descending one; at 18
     // the two came within 25 metres on a road 27 wide, and at 34 they clear by
-    // 40 — wider than the authored circuit this replaced managed. The ceiling is
-    // taste: past about 50 the loop opens out into a lazy spiral and stops
-    // reading as a loop at all, and by 60 the road never goes inverted.
-    loops[slot] = [34 + rnd() * 26, 34 + rnd() * 14];
+    // 40 — wider than the authored circuit this replaced managed. Above the
+    // floor it now follows `span`: an entrance and an exit further apart is a
+    // longer screw, and a longer screw wants a deeper one or it reads as a hill
+    // with a kink in it rather than as a corkscrew.
+    const grow = rnd();
+    loops[slot] = [34 * (1 + 4 * grow * grow), ((34 + rnd() * 14) * span) / 3, span];
   }
 
   const ground = (i) => {
@@ -100,18 +128,10 @@ const circuit = (seed) => {
   const points = [];
   // ── Walking the lap ─────────────────────────────────────────────────────
   // One ground point at a time, except where a loop stands up: a loop swallows
-  // SPAN of them, because its entry and its exit have to end up far enough apart
-  // that the two are unambiguously different pieces of road.
-  //
-  // **That distance is the whole safety argument, and it was got wrong first.**
-  // The first version put the loop between one pair of ground points, about 28
-  // metres. Measured, the climbing branch and the descending branch came within
-  // 9 metres of each other near the bottom — on a road 27 wide, which is two
-  // surfaces sharing the same air. The physics finds the ground under a unicorn
-  // by nearest ring and would have picked whichever branch happened to be
-  // closer. Over three ground points the same measurement is comfortably wider
-  // than the road, which is where the authored circuit this replaced sat.
-  const SPAN = 3;
+  // its own `span` of them, because its entry and its exit have to end up far
+  // enough apart that the two are unambiguously different pieces of road. That
+  // number is chosen with the loop — see `span` above, and the safety argument
+  // for its floor with it.
   for (let i = 0; i < RUNGS; ) {
     const here = ground(i);
     points.push(here);
@@ -138,8 +158,8 @@ const circuit = (seed) => {
     // apart — and returns to zero at both ends, so the loop rejoins the ground
     // path exactly rather than leaving a lateral kink for the rest of the lap to
     // absorb. A wider `W` is a lazier, more open loop.
-    const [R, W] = loop;
-    const next = ground(i + SPAN);
+    const [R, W, span] = loop;
+    const next = ground(i + span);
     const away = [next[0] - here[0], next[1] - here[1], next[2] - here[2]];
     const A = Math.hypot(away[0], away[1], away[2]);
     const t = away.map((c) => c / A);
@@ -163,8 +183,21 @@ const circuit = (seed) => {
         here[2] + t[2] * f + s[2] * w,
       ]);
     }
-    i += SPAN;
+    i += span;
   }
+  // ── Where the boost pads fall ───────────────────────────────────────────
+  // One more number off the same stream, and it is the whole of the boost
+  // layout: the shaders hash it together with a pad's index down the road to
+  // decide which third of the width that pad sits in, or whether there is a pad
+  // there at all. Two of them get the same road with the pads in different
+  // places, which is what "encoded in the seed" has to mean if a seed is going
+  // to stay two bytes.
+  //
+  // Drawn here, after the walk, rather than being a function of the seed
+  // integer: it comes out of `rnd` like everything else, so it is decided by the
+  // same rule as the radii and the loops and cannot accidentally correlate with
+  // one of them.
+  points.b = rnd() * 90;
   return points;
 };
 

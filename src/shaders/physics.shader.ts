@@ -154,12 +154,42 @@ export const Physics = shader({
      * keep integrating so the camera can fly in; only the accelerating waits.
      */
     uGo: 'float',
+    /**
+     * The circuit's boost phase — see `points.b` in src/circuits.js. Hashed with
+     * a pad's index down the road to place the pads, by exactly the arithmetic
+     * the track shader uses to draw them.
+     *
+     * **Last in the block, and that is not a style choice.** game.js fills this
+     * struct by index — `step[9] = uGo` and so on — so a uniform inserted
+     * anywhere but the end renumbers every field below it and silently
+     * repoints those writes. Added after `uPattern` first, which pushed uTime,
+     * uTitle and uGo down one: the throttle gate then read the boost phase,
+     * which is a constant and never zero, so the field bolted the instant the
+     * grid appeared, and `uTitle` read the go flag and threw the camera out to
+     * the orbit shot the moment the race started. Nothing warns. New uniforms
+     * go on the end.
+     */
+    uSeed: 'float',
+    /**
+     * One number rolled fresh at each flag, so a race is not the same race.
+     *
+     * Every AI's pace and lane used to be `fract(me * k)` — a function of the
+     * invocation index and nothing else, which meant racer 5 was the quickest
+     * and racer 8 the slowest in every race anyone would ever run, always in the
+     * same lane. Hashing the index against this instead keeps them apart from
+     * each other and stops them being the same nine racers twice.
+     *
+     * Last in the block for the same reason `uSeed` is — game.js fills this
+     * struct by index, so a field inserted anywhere else silently renumbers
+     * every one below it.
+     */
+    uRoll: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
   compute(
-    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uTime, uTitle, uGo },
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uSeed, uRoll, uTime, uTitle, uGo },
     id,
   ) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -182,9 +212,33 @@ export const Physics = shader({
     // fills.
     const FIELD = 10;
     const RACER = 16;
-    const SLOTS = 5;
+    const SLOTS = 6;
+
+    /**
+     * **How fast the field runs, and the one number to turn while tuning it.**
+     *
+     * The average cruising speed of the nine AI, in metres a second. Each of
+     * them takes a share of a sixteen-wide spread either side of it, so this
+     * moves the whole field together and keeps the character between them.
+     *
+     * Everything about an AI's pace hangs off it — the cap it lifts off at, and
+     * the thrust that lets it reach the cap in the first place — so there is
+     * nothing else to keep in step. Raise it and the field is harder to beat
+     * without the pads; drop it and the pads matter less.
+     *
+     * For scale: drag alone settles a racer at 54.8, and a pad pins one at 90.
+     * The whole race lives between those two, and this says where in between the
+     * field sits.
+     */
+    const PACE = 76;
     const me = id.x;
     const mine = RACER + me * SLOTS;
+    // This racer's draw for the race: the pace it settles at and the line it
+    // takes both come off it, so the two stay independent of each other and
+    // neither is the same twice. `fract(roll * 7.7)` is a second number out of
+    // the first, which is cheaper than a second hash and just as uncorrelated
+    // over nine racers.
+    const roll = fract(sin(me * 12.99 + uRoll) * 43758.5);
     /** 1 for the player, 0 for the AI. Used as a mix factor, never as a branch. */
     const player = 1 - step(0.5, me);
 
@@ -261,6 +315,54 @@ export const Physics = shader({
     const upT = frameUp(fwdT, mix(ua.xyz, ub.xyz, along));
     const sideT = cross(fwdT, upT);
 
+    // The road's own along-coordinate, hoisted: the boost pads are placed in it
+    // and the buffer write at the bottom of the stage reports it. Nothing between
+    // here and there moves the body along the ribbon it was measured on.
+    const onLap = mix(ca.w, cb.w, along);
+    const trackAlong = onLap * uPattern;
+
+    // ── Boost pads ─────────────────────────────────────────────────────────
+    // **The pads are not objects. They are a function of where you are.**
+    // Nothing is placed, nothing is stored and nothing is searched: a pad exists
+    // wherever this arithmetic says one does, and the road shader runs the same
+    // arithmetic on the same two coordinates to paint it. That is what keeps a
+    // scattering of boosts down two and a half kilometres of track at nought
+    // bytes of data — and it is also the only way the two can be guaranteed to
+    // agree, which matters more. A pad you can see and cannot use, or use and
+    // cannot see, is worse than no pad.
+    //
+    // The coordinates are the track shader's own: which of twelve columns across
+    // the road, and which row of tiles along it. Here they are rebuilt from the
+    // body's place on the ribbon rather than interpolated from a vertex, but
+    // they are the same numbers — `uPattern` is exactly the factor that puts
+    // distance-travelled into the road's lit-panel space.
+    //
+    // A pad is four columns wide — a third of the road, as asked — so `* 0.25`
+    // turns a column into which third it is in, and the whole test is whether
+    // that third is the one the seed drew.
+    const bRow = floor(trackAlong * 0.4456);
+    // One pad slot every 64 rows — about 144 metres, so a lap holds a dozen or
+    // two. The hash gives four outcomes and only three of them are lanes: a
+    // quarter of the slots draw "no pad here", which is what turns a regular
+    // spacing into a scattering without a second hash to pay for.
+    //
+    // **Thirty rows in, not at the slot's edge, and that is what clears the
+    // start line.** With a pad at the front of every slot, slot zero's sat on
+    // rows 0, 1 and 2 — the start line itself, with the grid parked a few metres
+    // behind it. The field launched straight onto a pad. Seating the pad a third
+    // of the way into its slot puts the first one about sixty-five metres past
+    // the line, and rows before that fall into slot -1 at an offset no pad
+    // covers, so the opening stretch is clear by construction rather than by a
+    // special case.
+    const bSeat = bRow - 30;
+    const bSlot = floor(bSeat * 0.015625);
+    const bPick = floor(fract(sin(bSlot * 91.7 + uSeed) * 43758.5) * 4);
+    // Three rows long, about seven metres — a bit over two body lengths, which
+    // is short enough to be missed and long enough to be aimed at.
+    const bOn =
+      step(abs(floor((dot(pos.sub(centre.xyz), sideT) / uWidth + 0.5) * 3) - bPick), 0.5) *
+      (1 - step(3, bSeat - bSlot * 64));
+
     // ── The driver ─────────────────────────────────────────────────────────
     // For racer zero this is the keyboard. For the other nine it is this, and it
     // is deliberately the smallest thing that can drive a car: aim at a point
@@ -289,7 +391,7 @@ export const Physics = shader({
     // .33, .94, .56 — better distributed than the `fract(sin(...))` hash this
     // replaced, which cost a function and two calls to be arbitrary rather than
     // even.
-    const lane = (fract(me * 0.618) - 0.5) * uWidth * 0.55;
+    const lane = (fract(roll * 7.7) - 0.5) * uWidth * 0.55;
     // Offset in *this* segment's frame rather than the aim ring's. Rebuilding a
     // frame fourteen rings ahead cost a normalise, a frameUp and a cross to
     // answer a question that only decides which side of the road to aim at: on a
@@ -314,7 +416,36 @@ export const Physics = shader({
     // neighbours, so the field spreads out over a lap instead of staying a lump,
     // and so winning is possible without being trivial. The player is capped at
     // 60 as before — the drag settles it near 55 long before that.
-    const cap = mix(46 + fract(me * 0.382) * 9, 60, player);
+    // Three seconds, counting down, in the sixth slot. `max` rather than a
+    // branch: standing on a pad sets the clock to 3 and stepping off it leaves
+    // the countdown alone, so a pad taken at an angle across its corner gives
+    // the same three seconds as one taken square. Re-arming on every frame of
+    // contact is deliberate — a long pad is not a longer boost, it is a boost
+    // that starts when you leave.
+    // **Armed only once the flag is out.** The pin below overrides the throttle,
+    // and the throttle is the only thing the countdown was holding the field
+    // with — so a racer sitting on a pad before the start was set to 90 and left
+    // the grid on its own. `uGo` on the arming rather than on the pin, so a
+    // countdown spent standing on one does not bank three seconds of boost to
+    // spend the moment it drops.
+    const was = storageRead(uState, mine + 5);
+    const boost = max(was.x - dt, bOn * 3 * uGo);
+    const bGo = step(0.001, boost);
+
+    // Untouched by the boost. A pad does not persuade a racer to go faster, it
+    // *sets* how fast it is going — see the pin below — so there is nothing here
+    // for a raised cap to do. What the cap still does is decide how the AI comes
+    // back down afterwards: at 90 it is well over its own limit, so the throttle
+    // eases off and the racer coasts rather than fighting the drag.
+    // Each AI is a little different from its neighbours so the field spreads out
+    // over a lap instead of staying a lump.
+    //
+    // **Raised, because the field was not fast enough to be a race.** It used to
+    // top out at 55, which is also where drag alone settles a racer — so the
+    // fastest AI was driving at the same speed as a player who never touched a
+    // pad, and every pad the player did take was gained against a field that
+    // could not answer.
+    const cap = mix(PACE - 8 + roll * 16, 60, player);
     // The cap eases the throttle off rather than clamping the speed, and that
     // matters now that a shunt can add speed the racer did not ask for. Clamped,
     // an AI sitting at its cap had any push from behind erased on the very next
@@ -397,13 +528,46 @@ export const Physics = shader({
     // The clamp is a backstop well clear of top speed, not the thing setting
     // it. The reverse end is doing real work though: backing up is drag-free at
     // these speeds, so -7 is the only reason it stops.
-    const rate = mix(30, 7.5, step(0, throttle));
+    // **The AI need the thrust as well as the cap, or the cap is decoration.**
+    // What sets a top speed here is thrust against quadratic drag, and 7.5
+    // settles at 54.8 whatever the cap says — so raising an AI's cap past that
+    // on its own changes nothing at all. Derived from `PACE` rather than given
+    // its own number, at the top of the spread so the quickest AI can still
+    // reach its own cap: drag balances thrust at `sqrt(rate / 0.0025)`, so this
+    // is that read backwards. The player keeps 7.5 — a pad is worth what it is
+    // worth because 90 is so far above what a throttle alone can reach.
+    const rate = mix(
+      30,
+      mix((PACE + 8) * (PACE + 8) * 0.0025, 7.5, player),
+      step(0, throttle),
+    );
     speed = speed + throttle * rate * dt;
     speed = speed - speed * (1 - step(0.5, abs(throttle))) * dt * 0.9;
     speed = speed - speed * abs(speed) * dt * 0.0025;
     // A backstop well clear of anything the throttle can reach, not the thing
     // setting the top speed — see the ease above.
-    speed = clamp(speed, -7, 60);
+    // Ninety rather than sixty, and it is still a backstop rather than the thing
+    // setting the top speed — it just has to be clear of the boosted speed now
+    // instead of the driven one. It matters most in the seconds *after* a boost:
+    // a ceiling of 60 would snap a racer coming off a pad straight down to it,
+    // and the whole point of the pad is that it lets go gradually.
+    speed = clamp(speed, -7, 90);
+
+    // ── The boost, as a held speed ─────────────────────────────────────────
+    // **A pad sets the speed rather than adding to it, and then holds it there.**
+    // Half again over the sixty this road tops out at, pinned for three seconds
+    // however hard the racer is or is not pressing, and then simply released.
+    //
+    // Released, not ramped: there is no fade term here and there does not need
+    // to be one. Drag is quadratic, so at 90 it is pulling about 20 a second
+    // against 7.5 of throttle — the racer sheds the difference on its own and
+    // settles back at its usual 55 over about three seconds. A pad therefore
+    // gives roughly six seconds of being quick for three seconds of being
+    // fastest, and the tail is the part that feels like speed.
+    //
+    // It overrides the throttle, braking included. That is what a boost pad is:
+    // you drove onto it, and for three seconds the road is deciding.
+    speed = mix(speed, 90, bGo);
 
     // Both flattened back into the road's surface. This is the one thing the
     // track is still allowed to do to the unicorn's direction, and it is not
@@ -453,6 +617,11 @@ export const Physics = shader({
     // The self-test is `abs(j - me)` rather than a branch: at j == me the gap is
     // zero, which would otherwise register as the hardest possible collision
     // with itself and fire every racer off the track on frame one.
+    // Anything this frame worth a knock — a body or the rail. Accumulated
+    // rather than tested at the end, because contact with a *particular*
+    // neighbour is only known inside the loop below and is gone by the time it
+    // finishes.
+    let knock = 0;
     for (let j = 0; j < FIELD; j += 1) {
       const away = pos.sub(storageRead(uState, RACER + j * SLOTS).xyz);
       const gap = length(away);
@@ -470,6 +639,7 @@ export const Physics = shader({
       // over and arrives at the average anyway. Going all the way immediately
       // makes a light touch feel like hitting a wall.
       speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5);
+      knock = max(knock, hit);
     }
 
     // What gets *drawn*, and deliberately past even the nose. The gap between
@@ -517,23 +687,49 @@ export const Physics = shader({
     vy = vy - 30 * (1 + 1.5 * steep) * dt;
     pos = pos.add(upT.scale(vy * dt));
 
-    // Height above the surface, and whether there is any surface here. Past the
-    // rails there is nothing under the unicorn but sky, so the landing is
-    // skipped and it keeps falling.
+    // ── The rails hold ────────────────────────────────────────────────────
+    // **You cannot leave the road sideways any more. You can only scrub speed
+    // against the edge.** Falling off was a real punishment — a respawn at the
+    // start line, half a lap gone — for the one mistake a player makes without
+    // meaning to, and the AI made it too: hairpins taken a shade wide and a
+    // racer simply left the world. What replaced it is a wall you can lean on.
+    //
+    // A clamp on where the body sits across the road, not a force pushing it
+    // back: forces bounce, and bouncing off a rail at speed hands the mistake
+    // straight back with interest. Clamped, a unicorn held against the edge just
+    // runs along it.
+    //
+    // 1.2 in from the half-width so the model rides inside the rail rather than
+    // hanging over the drop, which at this scale is most of a hoof.
+    const off = dot(pos.sub(centre.xyz), sideT);
+    const kerb = uWidth * 0.5 - 1.2;
+    const held = clamp(off, 0 - kerb, kerb);
+    pos = pos.add(sideT.scale(held - off));
+    // The cost of leaning on it. Exponential rather than a fixed subtraction, so
+    // a graze costs a little and a long scrape down the outside of a corner
+    // costs a lot — and it is the same shape as the drag term above, which is
+    // what keeps it feeling like the road rather than like a rule.
+    const scrape = step(0.001, abs(off - held));
+    speed = speed - speed * scrape * dt * 1.6;
+    knock = max(knock, scrape);
+
+    // Height above the surface. There is no "is there surface here" test any
+    // more: the clamp above guarantees there is.
     const high = dot(pos.sub(centre.xyz), upT);
-    const onRoad = step(abs(dot(pos.sub(centre.xyz), sideT)), uWidth * 0.5);
-    const landed = step(high, 0) * onRoad;
+    const landed = step(high, 0);
     pos = pos.add(upT.scale((0 - high) * landed));
     // Landing zeroes the fall; not landed leaves vy alone, so gravity keeps
     // accumulating. This is where jump used to live — the whole move was this one
     // line launching instead of clamping when the key went down on the same frame.
     //
     // Gravity and the clamp stay. They are not jump machinery: they are what
-    // holds the unicorn against a road that climbs, banks and drops away, and
-    // what lets it fall past the rails when it leaves the edge.
+    // holds the unicorn against a road that climbs, banks and drops away.
     vy = vy * (1 - landed);
 
     // Far enough under the road to have plainly lost it: back to the start.
+    // Unreachable by the sideways route now that the rails hold, and kept as
+    // what it always also was — a backstop for a body that ends up somewhere the
+    // nearest-ring search cannot explain.
     const lost = step(high, -50);
     const home = storageRead(uTrack, 0);
     pos = mix(pos, home.xyz, lost);
@@ -609,8 +805,81 @@ export const Physics = shader({
     // because the course lags the nose by design and the whole thing is
     // smoothed again below. The unicorn still visibly rotates within the frame,
     // since what gets drawn is exaggerated past the course.
-    const chaseEye = pos.sub(courseDir.scale(8)).add(upT.scale(3));
-    const chaseAt = pos.add(courseDir.scale(5)).add(upT.scale(1));
+    // ── Where behind, and how far ──────────────────────────────────────────
+    // Solved against design/mario-kart-driving.jpg rather than dialled in by
+    // eye, because three things in that frame are measurable and all three are
+    // camera placement:
+    //
+    //   - the kart's roof sits at 53% down the frame and its wheels at 95%, so
+    //     it covers about two fifths of the height and just clears the bottom;
+    //   - its centre is therefore at 74% — the player is *low*, not centred, and
+    //     the upper half of the screen is track rather than vehicle;
+    //   - the ground's vanishing point is at 40%, a shade above the middle,
+    //     which is the whole of the downward tilt: `f * tan(pitch)` in clip
+    //     space, so 40% fixes the pitch on its own.
+    //
+    // Pitch settled, the two remaining freedoms — how far back and how high —
+    // are fixed by the other two numbers.
+    //
+    // **The two references do not agree, and the answer is between them.**
+    // design/mario-kart-boost-ramp.avif is the same game and a looser shot: the
+    // kart covers 29% of the height rather than 42%, with the horizon at 35%
+    // rather than 40%. Its centre is at 72% against the other's 74%, which is
+    // the useful part — the two disagree about how far back the camera sits and
+    // agree almost exactly about how low the player rides. So the height is
+    // split between them and the placement is not: 10 back and 5.4 up puts the
+    // model's top at 54.0% and its bottom at 92.5%, for 38.5% of the height
+    // with its centre at 73.3% and the horizon at 37.8% — inside the span the
+    // two references bracket, on all three.
+    //
+    // **The two points that matter are the horn and the back hooves, not the
+    // middle.** A first pass placed the animal as though it were a flat card at
+    // its own centre, and it came out a third too close with its legs cut off
+    // by the bottom of the screen. A unicorn is three units long and this camera
+    // looks down the length of it from a metre or two away: its rump is nearer
+    // than its nose by most of a body, and the near end is what fills the frame.
+    // Project the extremes instead — (1.44, 3.36) at the horn tip and
+    // (-1.52, 0) at the back hooves, in road units after `uScale` — and both
+    // land where the reference has them.
+    //
+    // **The camera went up, not back.** The old placement was 8 back and 3 up
+    // aiming 5 ahead at a point one unit off the road — *below* the unicorn's
+    // own middle, which is what put the animal dead centre in frame with as
+    // much empty sky above it as track. Aiming above it instead is what drops it
+    // to the bottom of the picture; the extra height is what stops that from
+    // becoming a view of the road ten metres ahead. The pitch came down on the
+    // way, from 8.7 degrees to 7.6.
+    // ── The kick off a boost pad ──────────────────────────────────────────
+    // **Half a second of shake, and it is only half of what sells it.** The
+    // other half is already free: the pad sets the speed to 90 in one frame and
+    // the camera is an exponential follow, so the unicorn simply leaves — the
+    // boom stretches out behind it and reels back in over the next second. That
+    // lurch is the warp; this is the rattle on top of it.
+    //
+    // Two sines at frequencies with no common factor, so the wobble never
+    // settles into a rhythm you can hear the loop in, across the road and up
+    // rather than along it — a camera that shakes *forwards* reads as the frame
+    // rate coming apart rather than as speed.
+    //
+    // On the eye and not the aim point, so the shake rotates the view a little
+    // as well as moving it. Shaking both together is a pure translation, and a
+    // pure translation of a camera ten metres back is nearly invisible.
+    //
+    // The first half second of the three, off a clock that starts at 3 and
+    // counts down: full for the first three tenths and eased out by the half
+    // second. The boost runs another two and a half seconds after the rattle
+    // stops, which is the right way round — the shake is the moment you *hit*
+    // the pad, and holding it for the whole three seconds turns an event into a
+    // state.
+    //
+    // Eased out rather than switched off, because a rattle that stops on a frame
+    // reads as a dropped frame.
+    const jolt = smoothstep(2.5, 2.7, boost) * 0.3;
+    const chaseEye = pos
+      .sub(courseDir.scale(10))
+      .add(upT.scale(5.4 + sin(uTime * 61) * jolt))
+      .add(sideT.scale(sin(uTime * 84) * jolt));
+    const chaseAt = pos.add(courseDir.scale(8)).add(upT.scale(3));
 
     // ── The title camera ───────────────────────────────────────────────────
     // Before the flag there is nothing to chase — the field is stood on the grid
@@ -690,14 +959,23 @@ export const Physics = shader({
     // the ratio of far to near, and this widens it from five thousand to one
     // to nine thousand — but the near plane is the expensive end of that
     // fraction and it has not moved.
-    const trackAlong = mix(ca.w, cb.w, along) * uPattern;
     storageWrite(uState, mine, vec4(pos, vy));
     storageWrite(uState, mine + 1, vec4(dir, speed));
     storageWrite(uState, mine + 2, vec4(upT, gait));
     storageWrite(uState, mine + 3, vec4(courseDir, trackAlong));
     // Raw distance round the lap rather than the track shader's stretched
     // version: this one is for knowing who is winning, so it wants metres.
-    storageWrite(uState, mine + 4, vec4(headingDir, mix(ca.w, cb.w, along)));
+    storageWrite(uState, mine + 4, vec4(headingDir, onLap));
+    // The contact clock, beside the boost clock and read the same way: the CPU
+    // watches for it to go *up*, so one bump is one sound however many frames
+    // the bodies stay overlapped. Half a second is long enough that a poll
+    // landing six times a second cannot miss it, and short enough that letting
+    // go of a rail and touching it again reads as two knocks rather than one.
+    storageWrite(
+      uState,
+      mine + 5,
+      vec4(boost, max(was.y - dt, knock * 0.5), 0, 0),
+    );
 
     // ── And what only the player leaves behind ─────────────────────────────
     // The camera and the legacy body slots that the road, the

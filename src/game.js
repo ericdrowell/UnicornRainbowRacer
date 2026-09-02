@@ -659,7 +659,12 @@ for (let i = 0; i <= RINGS; i++) {
 // under the body — the same path a respawn takes, so there is one piece of code
 // deciding which way a unicorn faces and not two that can disagree.
 const RACER_BASE = 16;
-const RACER_SLOTS = 5;
+// Six, not five: the sixth carries how much boost a racer has left. Every word
+// of the other five was spoken for — the spare quarter of each was already
+// holding vy, speed, gait, the lit-panel coordinate and the lap distance the
+// CPU reads back — and a timer is the one thing a boost pad needs that cannot be
+// recomputed from where a unicorn is.
+const RACER_SLOTS = 6;
 /** Where the liveries start, six vec4s per racer. */
 const PALETTE = 80;
 
@@ -810,6 +815,44 @@ const ROUND = new Float32Array(FIELD);
 const DONE = new Float32Array(FIELD);
 /** The player's place, 0 for first. */
 let place = 0;
+/**
+ * The draw the field takes for this race — see uRoll in physics.shader.ts.
+ *
+ * Rolled at the flag and held for the whole race, because it decides each AI's
+ * pace: re-rolled per frame it would not be a field of racers, it would be nine
+ * caps flickering at sixty hertz.
+ */
+let ROLL = 0;
+/**
+ * Every racer's boost clock as of the last readback, to hear a rise in it.
+ *
+ * **The pads are on the GPU and the speakers are on the CPU, and this is the
+ * only wire between them.** Nothing here knows where a pad is — placement is a
+ * function evaluated in two shaders, deliberately, so there is no list to test
+ * against. What the CPU does get is the lap readback, which already copies every
+ * racer's whole block six times a second, and the boost clock rides in that
+ * block. So the sound is triggered by watching the number rather than by
+ * watching the road, and it costs nothing to watch all ten of them instead of
+ * one — the bytes were already crossing the bus.
+ *
+ * **A rise, not a threshold.** The clock is re-armed to 3 on every frame of
+ * contact and decays otherwise, so a pad is anywhere it goes *up* — and that
+ * survives the poll rate, which testing for "is it 3 right now" does not. At
+ * boosted speed a pad is under the hooves for about a tenth of a second, which
+ * is less than the interval between reads: the contact itself is routinely
+ * missed, and the raised clock left behind never is. Sitting on a long pad reads
+ * as equal rather than greater from one poll to the next, so it fires once.
+ */
+const WAS_BOOST = new Float32Array(10);
+/**
+ * The same, for the player's contact clock — and the player's alone.
+ *
+ * A rival scraping a rail or shunting another rival is not the player's problem
+ * and does not want to be in their ears: nine racers jostling would put a knock
+ * under the whole race. The boost cue is the opposite case and stays a field-wide
+ * one, because a pad going off ahead of you is information.
+ */
+let wasBump = 0;
 
 /**
  * One unicorn's colours, in the layout the palette region expects.
@@ -830,6 +873,10 @@ function livery(r) {
     paint.set(c, 12);
   }
   paint.set(r.horn || HORN, 16);
+  // The horn's spare fourth word: how big this one is, 1 if the roster does not
+  // say. Not a colour, and it rides here because the alternative — an eleventh
+  // channel — is a seventh vec4 for every racer to carry one number.
+  paint[19] = r.size || 1;
   paint.set(r.eye || EYE, 20);
   return paint;
 }
@@ -910,6 +957,7 @@ function go(next) {
   // rewritten on the way into each.
   if (next === SELECT_STATE) showPick();
   if (next === FLAG_STATE) {
+    ROLL = Math.random();
     lights = 0;
     rung = 0;
     lineUp(PICK);
@@ -942,6 +990,8 @@ const SONGS = {};
 const playSelectNext = shot(UNICORN_SELECT_NEXT);
 const playSelectPrev = shot(UNICORN_SELECT_PREV);
 const playReady = shot(READY_SIGNAL, 2);
+const playBoost = shot(BOOST, 2);
+const playBump = shot(BUMP, 2);
 
 // ── The start line ──────────────────────────────────────────────────────────
 // Seconds since the grid appeared, and how many signals have sounded. Three
@@ -1443,6 +1493,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // once rather than per frame because nothing on this screen can change it; the
   // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
   u[1] = 1;
+  // The circuit's boost phase, to the two stages that have to agree about where
+  // the pads are: the physics decides whether a unicorn is standing on one, the
+  // road draws them, and a disagreement is a pad you can see and not use. Sent
+  // once — it is a property of the circuit, and the circuit does not change
+  // inside a race. `tu` already carries four floats to the road and the sky and
+  // was using one of them.
+  step[10] = tu[1] = TRACK.b;
   // ── Counting laps ───────────────────────────────────────────────────────
   // One 16-byte read, six times a second, of the one number that decides when
   // the race is over: how far round the lap racer zero is.
@@ -1487,11 +1544,52 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       lapPeek.unmap();
       peeking = false;
       // Same wrap test for all ten, and then the order falls out of the totals.
+      // Racer zero's contact clock, on its own outside the loop, because only
+      // the player's knocks are audible. Same rising edge as the boost, so a
+      // rail leant on through a corner rings once rather than sixty times a
+      // second, and at the effect's own volume — the player is never at a
+      // distance from themselves.
+      const knock = seen[21];
+      if (knock > wasBump) playBump();
+      wasBump = knock;
       let ahead = 0;
       for (let i = 0; i < FIELD; i++) {
-        const now = seen[(i * RACER_SLOTS + 4) * 4 + 3];
+        const p = i * RACER_SLOTS * 4;
+        const now = seen[p + 19];
         if (ROUND[i] > LAP * 0.75 && now < LAP * 0.25) DONE[i]++;
         ROUND[i] = now;
+
+        // The sixth slot's first word: this racer's boost clock. Watched for a
+        // *rise* rather than a level, so a pad held under the hooves rings once.
+        const lit = seen[p + 20];
+        if (lit > WAS_BOOST[i]) {
+          const dx = seen[p] - seen[0];
+          const dy = seen[p + 1] - seen[1];
+          const dz = seen[p + 2] - seen[2];
+          // Racer zero is the player and sits at the front of the copy, so its
+          // own boosts come through at full volume and a rival's arrives at
+          // whatever the road between you leaves of it — which is the point: a
+          // pad going off somewhere ahead tells you the field is using them
+          // without your having to see it.
+          //
+          // **Inverse distance, not inverse square.** The square was the first
+          // thing here and it was wrong twice over. It is the law for energy
+          // spreading over a sphere rather than for what an ear does with it,
+          // and on a track where the field strings out over a couple of hundred
+          // metres it put everything but a duel into silence — a rival forty
+          // metres up the road came through at a tenth. Inverse distance halves
+          // the volume every time the gap doubles instead of quartering it, so
+          // the far end of the field stays present without ever competing with
+          // your own pads.
+          //
+          // 0.01 rather than 0.02 is the whole of the far-field volume: the
+          // curve is 2.4 over one plus this, so at any distance worth calling
+          // distant the one is negligible and halving the rate doubles what you
+          // hear. It does almost nothing to a pad taken alongside you, which is
+          // the right way round — the near end was never the problem.
+          playBoost(2.4 / (1 + Math.hypot(dx, dy, dz) * 0.01));
+        }
+        WAS_BOOST[i] = lit;
       }
       const mine = DONE[0] * LAP + ROUND[0];
       for (let i = 1; i < FIELD; i++) {
@@ -1578,6 +1676,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[8] = SCREEN === RACE_STATE || SCREEN === PAUSE_STATE || SCREEN === WIN_STATE || SCREEN === FLAG_STATE ? 0 : 1;
     // Everything holds on the grid until the flag.
     step[9] = SCREEN === FLAG_STATE ? 0 : 1;
+    // Constant for the whole race — rolled once at the flag. Sent every frame
+    // because the block is written whole, not because it changes.
+    step[11] = ROLL;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -1598,13 +1699,21 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // walked by rewriting the first palette slot rather than by drawing a ring
     // of ten and sliding it.
     const shown = SCREEN === TITLE_STATE ? 0 : SCREEN === SELECT_STATE ? 1 : FIELD;
-    // Three times the size on the select screen, because it is a close look at
-    // one unicorn rather than a field of them seen from a camera boom.
+    // 1.6 on the road, and the roster's own size factor on top of that — see
+    // `livery`, which carries it in the palette's spare fourth word. The model
+    // is built about the size of a real pony against a 27-wide road, which from
+    // a chase camera reads as a toy; twice that read as too much of the frame,
+    // and this is the fifth back from it.
+    //
+    // The select screen is not a scaled version of the same view and does not
+    // follow it down: it is a close look at one unicorn rather than a field of
+    // them seen from a camera boom, so its number is a framing rather than a
+    // size and stays where it is.
     // Slots 2 to 5, not 3 to 6: dropping `uMirror` from the shader closed the
     // gap it left, and these indices are positions in that block rather than
     // names. Nothing warns when they are wrong — the model simply came back at
     // uScale 0, which is to say invisible.
-    u[2] = SCREEN === SELECT_STATE ? 2.3 : 1;
+    u[2] = SCREEN === SELECT_STATE ? 2.3 : 1.6;
     u[3] = SCREEN === SELECT_STATE ? 1 : 0;
 
     bmPassTo();

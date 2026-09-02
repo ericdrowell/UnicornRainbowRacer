@@ -129,9 +129,9 @@ const parts = [
   read('src', 'mesh.js'),
   song(['RACE_SONG', 'dizzy-beats.json']),
   read('src', 'unicorns.js'),
+  read('src', 'sonantx-custom.js'),
   read('src', 'circuits.js'),
   read('src', 'text.js'),
-  read('src', 'sonantx-custom.js'),
   read('dist', 'brometal.js'),
   read('dist', 'shaders.js'),
   read('src', 'soundEffects.js'),
@@ -175,9 +175,17 @@ writeFileSync(rawPath, combined);
 // the runtime's API and drop the parts this game never calls; without it those
 // names survive at full length.
 const outPath = join(dist, 'g.js');
+//
+// **`passes=3`, because one pass leaves work on the table.** Terser's compressor
+// is a fixed point iteration and a single pass does not reach it: inlining a
+// function exposes constants to fold, folding them turns a branch into dead
+// code, and dropping that dead code makes the next function small enough to
+// inline. 49 bytes here, on a program this size. Three and not more because it
+// converges — six measured to the byte the same as three, so the extra runs are
+// paid for and find nothing.
 run('npx', [
   'terser', rawPath,
-  '--compress', '--mangle', '--toplevel',
+  '--compress', 'passes=3', '--mangle', '--toplevel',
   '--format', 'comments=false',
   '-o', outPath,
 ]);
@@ -213,9 +221,9 @@ run('npx', [
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
   numAbbreviations: 27,
-  recipLearningRate: 1910,
+  recipLearningRate: 1918,
   modelMaxCount: 3,
-  modelRecipBaseCount: 117,
+  modelRecipBaseCount: 179,
   sparseSelectors: [0, 1, 2, 3, 7, 13, 27, 49, 95, 172, 338, 409],
 };
 

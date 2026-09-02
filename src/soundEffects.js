@@ -34,13 +34,21 @@
 // so 72 is a good way up the register, which is what makes a click a click
 // rather than a thud.
 
-// The carousel, one seat at a time. Two effects rather than one, four semitones
+// The carousel, one seat at a time. Two effects rather than one, five semitones
 // apart: the higher note goes with moving right and the lower with moving left,
 // so the direction you are travelling is audible without looking. It is the
 // oldest trick a menu has, and it costs a second entry in this file and nothing
 // else — the instrument is already rendered either way.
-const UNICORN_SELECT_NEXT = [MENU_SONG, 4, 93];
-const UNICORN_SELECT_PREV = [MENU_SONG, 4, 89];
+//
+// **Track 0, and it had to move.** These pointed at track 4, and the menu song
+// lost two of its five channels — an index into an array, so nothing would have
+// complained on the way past: `songData[4]` comes back undefined and the render
+// throws on the first line that reads a field off it, at module scope, before
+// anything is on screen. Track 0 is a detuned pair of squares an octave apart
+// with ten of attack, which is bright and immediate — what a menu wants over
+// quiet. The interval is untouched, so the direction still reads.
+const UNICORN_SELECT_NEXT = [MENU_SONG, 0, 74];
+const UNICORN_SELECT_PREV = [MENU_SONG, 0, 69];
 
 // The start line. Three of these, a second apart, and then a fourth beat of
 // silence on which the race begins.
@@ -50,6 +58,23 @@ const UNICORN_SELECT_PREV = [MENU_SONG, 4, 89];
 // like a flag the instant the track cuts in. Playing a note over the top of it
 // muddied the one moment in the game that wants to be clean.
 const READY_SIGNAL = [RACE_SONG, 1, 55];
+
+// Hitting a boost pad. The same instrument the race is already playing
+// underneath, so a pad reads as the track hitting a note rather than as an
+// effect landing on top of one.
+//
+// One note for all three lanes. A note *per* lane was tried — 80, 82 and 84,
+// rising left to right, so a boost going off in the field said which side of the
+// road it was taken on. It cost the physics stage a latched lane in the state
+// buffer, because the CPU only learns about a boost on the poll after it
+// happened, by which time the racer has usually left the pad.
+const BOOST = [RACE_SONG, 3, 97];
+
+// Hitting something — another unicorn, or the rail that will not let you off the
+// road. One sound for both, because from the driver's seat they are the same
+// event: you wanted to be somewhere and something was already there.
+//
+const BUMP = [RACE_SONG, 2, 73];
 
 // ── Playing one ─────────────────────────────────────────────────────────────
 // An effect goes in, a function that plays it comes out.
@@ -82,7 +107,11 @@ const shot = ([song, track, note], loud) => {
   if (MUSIC_ENABLED) {
     buf = renderNote(MUSIC, song.songData[track], note);
   }
-  return () => {
+  // The volume is optional and per-play, because the boost pads are: ten
+  // unicorns can take one and the near ones have to be louder than the far
+  // ones, which a gain fixed when the effect is built cannot do. Left out, it
+  // falls back to the volume this effect was made with.
+  return (vol = loud) => {
     if (!buf) return;
     const s = MUSIC.createBufferSource();
     s.buffer = buf;
@@ -90,9 +119,9 @@ const shot = ([song, track, note], loud) => {
     // ducks with the music it is competing with is no cue at all. `loud` lifts
     // the ones that have to carry over a track — a single note of an instrument
     // written to sit inside a mix is very quiet on its own.
-    if (loud) {
+    if (vol) {
       const g = MUSIC.createGain();
-      g.gain.value = loud;
+      g.gain.value = vol;
       s.connect(g);
       g.connect(MUSIC.destination);
     } else {

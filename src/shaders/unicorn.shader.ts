@@ -115,7 +115,7 @@ export const Unicorn = shader({
     // This racer's block. The layout mirrors the player's old fixed slots —
     // position, drawn facing with speed, surface normal with gait — so
     // everything below reads exactly as it did when there was only one.
-    const mine = 16 + aRacer * 5;
+    const mine = 16 + aRacer * 6;
     // This racer's colours, written once at start-up and never touched again:
     // hide with the mane's spectrum flag, the three stops the mane runs through,
     // the horn, and the eye.
@@ -125,7 +125,8 @@ export const Unicorn = shader({
     const aManeA = storageRead(uState, pal + 1).xyz;
     const aManeB = storageRead(uState, pal + 2).xyz;
     const aManeC = storageRead(uState, pal + 3).xyz;
-    const aHorn = storageRead(uState, pal + 4).xyz;
+    // Whole, not `.xyz`: the fourth word is this racer's size, read below.
+    const aHorn = storageRead(uState, pal + 4);
     v.vEye = storageRead(uState, pal + 5).xyz;
     const onRoad = storageRead(uState, mine);
     const facingRoad = storageRead(uState, mine + 1);
@@ -311,7 +312,17 @@ export const Unicorn = shader({
     // flips handedness mirrors the mesh and turns every face inside out.
     const across = cross(facing.xyz, normal.xyz);
     // Size, and the collapse that hides everything past a neighbour.
-    const grow = uScale;
+    // Every unicorn is the same model at a different size, and the size travels
+    // with the livery rather than with the geometry. The palette's six vec4s
+    // carry ten colour channels in their xyz and had five unused `w` slots
+    // sitting behind them; the horn's is one of them, so a racer's build costs
+    // nothing to store and nothing to send — `dress` was already writing that
+    // word, it was only writing a zero into it.
+    //
+    // Multiplied into `grow`, which is the same factor the select screen uses to
+    // bring one unicorn up close, so the two compose: the turntable shows a
+    // small unicorn as small, which is the point of varying them at all.
+    const grow = uScale * aHorn.w;
     const world = body.xyz
       .add(facing.xyz.scale(local.x * grow))
       .add(normal.xyz.scale(local.y * grow))
@@ -373,7 +384,7 @@ export const Unicorn = shader({
     const hair = step(0.5, aColor.w) * (1 - step(1.5, aColor.w));
     const hide = step(1.5, aColor.w) * (1 - step(2.5, aColor.w));
     const horn = step(2.5, aColor.w);
-    const worn = mix(mix(aColor.xyz, aHide, hide), aHorn, horn);
+    const worn = mix(mix(aColor.xyz, aHide, hide), aHorn.xyz, horn);
     v.vColor = mix(worn, mix(dyed, rainbow, aRainbow), hair);
     // The same flag the rainbow is keyed off, handed to the fragment stage so it
     // can shade hair as hair. It costs an interpolator and saves the alternative,

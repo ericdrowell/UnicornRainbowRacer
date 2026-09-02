@@ -7,6 +7,7 @@ import {
   abs,
   floor,
   fract,
+  max,
   mix,
   mod,
   pow,
@@ -55,13 +56,17 @@ function spectrum(k: number): Vec3 {
  * unbroken wash, softer and with nothing to hold the eye at mid-distance. This
  * is the tiled version of the same field, and the two differ only by a `floor`.
  *
- * **The tiles are flat, and nothing is drawn inside them or between them.** Two
- * things used to be: a sub-grid of four faint traces each way, and a
- * centre-to-seam falloff meant to read as a pane of glass. At twelve panels
- * across, seen at speed, the falloff read as black gridlines instead and the
- * traces aliased into moiré by mid-distance. Both are gone. What separates one
- * panel from the next is now only its own fixed brightness and the step in hue,
- * so neighbours that agree on both merge and the lattice quietly breaks up.
+ * **A panel is edged, and the edging is made of the panel.** Its interior is
+ * flat; the outer eighth is the same colour scaled up or down, brighter towards
+ * one corner and darker towards the opposite one, so each panel reads as a tile
+ * with thickness rather than as a square of paint. Nothing is *added* to make
+ * that edge — no white, no black, no line — because two things that were added
+ * here before both failed the same way: a sub-grid of four faint traces each
+ * way, which aliased into moiré by mid-distance, and a centre-to-seam falloff
+ * that at twelve panels across, seen at speed, read as black gridlines lying
+ * over the road. Scaling the panel's own colour cannot do either: a seam is
+ * always a shade of the hue already there, so where two neighbours agree the
+ * lattice still quietly breaks up.
  *
  * **There is no post-process bloom, so the bloom is built into the shapes.** The
  * runtime has no render targets — there is nowhere to draw a bright pass and
@@ -82,7 +87,16 @@ export const Track = shader({
   // Sampled here rather than blended into the frame directly, so the road can lay
   // down one resolved image instead of every overlapping triangle of the model in
   // turn.
-  uniforms: { uTime: 'float' },
+  uniforms: {
+    uTime: 'float',
+    /**
+     * The circuit's boost phase — see `points.b` in src/circuits.js. The pads are
+     * placed by hashing it against a pad's index down the road, and the physics
+     * stage places them by running the identical arithmetic on the identical two
+     * coordinates. Neither is the authority; the arithmetic is.
+     */
+    uSeed: 'float',
+  },
   // Read-only here. Physics writes it, and a read_write binding could not be
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
@@ -112,7 +126,7 @@ export const Track = shader({
     return clip;
   },
 
-  fragment({ uTime, uState }, { vU, vV, vWorld, vClip }) {
+  fragment({ uTime, uSeed, uState }, { vU, vV, vWorld, vClip }) {
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
@@ -184,12 +198,143 @@ export const Track = shader({
     // square or two.
     const lamp = 0.74 + 0.26 * fract(sin(col * 12.99 + row * 78.23) * 43758.5);
 
+    // The edging. Where the panel sits inside its own cell, centred: -0.5 at one
+    // seam, +0.5 at the other, in both directions.
+    const du = fract(across) - 0.5;
+    const dv = fract(along) - 0.5;
+    // A band along all four seams — the outer eighth of the cell, softened so it
+    // does not crawl at distance.
+    const rim = smoothstep(0.4, 0.5, max(abs(du), abs(dv)));
+
+    // **The edging is the panel's own colour, lit from a corner, never a line
+    // drawn on top of it.** A black or white border is the obvious way to say
+    // "tile" and it is the wrong one here: at twelve panels across, seen at
+    // speed, an ink border is what the old centre-to-seam falloff turned into —
+    // a grid of dark lines lying over the road rather than a surface made of
+    // pieces. So nothing is added; `lit` is only scaled, which keeps every seam
+    // in the hue of the panel it belongs to and cannot introduce a colour the
+    // rainbow does not already have there.
+    //
+    // Scaled by which corner it faces, not by distance from the centre, so the
+    // ring is not uniform: `du + dv` runs -1 at the near-left corner to +1 at
+    // the far-right, so two sides of every panel come up brighter and two fall
+    // away, as a bevelled tile does under a single light. A uniform ring reads
+    // as an outline; this reads as thickness.
+    //
+    // ±0.45 at the corners, and only inside `rim`. Enough that the lattice is
+    // legible standing still, small enough that at mid-distance neighbouring
+    // panels still merge where their hue agrees — which is the break-up the flat
+    // panels were tuned for, and what this must not undo.
+    //
+    // Inlined into `lit` below rather than named: at 44 bytes of budget the
+    // `let` for it was four of them over.
+
+    // ── The boost pads ─────────────────────────────────────────────────────
+    // Placed, not drawn from data: this is the same arithmetic the physics stage
+    // runs to decide whether a unicorn is standing on one, on the same two
+    // coordinates, so the painted pad and the working pad cannot drift apart.
+    // See the long note in physics.shader.ts.
+    //
+    // Four of the twelve columns — a third of the road — in the left, middle or
+    // right third as the seed says, three tile rows long, one slot every 64
+    // rows, and one slot in four left empty so they scatter.
+    // Thirty rows into the slot rather than at its edge, which is what keeps the
+    // start line clear — see the note in physics.shader.ts. Rows before that
+    // land in slot -1 at an offset of 34 or more, which is outside every pad, so
+    // the first sixty-odd metres of the lap are pad-free by construction.
+    const seat = row - 30;
+    const slot = floor(seat * 0.015625);
+    const pick = floor(fract(sin(slot * 91.7 + uSeed) * 43758.5) * 4);
+    const down = seat - slot * 64;
+    const pad = step(abs(floor(across * 0.25) - pick), 0.5) * (1 - step(3, down));
+
+    // One solid triangle, apex forward, sliding up the pad and looping — the
+    // next enters the bottom before the last leaves the top.
+    //
+    // **Pad-local coordinates, but taken from `along`, not from `row`.** The two
+    // halves of that sentence are each a bug this went through. Phrased in road
+    // coordinates the pattern is wallpaper painted across the whole circuit with
+    // each pad cut out of it as a window, so no two pads show the same thing;
+    // phrased in `row` it is pad-local and correct and *quantised*, because
+    // `row` is `floor(along)` — three integers up the length of a pad, so a
+    // triangle can only ever be three stair steps. That is what "blocky" was,
+    // through every attempt to fix it by changing the shape. `deep` is the same
+    // pad-local coordinate carried at full precision.
+    //
+    // `solid` is a triangle, as a signed inside-ness: 1 at the middle of the
+    // base, falling to 0 along the two sloping sides. A triangle is one
+    // expression — a linear ramp back from the base, minus a linear ramp out
+    // from the centre line.
+    //
+    // **A chevron is that triangle with the same triangle cut out of its
+    // bottom, and because `solid` is linear it is just a slice of it.** Its
+    // level sets are nested copies of the triangle, so `0 < solid < 0.77` is the
+    // band between two of them: two arms of even thickness meeting at a point,
+    // open at the base. No second shape to write and no second coordinate — the
+    // cut-out is the same expression read at a different level.
+    //
+    // 0.77 is the width that makes the arm and the gap the same, which is what
+    // gives the conveyor-belt read. The band's extent down the pad is the slice
+    // width over 1.54 whatever the distance from the centre line, so 0.77 is
+    // half a loop everywhere across the pad, not just along the middle — the
+    // arms and the gaps stay matched right out to the edges.
+    //
+    // `smoothstep(0, 0.02)` is two centimetres of road on each edge, enough to
+    // stop the sides stair-stepping and not enough to see.
+    const wide = across - pick * 4;
+    const deep = along - 30 - slot * 64;
+    const solid = 1 - fract(deep * 0.333 - uTime * 1.5) * 1.54 - abs(wide - 2) * 0.5;
+    // **Lit the way the rails are, because analytic glow is the only glow this
+    // game has.** There is no post-process pass to draw a bright shape and blur
+    // it back, so a glow has to be two reads of the same field: a core driven
+    // past 1 so it clips towards white, and a skirt spread around it carrying
+    // the colour. `max(0 - solid, solid - 0.77)` is distance *out* of the
+    // chevron — negative inside it, and how far outside once you leave — so one
+    // expression skirts both the outer sides and the cut-out at the base.
+    //
+    // A step in `solid` is about two units of road across and about two along,
+    // so a skirt measured in it comes out very nearly round rather than smeared
+    // one way. That is luck rather than design, but it is why this can be one
+    // number instead of two.
+    //
+    // The chevron itself stays a hairline — the glow is *around* the shape, not
+    // instead of its edge. Softening the edge to make it glow was an earlier
+    // attempt and it produced an orange smear with a chevron somewhere inside.
+    const band = smoothstep(0, 0.02, solid) - smoothstep(0.77, 0.79, solid);
+    const bloom = 1 - smoothstep(0, 0.28, max(0 - solid, solid - 0.77));
+    const fire = vec3(1.2, 0.3, 0.03)
+      .add(vec3(1.5, 0.55, 0.04).scale(bloom * bloom))
+      .add(vec3(1.9, 1.2, 0.25).scale(band * 1.5));
+
     // Flat, and over 1 for most panels, so the pastels clip towards white — the
     // only bloom this surface gets, since there is no post-process pass to give
     // it any. 1.32 against an average `lamp` of 0.87 lands the road at the same
     // exposure the old centre-lit panels averaged out to, so removing the
-    // falloff changed the edges without changing the brightness.
-    const lit = glass.scale(lamp * 1.32);
+    // falloff changed the edges without changing the brightness — and the bevel
+    // keeps it, being symmetric about 1 across a panel.
+    // ── The start line ─────────────────────────────────────────────────────
+    // Two tile rows of checker laid across the road at `along` zero, which is
+    // where the ribbon begins and therefore where the lap closes: the strip is
+    // emitted from ring zero and its last quad carries a full lap's distance, so
+    // this band is the start line and the finish line at once without being
+    // drawn twice.
+    //
+    // Its own grid rather than the road's. A checker on the tiles would be four
+    // and a half metres to a square, which reads as two rows of enormous
+    // blocks; halving both axes gives a metre or so, which is what a real one
+    // looks like. That the two grids share an origin is what keeps the band's
+    // outer edge flush with a tile seam instead of cutting one in half.
+    //
+    // Black is 0.05 and white is 1.6, not 0 and 1. Everything else on this
+    // surface is driven past white, so a checker painted at 1 would read as the
+    // dullest thing on the road — and a true 0 would be the only place the
+    // rainbow goes completely dark.
+    const ink = 0.05 + mod(floor(across * 2) + floor(along * 2), 2) * 1.55;
+    const lit = mix(
+      mix(glass.scale(lamp * 1.32 * (1 - (du + dv) * 0.9 * rim)), fire, pad),
+      vec3(ink, ink, ink),
+      1 - step(2, along),
+    );
 
     // The rails. This is what sells it as a ribbon in space rather than a
     // painted floor — the edge is the only part of a road with nothing beyond
