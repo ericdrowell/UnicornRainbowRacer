@@ -68,13 +68,21 @@ const READY_SIGNAL = [RACE_SONG, 1, 55];
 // road it was taken on. It cost the physics stage a latched lane in the state
 // buffer, because the CPU only learns about a boost on the poll after it
 // happened, by which time the racer has usually left the pad.
-const BOOST = [RACE_SONG, 3, 97];
+const BOOST = [RACE_SONG, 1, 105];
 
-// Hitting something — another unicorn, or the rail that will not let you off the
-// road. One sound for both, because from the driver's seat they are the same
-// event: you wanted to be somewhere and something was already there.
+// A mistake: clipping another unicorn, leaning on the rail that will not let you
+// off the road, or passing a boost ring without taking it. One sound for all
+// three, because to the player they are one thing — that cost you — and three
+// cues saying it would be two too many.
 //
-const BUMP = [RACE_SONG, 2, 73];
+// The player's own, like the boost. Nine racers scraping rails and missing rings
+// would put a running commentary under the whole race.
+//
+// The last of them is the only cue in the game for something that did *not*
+// happen; see the note in physics.shader.ts about why that can only be noticed a
+// slot late.
+const MISTAKE = [RACE_SONG, 0, 47];
+
 
 // ── Playing one ─────────────────────────────────────────────────────────────
 // An effect goes in, a function that plays it comes out.

@@ -8,10 +8,14 @@ import {
   floor,
   fract,
   max,
+  min,
   mix,
   mod,
   pow,
   smoothstep,
+  sqrt,
+  cross,
+  step,
   storageRead,
   type Vec3,
 } from 'brometal';
@@ -90,26 +94,61 @@ export const Track = shader({
   uniforms: {
     uTime: 'float',
     /**
-     * The circuit's boost phase — see `points.b` in src/circuits.js. The pads are
-     * placed by hashing it against a pad's index down the road, and the physics
-     * stage places them by running the identical arithmetic on the identical two
-     * coordinates. Neither is the authority; the arithmetic is.
+     * Tile rows to road-ring index — `1 / (PATTERN * 0.4456 * 2)`. A boost ring
+     * knows which slot it is and nothing else; this is how it finds the piece of
+     * road it stands on.
      */
-    uSeed: 'float',
+    uStep: 'float',
+    /** Where the ring lane table starts in `uTrack`. See game.js. */
+    uBase: 'float',
   },
   // Read-only here. Physics writes it, and a read_write binding could not be
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
-  storage: { uState: 'vec4' },
+  storage: { uState: 'vec4', uTrack: 'vec4' },
   varyings: { vU: 'float', vV: 'float', vWorld: 'vec3', vClip: 'vec4' },
 
-  vertex({ aPos, aEdge }, { uState }, v) {
-    v.vU = aEdge.x;
-    v.vV = aEdge.y;
+  vertex({ aPos, aEdge }, { uState, uTrack, uTime, uStep, uBase }, v) {
+    // ── Boost rings ────────────────────────────────────────────────────────
+    // **Four vertices that are not a position.** A ring rides in the road's own
+    // buffers so it costs no second program, and it is marked by an `aEdge.x` no
+    // road vertex can have — the road's runs -1 to 1. What its `aPos` carries is
+    // the slot it belongs to and which corner of the quad it is, because where a
+    // ring *is* depends on the road beneath it, and the road is a storage buffer
+    // this stage can read. Building it on the CPU would mean a second copy of
+    // the centreline in JavaScript.
+    //
+    // `slot` is zeroed for road vertices so both reads stay in range: this runs
+    // for every vertex on the track, and there is no branch to hide it behind.
+    const isRing = step(2, aEdge.x);
+    const slot = aPos.x * isRing;
+    const ri = floor((slot * 64 + 32) * uStep) * 3;
+    const arm = cross(storageRead(uTrack, ri + 1).xyz, storageRead(uTrack, ri + 2).xyz);
+    const up = storageRead(uTrack, ri + 2).xyz;
+    // Nine metres between lane centres — a third of the road — and the ring's
+    // own radius is 4.5, so it sits with its bottom on the surface and bobs a
+    // metre either side of that. The bob is decoration: what decides a boost is
+    // the same lateral band it always was, in physics.shader.ts. A unicorn
+    // cannot jump, so a ring it had to be under would be a ring it could miss
+    // for reasons it could do nothing about.
+    const hub = storageRead(uTrack, ri)
+      .xyz.add(arm.scale((storageRead(uTrack, uBase + slot).x - 1) * 9))
+      .add(up.scale(4.5 + sin(uTime * 1.2 + slot) * 1.2));
+    const world = mix(
+      aPos,
+      hub.add(arm.scale(aPos.y * 6)).add(up.scale(aPos.z * 6)),
+      isRing,
+    );
+
+    // The ring's corner rides out on the road's own two varyings rather than a
+    // third: 9 is outside anything `vU` can otherwise be, so `vU - 9` is the
+    // corner and the marker at once.
+    v.vU = mix(aEdge.x, 9 + aPos.y, isRing);
+    v.vV = mix(aEdge.y, aPos.z, isRing);
     // The road point itself, unprojected. The shadow below is cast in world
     // space, so it needs where this fragment actually is — the position this
     // stage returns has already been through the camera and lost that.
-    v.vWorld = aPos;
+    v.vWorld = world;
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
@@ -121,12 +160,12 @@ export const Track = shader({
     // Kept so the fragment can find itself on screen: the reflection target is in
     // screen space, and the divide by w has to happen per fragment rather than
     // per vertex or the lookup skews across a triangle.
-    const clip = c0.scale(aPos.x).add(c1.scale(aPos.y)).add(c2.scale(aPos.z)).add(c3);
+    const clip = c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
     v.vClip = clip;
     return clip;
   },
 
-  fragment({ uTime, uSeed, uState }, { vU, vV, vWorld, vClip }) {
+  fragment({ uTime, uState }, { vU, vV, vWorld, vClip }) {
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
@@ -238,80 +277,6 @@ export const Track = shader({
     // Four of the twelve columns — a third of the road — in the left, middle or
     // right third as the seed says, three tile rows long, one slot every 64
     // rows, and one slot in four left empty so they scatter.
-    // Thirty rows into the slot rather than at its edge, which is what keeps the
-    // start line clear — see the note in physics.shader.ts. Rows before that
-    // land in slot -1 at an offset of 34 or more, which is outside every pad, so
-    // the first sixty-odd metres of the lap are pad-free by construction.
-    const seat = row - 30;
-    const slot = floor(seat * 0.015625);
-    const pick = floor(fract(sin(slot * 91.7 + uSeed) * 43758.5) * 4);
-    const down = seat - slot * 64;
-    const pad = step(abs(floor(across * 0.25) - pick), 0.5) * (1 - step(3, down));
-
-    // One solid triangle, apex forward, sliding up the pad and looping — the
-    // next enters the bottom before the last leaves the top.
-    //
-    // **Pad-local coordinates, but taken from `along`, not from `row`.** The two
-    // halves of that sentence are each a bug this went through. Phrased in road
-    // coordinates the pattern is wallpaper painted across the whole circuit with
-    // each pad cut out of it as a window, so no two pads show the same thing;
-    // phrased in `row` it is pad-local and correct and *quantised*, because
-    // `row` is `floor(along)` — three integers up the length of a pad, so a
-    // triangle can only ever be three stair steps. That is what "blocky" was,
-    // through every attempt to fix it by changing the shape. `deep` is the same
-    // pad-local coordinate carried at full precision.
-    //
-    // `solid` is a triangle, as a signed inside-ness: 1 at the middle of the
-    // base, falling to 0 along the two sloping sides. A triangle is one
-    // expression — a linear ramp back from the base, minus a linear ramp out
-    // from the centre line.
-    //
-    // **A chevron is that triangle with the same triangle cut out of its
-    // bottom, and because `solid` is linear it is just a slice of it.** Its
-    // level sets are nested copies of the triangle, so `0 < solid < 0.77` is the
-    // band between two of them: two arms of even thickness meeting at a point,
-    // open at the base. No second shape to write and no second coordinate — the
-    // cut-out is the same expression read at a different level.
-    //
-    // 0.77 is the width that makes the arm and the gap the same, which is what
-    // gives the conveyor-belt read. The band's extent down the pad is the slice
-    // width over 1.54 whatever the distance from the centre line, so 0.77 is
-    // half a loop everywhere across the pad, not just along the middle — the
-    // arms and the gaps stay matched right out to the edges.
-    //
-    // `smoothstep(0, 0.02)` is two centimetres of road on each edge, enough to
-    // stop the sides stair-stepping and not enough to see.
-    const wide = across - pick * 4;
-    const deep = along - 30 - slot * 64;
-    const solid = 1 - fract(deep * 0.333 - uTime * 1.5) * 1.54 - abs(wide - 2) * 0.5;
-    // **Lit the way the rails are, because analytic glow is the only glow this
-    // game has.** There is no post-process pass to draw a bright shape and blur
-    // it back, so a glow has to be two reads of the same field: a core driven
-    // past 1 so it clips towards white, and a skirt spread around it carrying
-    // the colour. `max(0 - solid, solid - 0.77)` is distance *out* of the
-    // chevron — negative inside it, and how far outside once you leave — so one
-    // expression skirts both the outer sides and the cut-out at the base.
-    //
-    // A step in `solid` is about two units of road across and about two along,
-    // so a skirt measured in it comes out very nearly round rather than smeared
-    // one way. That is luck rather than design, but it is why this can be one
-    // number instead of two.
-    //
-    // The chevron itself stays a hairline — the glow is *around* the shape, not
-    // instead of its edge. Softening the edge to make it glow was an earlier
-    // attempt and it produced an orange smear with a chevron somewhere inside.
-    const band = smoothstep(0, 0.02, solid) - smoothstep(0.77, 0.79, solid);
-    const bloom = 1 - smoothstep(0, 0.28, max(0 - solid, solid - 0.77));
-    const fire = vec3(1.2, 0.3, 0.03)
-      .add(vec3(1.5, 0.55, 0.04).scale(bloom * bloom))
-      .add(vec3(1.9, 1.2, 0.25).scale(band * 1.5));
-
-    // Flat, and over 1 for most panels, so the pastels clip towards white — the
-    // only bloom this surface gets, since there is no post-process pass to give
-    // it any. 1.32 against an average `lamp` of 0.87 lands the road at the same
-    // exposure the old centre-lit panels averaged out to, so removing the
-    // falloff changed the edges without changing the brightness — and the bevel
-    // keeps it, being symmetric about 1 across a panel.
     // ── The start line ─────────────────────────────────────────────────────
     // Two tile rows of checker laid across the road at `along` zero, which is
     // where the ribbon begins and therefore where the lap closes: the strip is
@@ -331,7 +296,7 @@ export const Track = shader({
     // rainbow goes completely dark.
     const ink = 0.05 + mod(floor(across * 2) + floor(along * 2), 2) * 1.55;
     const lit = mix(
-      mix(glass.scale(lamp * 1.32 * (1 - (du + dv) * 0.9 * rim)), fire, pad),
+      glass.scale(lamp * 1.32 * (1 - (du + dv) * 0.9 * rim)),
       vec3(ink, ink, ink),
       1 - step(2, along),
     );
@@ -373,12 +338,41 @@ export const Track = shader({
     const core = smoothstep(0.9, 1, edge);
     const lip = smoothstep(0.78, 0.97, edge);
     const halo = pow(smoothstep(0.3, 1, edge), 2);
+    // ── The ring ───────────────────────────────────────────────────────────
+    // **Drawn out of `length(uv)`, not out of geometry.** A torus of triangles
+    // has a silhouette; this has a falloff, on a surface where every other light
+    // is analytic for exactly that reason. It is also four vertices a ring
+    // instead of forty.
+    //
+    // 0.75 is the ring's radius in a quad whose half-width is 6 metres, which
+    // puts the ring at 4.5 across — a third of the road, as asked — and leaves a
+    // metre and a half of quad outside it for the glow to spread into.
+    //
+    // The alpha is the glow. That is what keeps the corners of the quad from
+    // being opaque black over the road behind: the program blends, the road
+    // returns 1 and is untouched by it, and the ring fades out into nothing
+    // before it reaches its own edges.
+    //
+    // Gold, and the animation moved from hue to brightness: a bright band travels
+    // round the ring instead of the colour changing. Cheaper too — a rainbow cost
+    // a `spectrum` call, which is three cosines, and this is one sine.
+    //
+    // 2.2 and 1.45 against 0.3 of blue is past 1 in two channels, so the core
+    // clips to a warm white and the gold lives in the falloff either side of it.
+    // That is how the rails and the tiles are lit; a gold painted at 1 would be
+    // the dullest thing on a road that is already glowing.
+    const rx = vU - 9;
+    const glow = pow(1 - smoothstep(0, 0.32, abs(sqrt(rx * rx + vV * vV) - 0.75)), 3);
     return vec4(
-      lit
-        .add(glass.scale(halo * 0.8))
-        .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
-        .add(vec3(1, 0.97, 1).scale(core * 3.4)),
-      1,
+      mix(
+        lit
+          .add(glass.scale(halo * 0.8))
+          .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
+          .add(vec3(1, 0.97, 1).scale(core * 3.4)),
+        vec3(2.2, 1.45, 0.3).scale(glow * (1.6 + 0.5 * sin(rx * 3 + vV * 2 + uTime * 3))),
+        step(2, vU),
+      ),
+      mix(1, min(glow * 1.6, 1), step(2, vU)),
     );
   },
 });

@@ -1,5 +1,6 @@
 import {
   shader,
+  vec2,
   vec3,
   vec4,
   sin,
@@ -169,7 +170,7 @@ export const Physics = shader({
      * the orbit shot the moment the race started. Nothing warns. New uniforms
      * go on the end.
      */
-    uSeed: 'float',
+    uBase: 'float',
     /**
      * One number rolled fresh at each flag, so a race is not the same race.
      *
@@ -184,12 +185,14 @@ export const Physics = shader({
      * every one below it.
      */
     uRoll: 'float',
+    /** Tile rows to a ring slot — see RING_ROWS in game.js. */
+    uRows: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
   compute(
-    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uSeed, uRoll, uTime, uTitle, uGo },
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uTime, uTitle, uGo },
     id,
   ) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -215,22 +218,34 @@ export const Physics = shader({
     const SLOTS = 6;
 
     /**
-     * **How fast the field runs, and the one number to turn while tuning it.**
+     * **Top speed on the throttle, before any handicap.** Metres a second.
      *
-     * The average cruising speed of the nine AI, in metres a second. Each of
-     * them takes a share of a sixteen-wide spread either side of it, so this
-     * moves the whole field together and keeps the character between them.
-     *
-     * Everything about an AI's pace hangs off it — the cap it lifts off at, and
-     * the thrust that lets it reach the cap in the first place — so there is
-     * nothing else to keep in step. Raise it and the field is harder to beat
-     * without the pads; drop it and the pads matter less.
-     *
-     * For scale: drag alone settles a racer at 54.8, and a pad pins one at 90.
-     * The whole race lives between those two, and this says where in between the
-     * field sits.
+     * The drag term below is derived from it, so this is where drag alone
+     * settles a unicorn racing at handicap 1 — which is the player, who has no
+     * cap at all and is only ever slowed by the air. A boost is half again on
+     * top of it, so turning this scales the whole race.
      */
-    const PACE = 76;
+    const TOP_SPEED = 60;
+    /**
+     * The handicap every rival races under, as a low and a high bound — each
+     * draws its own between them at the flag. **The player's handicap is 1 and
+     * is not written down**; that is what these are relative to.
+     *
+     * A `vec2` rather than a two-element array, because the shader DSL has no
+     * array literals at all — this is the only way to say "one constant with two
+     * bounds" and have it compile.
+     *
+     * So 0.95 does not mean 57 metres a second, it means *a shade slower than
+     * you*: the quickest unicorn on the road is always one you can out-run on
+     * the throttle, and the margin it leaves is the room you have to miss a ring
+     * in. Move `TOP_SPEED` and that relationship holds without touching either.
+     *
+     * Drawn fresh each race — see `roll` — so the field is a spread rather than
+     * a ladder, and a different spread every time. Every unicorn shares the
+     * player's physics exactly: the same thrust, the same drag, the same brakes.
+     * Only the ceiling differs, and only the player has none.
+     */
+    const HANDICAP = vec2(0.7, 0.95);
     const me = id.x;
     const mine = RACER + me * SLOTS;
     // This racer's draw for the race: the pace it settles at and the line it
@@ -354,14 +369,37 @@ export const Physics = shader({
     // the line, and rows before that fall into slot -1 at an offset no pad
     // covers, so the opening stretch is clear by construction rather than by a
     // special case.
-    const bSeat = bRow - 30;
-    const bSlot = floor(bSeat * 0.015625);
-    const bPick = floor(fract(sin(bSlot * 91.7 + uSeed) * 43758.5) * 4);
+    // **Read, not hashed.** This used to be `fract(sin(slot * k + seed))`,
+    // evaluated identically here and in the road shader, which is what made the
+    // ring you could see the ring that boosted you. A ring is geometry now and
+    // geometry is built on the CPU, and a hash multiplied by 43758 does not
+    // survive the trip from JavaScript's doubles to a shader's floats — a
+    // last-bit difference comes out a lane apart. So game.js decides, and both
+    // stages read the same table off the end of the road buffer.
+    //
+    // Seated 31 rows into the slot, which is where the ring is drawn: the vertex
+    // stage puts it at `slot * 64 + 32`, the middle of this three-row window. Get
+    // that offset wrong and the boost fires seventy metres before the ring.
+    // Rows before the first ring fall into slot -1 and are clamped to 0, whose
+    // lane the table always sets to "none" — so the clamp cannot invent a ring
+    // at the start line.
+    const bSeat = bRow - 31;
+    const bSlot = max(floor(bSeat / uRows), 0);
+    const bPick = storageRead(uTrack, uBase + bSlot).x;
     // Three rows long, about seven metres — a bit over two body lengths, which
     // is short enough to be missed and long enough to be aimed at.
-    const bOn =
-      step(abs(floor((dot(pos.sub(centre.xyz), sideT) / uWidth + 0.5) * 3) - bPick), 0.5) *
-      (1 - step(3, bSeat - bSlot * 64));
+    // Three rows of road, and which third of it you are in. A ring is a box and
+    // missing one is the box either side of it — both are answered by where the
+    // body is, this frame, and neither needs to remember anything.
+    const band = 1 - step(3, bSeat - bSlot * uRows);
+    const onLane = step(
+      abs(floor((dot(pos.sub(centre.xyz), sideT) / uWidth + 0.5) * 3) - bPick),
+      0.5,
+    );
+    const bOn = onLane * band;
+    // A slot with no ring reads 3, which no lane ever equals — so `onLane` is
+    // already 0 there and this is the only term that needs to say so.
+    const bMiss = (1 - onLane) * (1 - step(2.5, bPick)) * band;
 
     // ── The driver ─────────────────────────────────────────────────────────
     // For racer zero this is the keyboard. For the other nine it is this, and it
@@ -391,7 +429,31 @@ export const Physics = shader({
     // .33, .94, .56 — better distributed than the `fract(sin(...))` hash this
     // replaced, which cost a function and two calls to be arbitrary rather than
     // even.
-    const lane = (fract(roll * 7.7) - 0.5) * uWidth * 0.55;
+    // ── Going for the rings ────────────────────────────────────────────────
+    // **The field aims at the next ring, not at a lane of its own.** Without
+    // this the AI take whichever rings happen to fall in the lane they were born
+    // in — about a third of them, by luck — and the one mechanic the race is
+    // about is something only the player is playing. Steering for them is what
+    // makes the ring in front of you a thing worth reaching first.
+    //
+    // The *next* one, in the slot after this racer's: a ring sits at the front
+    // of its slot, so the one in the current slot is already behind. There is a
+    // long way to line up — better than two hundred metres between rings — which
+    // is why nothing here needs to be clever about when to start moving. The
+    // steering below is a proportional chase on an aim point; handing it a lane
+    // is the whole of it.
+    //
+    // Their own wander survives at a third of its width, kept rather than
+    // dropped so nine racers converging on the same nine-metre ring arrive
+    // spread across it instead of stacked on its centre line, shunting each
+    // other out of a boost they all earned.
+    const wander = (fract(roll * 7.7) - 0.5) * uWidth * 0.55;
+    const next = storageRead(uTrack, uBase + bSlot + 1).x;
+    const lane = mix(
+      wander,
+      (next - 1) * uWidth * 0.3333 + wander * 0.3,
+      1 - step(2.5, next),
+    );
     // Offset in *this* segment's frame rather than the aim ring's. Rebuilding a
     // frame fourteen rings ahead cost a normalise, a frameUp and a cross to
     // answer a question that only decides which side of the road to aim at: on a
@@ -445,7 +507,32 @@ export const Physics = shader({
     // fastest AI was driving at the same speed as a player who never touched a
     // pad, and every pad the player did take was gained against a field that
     // could not answer.
-    const cap = mix(PACE - 8 + roll * 16, 60, player);
+    // **One racer is pinned to each bound, so the bounds are always raced.**
+    // Nine independent draws leave the ends of the range mostly empty — the
+    // chance any of them lands within a hundredth of 0.95 is small, so the
+    // "fastest rival there can be" would almost never turn up and the field
+    // would quietly live in the middle. Naming one of each makes the two numbers
+    // describe the race rather than a distribution it is sampled from.
+    //
+    // Both drawn from `uRoll`, so they move every race like everything else. The
+    // second is an *offset* from the first rather than its own draw: one to
+    // eight, modulo nine, which cannot land back on the first — two independent
+    // picks would collide about one race in nine and leave the field with a
+    // slowest and no fastest.
+    const seat = me - 1;
+    const quick = floor(fract(uRoll * 37.1) * 9);
+    const slack = mod(quick + 1 + floor(fract(uRoll * 61.3) * 8), 9);
+    const cap =
+      TOP_SPEED *
+      mix(
+        mix(
+          HANDICAP.x + roll * (HANDICAP.y - HANDICAP.x),
+          HANDICAP.y,
+          1 - step(0.5, abs(seat - quick)),
+        ),
+        HANDICAP.x,
+        1 - step(0.5, abs(seat - slack)),
+      );
     // The cap eases the throttle off rather than clamping the speed, and that
     // matters now that a shunt can add speed the racer did not ask for. Clamped,
     // an AI sitting at its cap had any push from behind erased on the very next
@@ -454,6 +541,9 @@ export const Physics = shader({
     // coast back down, which is what being rear-ended is supposed to look like.
     // Gated for everyone, player and AI alike. A grid where the field creeps
     // away while you wait is not a grid.
+    // The cap eases the field's throttle and never the player's. The player has
+    // no cap at all — drag alone holds them at `TOP_SPEED`, which is what makes
+    // that number theirs and this one the field's.
     const throttle =
       mix(aiThrottle * (1 - smoothstep(cap - 5, cap, speed)), uThrottle, player) * uGo;
     const steer = mix(aiSteer, uSteer, player);
@@ -528,22 +618,28 @@ export const Physics = shader({
     // The clamp is a backstop well clear of top speed, not the thing setting
     // it. The reverse end is doing real work though: backing up is drag-free at
     // these speeds, so -7 is the only reason it stops.
-    // **The AI need the thrust as well as the cap, or the cap is decoration.**
-    // What sets a top speed here is thrust against quadratic drag, and 7.5
-    // settles at 54.8 whatever the cap says — so raising an AI's cap past that
-    // on its own changes nothing at all. Derived from `PACE` rather than given
-    // its own number, at the top of the spread so the quickest AI can still
-    // reach its own cap: drag balances thrust at `sqrt(rate / 0.0025)`, so this
-    // is that read backwards. The player keeps 7.5 — a pad is worth what it is
-    // worth because 90 is so far above what a throttle alone can reach.
-    const rate = mix(
-      30,
-      mix((PACE + 8) * (PACE + 8) * 0.0025, 7.5, player),
-      step(0, throttle),
-    );
+    // The same for everyone, and it has to be: thrust is what a racer feels off
+    // the line, and an AI given more of it than the player leaves the grid like
+    // a different class of vehicle.
+    const rate = mix(30, 7.5, step(0, throttle));
     speed = speed + throttle * rate * dt;
     speed = speed - speed * (1 - step(0.5, abs(throttle))) * dt * 0.9;
-    speed = speed - speed * abs(speed) * dt * 0.0025;
+    // **One drag term for the whole field, so acceleration and deceleration are
+    // the same for everyone and only the cap differs.**
+    //
+    // Thrust against quadratic drag sets both how hard a racer pulls from a
+    // standstill and where it stops accelerating, and those are the same number
+    // — so the first attempt at a faster field raised the AI's thrust, which
+    // gave it two and a half times the player's launch and made the flag look
+    // like nine rockets and a pony. The second moved the difference to drag,
+    // which fixed the launch and left the AI coasting differently.
+    //
+    // Neither is needed. One drag term for the whole field means every unicorn
+    // accelerates and coasts identically, and the only thing that differs is
+    // where a rival's throttle eases off. Read backwards out of the balance — a
+    // racer settles at `sqrt(rate / c)` — so `c` is the number that puts the
+    // player exactly at `TOP_SPEED`, with no cap of their own to do it.
+    speed = speed - speed * abs(speed) * dt * (7.5 / (TOP_SPEED * TOP_SPEED));
     // A backstop well clear of anything the throttle can reach, not the thing
     // setting the top speed — see the ease above.
     // Ninety rather than sixty, and it is still a backstop rather than the thing
@@ -551,7 +647,7 @@ export const Physics = shader({
     // instead of the driven one. It matters most in the seconds *after* a boost:
     // a ceiling of 60 would snap a racer coming off a pad straight down to it,
     // and the whole point of the pad is that it lets go gradually.
-    speed = clamp(speed, -7, 90);
+    speed = clamp(speed, -7, TOP_SPEED * 1.5);
 
     // ── The boost, as a held speed ─────────────────────────────────────────
     // **A pad sets the speed rather than adding to it, and then holds it there.**
@@ -567,7 +663,7 @@ export const Physics = shader({
     //
     // It overrides the throttle, braking included. That is what a boost pad is:
     // you drove onto it, and for three seconds the road is deciding.
-    speed = mix(speed, 90, bGo);
+    speed = mix(speed, TOP_SPEED * 1.5, bGo);
 
     // Both flattened back into the road's surface. This is the one thing the
     // track is still allowed to do to the unicorn's direction, and it is not
@@ -966,15 +1062,31 @@ export const Physics = shader({
     // Raw distance round the lap rather than the track shader's stretched
     // version: this one is for knowing who is winning, so it wants metres.
     storageWrite(uState, mine + 4, vec4(headingDir, onLap));
-    // The contact clock, beside the boost clock and read the same way: the CPU
-    // watches for it to go *up*, so one bump is one sound however many frames
-    // the bodies stay overlapped. Half a second is long enough that a poll
-    // landing six times a second cannot miss it, and short enough that letting
-    // go of a rail and touching it again reads as two knocks rather than one.
+    // The mistake clock, beside the boost clock and read the same way: the CPU
+    // reads as a level rather than an edge, and rate-limits it. Two tenths of a
+    // second is long enough that a poll landing six times a second cannot step
+    // over a one-frame knock, and short enough that a single knock is gone before
+    // the limiter would let a second sound through — so one bump is one sound and
+    // a rail leant on is a run of them.
+    //
+    // **One clock for all three, because they are one thing to the player.**
+    // Clipping a rival, leaning on the rail and driving past a ring are the same
+    // sentence — that cost you — and giving each its own cue would be three
+    // sounds saying it. The two that *are* different in kind, a ring taken and a
+    // ring passed, already sound different.
+    //
+    // **A miss used to be a state machine and did not need to be.** It watched
+    // for the moment a racer left a ring's slot without having been on the ring,
+    // which meant carrying the slot and a taken-flag packed into a spare word —
+    // and it fired in the wrong place, because a ring sits at the *front* of its
+    // slot: leaving the slot happens a hundred and thirty metres later, which is
+    // exactly where the next ring is. It rang for the ring you were arriving at
+    // rather than the one you had just gone past. A miss is a hitbox, the two
+    // thirds of the road the ring is not in, and it rings where it happens.
     storageWrite(
       uState,
       mine + 5,
-      vec4(boost, max(was.y - dt, knock * 0.5), 0, 0),
+      vec4(boost, max(was.y - dt, max(knock, bMiss) * 0.2), 0, 0),
     );
 
     // ── And what only the player leaves behind ─────────────────────────────

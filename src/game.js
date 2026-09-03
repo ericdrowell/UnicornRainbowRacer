@@ -592,13 +592,85 @@ for (let i = 0; i <= RINGS; i++) {
   TE.push(1, v);
 }
 
+// ── Where the boost rings are ──────────────────────────────────────────────
+// **Decided here rather than in a shader, because two places have to agree
+// about it and they cannot agree on a hash.** The pads this replaces were a
+// function evaluated identically in the track shader and the physics stage,
+// which is what guaranteed the thing you could see was the thing that boosted
+// you. A ring is geometry, and geometry is built on the CPU — so the moment the
+// CPU needs the same answer, `fract(sin(x) * 43758.5)` stops being usable:
+// JavaScript computes that in doubles and WGSL in floats, and a hash multiplied
+// by 43758 turns a last-bit difference into a different lane. So the table is
+// built once here and shipped to the physics on the end of the track buffer.
+//
+// One slot every 64 rows of the road's own tiling, three slots in four filled —
+// the fourth outcome is "no ring", which is what scatters them. Slot zero and
+// its neighbours are skipped whole: `START_CLEAR` keeps the grid and the run off
+// the line free, which used to fall out of seating the pad 30 rows into its slot
+// and is now said outright.
+//
+// Seeded from the circuit, so a track's rings are as fixed as its corners.
+const RING_ROWS = 64;
+const START_CLEAR = 2;
+const RING_SLOTS = Math.ceil((LAP * PATTERN * 0.4456) / RING_ROWS);
+/** Which third each slot's ring sits in — 0 left, 1 middle, 2 right, 3 none. */
+const RING_LANE = new Float32Array(RING_SLOTS);
+{
+  let n = (TRACK.b * 1e6) | 0;
+  const rnd = () => ((n = (n * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < RING_SLOTS; i++) {
+    RING_LANE[i] = i < START_CLEAR || i > RING_SLOTS - 2 ? 3 : Math.floor(rnd() * 4);
+  }
+}
+
 // Two triangles per quad. bmIndex draws uint16, so the track has a ceiling of
 // 32k rings — about 65 km of road at this spacing.
-const TI = new Uint16Array(RINGS * 6);
+const TI = [];
+/**
+ * The rings' own indices, kept apart from the road's.
+ *
+ * **They share every vertex and cannot share a draw, because they must not write
+ * depth.** A ring is a quad twelve metres square with a ring painted somewhere
+ * inside it and nothing in the rest — but "nothing" is an alpha of zero, not an
+ * absence, and a fragment with zero alpha writes depth like any other. One draw
+ * with depth write on therefore has each ring stamping a twelve-metre hole into
+ * the depth buffer, and every ring behind it fails the test: looking through a
+ * near ring, the road ahead has no rings on it at all.
+ *
+ * So the same vertices are drawn twice from two index lists — the road with
+ * depth write, the rings without. They still *test* against it, so a ring over a
+ * crest is still hidden by the crest; they just stop hiding each other.
+ */
+const TH = [];
 for (let i = 0; i < RINGS; i++) {
   const a = i * 2;
   const b = a + 2;
-  TI.set([a, b, a + 1, a + 1, b, b + 1], i * 6);
+  TI.push(a, b, a + 1, a + 1, b, b + 1);
+}
+
+// **A quad apiece, not a ring of triangles.** The ring itself is drawn by the
+// fragment stage out of `length(uv)`, which costs four vertices instead of forty
+// and gets the glow for nothing: a torus built from geometry has a hard silhouette
+// and this has a falloff, on a surface where every other light is analytic for
+// exactly that reason.
+//
+// They ride in the road's own buffers and are drawn by the road's own program.
+// A ring is not the road, and the honest thing would be a second pipeline — but
+// that is a program, a buffer, a bind group and a draw call for four vertices a
+// ring. Marking them in `aEdge` instead costs one branch in each stage.
+//
+// `aPos` carries the slot and the corner rather than a position: where a ring
+// actually is depends on the road under it, and the road is in a storage buffer
+// the vertex stage can read. Building it here would mean a second copy of the
+// centreline in JavaScript.
+for (let i = 0; i < RING_SLOTS; i++) {
+  if (RING_LANE[i] > 2) continue;
+  const base = TP.length / 3;
+  for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    TP.push(i, x, y);
+    TE.push(9, 0);
+  }
+  TH.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
 }
 
 // The ribbon, in the form the physics stage reads it: two vec4s a ring, centre
@@ -621,7 +693,13 @@ for (let i = 0; i < RINGS; i++) {
 // The ring at the start is emitted a second time at the end, carrying a full
 // lap's distance instead of zero, so a body in the last segment interpolates
 // forwards rather than being told the road runs from LAP back to nothing.
-const TRACK_DATA = new Float32Array((RINGS + 1) * 12);
+//
+// The ring lane table is appended after it, one vec4 a slot. A whole vec4 to
+// carry one number is wasteful of GPU memory and free in the zip — this array is
+// generated, not shipped — and it means both readers index it with a slot number
+// and nothing else.
+const RING_BASE = (RINGS + 1) * 3;
+const TRACK_DATA = new Float32Array((RING_BASE + RING_SLOTS) * 4);
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
   TRACK_DATA.set(
@@ -629,6 +707,7 @@ for (let i = 0; i <= RINGS; i++) {
     i * 12,
   );
 }
+for (let i = 0; i < RING_SLOTS; i++) TRACK_DATA[(RING_BASE + i) * 4] = RING_LANE[i];
 
 // ── The grid ────────────────────────────────────────────────────────────────
 // Where the ten of them stand before the flag. Built here because this is where
@@ -824,35 +903,30 @@ let place = 0;
  */
 let ROLL = 0;
 /**
- * Every racer's boost clock as of the last readback, to hear a rise in it.
+ * The player's boost clock as of the last readback, to hear a rise in it.
  *
- * **The pads are on the GPU and the speakers are on the CPU, and this is the
- * only wire between them.** Nothing here knows where a pad is — placement is a
- * function evaluated in two shaders, deliberately, so there is no list to test
- * against. What the CPU does get is the lap readback, which already copies every
- * racer's whole block six times a second, and the boost clock rides in that
- * block. So the sound is triggered by watching the number rather than by
- * watching the road, and it costs nothing to watch all ten of them instead of
- * one — the bytes were already crossing the bus.
+ * **The rings are on the GPU and the speakers are on the CPU, and this is the
+ * only wire between them.** Nothing here knows where a ring is; what the CPU
+ * gets is the lap readback, which already copies every racer's block six times a
+ * second with the clock inside it. So the cue is triggered by watching a number
+ * rather than by watching the road.
  *
- * **A rise, not a threshold.** The clock is re-armed to 3 on every frame of
- * contact and decays otherwise, so a pad is anywhere it goes *up* — and that
- * survives the poll rate, which testing for "is it 3 right now" does not. At
- * boosted speed a pad is under the hooves for about a tenth of a second, which
- * is less than the interval between reads: the contact itself is routinely
- * missed, and the raised clock left behind never is. Sitting on a long pad reads
- * as equal rather than greater from one poll to the next, so it fires once.
+ * Racer zero's, and no one else's. This was field-wide with a distance falloff,
+ * on the theory that a ring taken up ahead told you the field was using them —
+ * what it actually did was turn a cue into weather. Both of the player's cues
+ * are now the player's alone.
  */
-const WAS_BOOST = new Float32Array(10);
+let wasBoost = 0;
 /**
- * The same, for the player's contact clock — and the player's alone.
+ * Earliest wall-clock time the next mistake may be heard.
  *
- * A rival scraping a rail or shunting another rival is not the player's problem
- * and does not want to be in their ears: nine racers jostling would put a knock
- * under the whole race. The boost cue is the opposite case and stays a field-wide
- * one, because a pad going off ahead of you is information.
+ * The mistake cue is the player's alone. A rival scraping a rail or shunting
+ * another rival is not their problem and does not want to be in their ears: nine
+ * racers jostling would put a knock under the whole race. The boost cue is the
+ * opposite case and stays field-wide, because a ring taken ahead of you is
+ * information.
  */
-let wasBump = 0;
+let mistakeAt = 0;
 
 /**
  * One unicorn's colours, in the layout the palette region expects.
@@ -991,7 +1065,7 @@ const playSelectNext = shot(UNICORN_SELECT_NEXT);
 const playSelectPrev = shot(UNICORN_SELECT_PREV);
 const playReady = shot(READY_SIGNAL, 2);
 const playBoost = shot(BOOST, 2);
-const playBump = shot(BUMP, 2);
+const playMistake = shot(MISTAKE, 2);
 
 // ── The start line ──────────────────────────────────────────────────────────
 // Seconds since the grid appeared, and how many signals have sounded. Three
@@ -1271,7 +1345,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Drawn without culling: the ribbon is one surface with nothing under it, and
   // half a lap of it is above the camera on the climb, so the underside is on
   // screen as often as the top.
+  // Blending, for the boost rings only: they ride in this buffer and fade out
+  // into their own quads' corners. The road returns an alpha of 1 and is
+  // untouched by it.
   const track = bmProgram(Track[0], {
+    blend: 1,
     a: Track[1],
     i: Track[2],
     u: Track[3],
@@ -1280,8 +1358,24 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   });
   bmAttr(track, 0, new Float32Array(TP));
   bmAttr(track, 1, new Float32Array(TE));
-  bmIndex(track, TI);
-  bmStorages(track, STATE);
+  bmIndex(track, new Uint16Array(TI));
+  bmStorages(track, STATE, rings);
+
+  // The rings, from the same shader over the same vertices — the pipeline
+  // differs in one flag and nothing else does.
+  const hoops = bmProgram(Track[0], {
+    blend: 1,
+    zwrite: 0,
+    a: Track[1],
+    i: Track[2],
+    u: Track[3],
+    t: Track[4],
+    s: Track[5],
+  });
+  bmAttr(hoops, 0, new Float32Array(TP));
+  bmAttr(hoops, 1, new Float32Array(TE));
+  bmIndex(hoops, new Uint16Array(TH));
+  bmStorages(hoops, STATE, rings);
 
   // The sky. One triangle big enough to cover the screen — the corners run to 3
   // rather than 1 so a single one spans the viewport with the excess clipped
@@ -1416,22 +1510,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // caption would run straight through the gaps between its words.
       if (g < 1) continue;
       const x0 = left + i * CELL;
-      // No plate on the countdown. Every other caption is a line of small text
-      // over a moving scene and wants the box behind it; these four are drawn at
-      // five times the size, and the plate scales with the caption — a "3" came
-      // with a dark panel a third of the screen wide, and "GO!" with a band
-      // across the middle of the race it was announcing. At that size the glyph
-      // is its own contrast.
-      const plated = row < COUNT_ROW || row > COUNT_ROW + 3;
       // The plate first, so the letter overwrites the middle of it. Five wide
       // and seven tall against a cell that is four by seven, which means the
       // plate of one letter overlaps its neighbour's by a pixel: adjacent
       // letters merge into one continuous bar behind the word, which is the
       // point. A per-letter box with hairline gaps would read as stripes.
-      if (plated) {
-        for (let y = 0; y < ROW_H; y++) {
-          for (let x = 0; x < 5; x++) put(row, Math.max(x0 + x - 1, 0), y, 0);
-        }
+      //
+      // The countdown gets one too. It used to be the exception — the plate
+      // scales with the caption and these four are drawn at five times the size,
+      // so a "3" arrived with a dark panel a third of the screen wide — but a
+      // countdown with no box behind it is the one caption that lands on a
+      // moving scene it has to be read against, and consistency with the rest of
+      // the type is worth the panel.
+      for (let y = 0; y < ROW_H; y++) {
+        for (let x = 0; x < 5; x++) put(row, Math.max(x0 + x - 1, 0), y, 0);
       }
       for (let y = 0; y < 5; y++) {
         const bits = parseInt(FONT[g * 5 + y], 8);
@@ -1499,7 +1591,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // once — it is a property of the circuit, and the circuit does not change
   // inside a race. `tu` already carries four floats to the road and the sky and
   // was using one of them.
-  step[10] = tu[1] = TRACK.b;
+  // The road stage no longer hashes the rings out of the seed — game.js decides
+  // where they are, so what the two stages need is how to find them.
+  tu[1] = 1 / (PATTERN * 0.4456 * 2);
+  tu[2] = RING_BASE;
+  step[10] = RING_BASE;
   // ── Counting laps ───────────────────────────────────────────────────────
   // One 16-byte read, six times a second, of the one number that decides when
   // the race is over: how far round the lap racer zero is.
@@ -1549,9 +1645,25 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // rail leant on through a corner rings once rather than sixty times a
       // second, and at the effect's own volume — the player is never at a
       // distance from themselves.
-      const knock = seen[21];
-      if (knock > wasBump) playBump();
-      wasBump = knock;
+      // **A level and a rate limit, not an edge.** An edge rings once and then
+      // goes quiet for as long as the contact lasts, which is wrong for a rail:
+      // scraping down the outside of a corner should keep telling you so. The
+      // shader holds the clock up for as long as the mistake is being made, and
+      // this decides how often that is worth saying.
+      //
+      // A quarter of a second is the floor on the gap. The readback lands six
+      // times a second, so the real rate is one sound every other poll — a shade
+      // over three a second, under the limit rather than at it.
+      if (seen[21] > 0.01 && TIME > mistakeAt) {
+        playMistake();
+        mistakeAt = TIME + 0.25;
+      }
+      // Racer zero's boost clock, watched for a rise: the ring is under the
+      // hooves for a tenth of a second, less than the gap between reads, so the
+      // contact is routinely missed and the raised clock left behind never is.
+      const lit = seen[20];
+      if (lit > wasBoost) playBoost();
+      wasBoost = lit;
       let ahead = 0;
       for (let i = 0; i < FIELD; i++) {
         const p = i * RACER_SLOTS * 4;
@@ -1559,37 +1671,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
         if (ROUND[i] > LAP * 0.75 && now < LAP * 0.25) DONE[i]++;
         ROUND[i] = now;
 
-        // The sixth slot's first word: this racer's boost clock. Watched for a
-        // *rise* rather than a level, so a pad held under the hooves rings once.
-        const lit = seen[p + 20];
-        if (lit > WAS_BOOST[i]) {
-          const dx = seen[p] - seen[0];
-          const dy = seen[p + 1] - seen[1];
-          const dz = seen[p + 2] - seen[2];
-          // Racer zero is the player and sits at the front of the copy, so its
-          // own boosts come through at full volume and a rival's arrives at
-          // whatever the road between you leaves of it — which is the point: a
-          // pad going off somewhere ahead tells you the field is using them
-          // without your having to see it.
-          //
-          // **Inverse distance, not inverse square.** The square was the first
-          // thing here and it was wrong twice over. It is the law for energy
-          // spreading over a sphere rather than for what an ear does with it,
-          // and on a track where the field strings out over a couple of hundred
-          // metres it put everything but a duel into silence — a rival forty
-          // metres up the road came through at a tenth. Inverse distance halves
-          // the volume every time the gap doubles instead of quartering it, so
-          // the far end of the field stays present without ever competing with
-          // your own pads.
-          //
-          // 0.01 rather than 0.02 is the whole of the far-field volume: the
-          // curve is 2.4 over one plus this, so at any distance worth calling
-          // distant the one is negligible and halving the rate doubles what you
-          // hear. It does almost nothing to a pad taken alongside you, which is
-          // the right way round — the near end was never the problem.
-          playBoost(2.4 / (1 + Math.hypot(dx, dy, dz) * 0.01));
-        }
-        WAS_BOOST[i] = lit;
       }
       const mine = DONE[0] * LAP + ROUND[0];
       for (let i = 1; i < FIELD; i++) {
@@ -1679,6 +1760,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // Constant for the whole race — rolled once at the flag. Sent every frame
     // because the block is written whole, not because it changes.
     step[11] = ROLL;
+    step[12] = RING_ROWS;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -1730,6 +1812,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // the CPU at all.
     bmUniforms(track, tu);
     bmDraw(track);
+    bmUniforms(hoops, tu);
+    bmDraw(hoops);
 
     // ── The overlay ─────────────────────────────────────────────────────────
     // Whatever this screen has to say, gathered into the instance buffer and
