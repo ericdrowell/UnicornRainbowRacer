@@ -181,7 +181,10 @@ for (let i = 0; i < MESH_P.length * 2; i += 9) {
   const j = mirror ? i - MESH_P.length : i;
   const tri = [0, 3, 6].map((o) => {
     const c = mirror ? 6 - o : o;
-    return [MESH_P[j + c], MESH_P[j + c + 1], mirror ? -MESH_P[j + c + 2] : MESH_P[j + c + 2]];
+    // Twentieths back to units — see the head of mesh.js for why they are stored
+    // that way. The one place the raw mesh is read, so the one place to undo it.
+    const g = (n) => MESH_P[n] * 0.05;
+    return [g(j + c), g(j + c + 1), mirror ? -g(j + c + 2) : g(j + c + 2)];
   });
   // Flat normal from the winding. The STL carries its own, but recomputing costs
   // nothing here and keeps the generated mesh to bare coordinates.
