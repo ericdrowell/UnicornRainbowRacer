@@ -213,7 +213,11 @@ export const Unicorn = shader({
     // angle — so the unicorn you were looking at was always thirteen away. Left
     // at the ring's own distance the model came out about a third smaller, which
     // is the ring's radius showing up as a size change.
-    const hub = camEye.add(gaze.scale(13)).sub(screenUp.scale(1.6));
+    // Dropped from 1.6 to 2.35 to sit on the same line the arrows do. The screen
+    // it stands on is not symmetric — one caption above it, two below — so
+    // hanging the model in the middle of the viewport left a gap under the name
+    // and none under the hooves.
+    const hub = camEye.add(gaze.scale(13)).sub(screenUp.scale(2.35));
     const turn = uTime * 1.15;
     const turned = ringSide.scale(cos(turn)).add(cross(screenUp, ringSide).scale(sin(turn)));
 
@@ -255,20 +259,17 @@ export const Unicorn = shader({
     // marching, and a racer that is not galloping reads as a racer that is not
     // trying.
     //
-    // Backwards is the walk, because nothing reverses at a gallop. The edges
-    // straddle a standstill rather than testing the sign, so the changeover
-    // spreads across the first few units of reverse instead of flipping in one
-    // frame. That matters here and nowhere else: run scales each leg's phase
-    // *offset*, so switching it outright moves four legs by up to half a cycle
-    // between one frame and the next, and they teleport rather than fall into
-    // step. Three units of reverse is a tenth of a second at the braking rate,
-    // so it still reads as immediate.
+    // **There is one gait now.** Reversing used to drop into a separate walk
+    // with its own per-leg phase, blended across a standstill so four legs did
+    // not teleport half a cycle when the sign flipped. All of that existed to
+    // serve an animation nobody watches — a unicorn spends a race going
+    // forwards — and it carried a whole attribute channel and a phase blend to
+    // do it. The legs now run the same way whichever way the animal is pointing.
     //
-    // uRun on the front of it is the screen, not the driving: 1 on the track and
-    // 0 on the select screen, where the unicorn walks on the spot whichever way
-    // it is nominally facing.
-    const run = uRun * smoothstep(-3, 0, facing.w);
-    const gait = normal.w + mix(aSkin.y, gallop, run);
+    // uRun is the screen rather than the driving: 1 on the track and 0 on the
+    // select screen, where the unicorn trots on the spot.
+    const run = uRun;
+    const gait = normal.w + gallop;
 
     // Weighted by distance along the limb, and that is what welds it: the ring
     // shared with the barrel has t = 0, so it never moves, while everything
@@ -277,20 +278,13 @@ export const Unicorn = shader({
     //
     // A gallop reaches further than a walk, so the swing opens up with it. The
     // knee follows, less so — it is already folding as far as the joint allows.
-    const hip = aSkin.z * (1 + 0.45 * run) * sin(gait) * smoothstep(0, 0.28, aSkin.x);
-    // Knees only fold one way, so the bend is clamped to the half of the cycle
-    // where the hoof is coming through — a knee bending backwards reads as a
-    // broken leg immediately.
-    const knee = aSkin.w * (1 + 0.25 * run) * max(sin(gait + 2.2), 0);
-    const bend = knee * smoothstep(0.32, 0.56, aSkin.x);
-
-    // Where the knee sits below the hip, in leg units. A local const because the
-    // DSL scopes to shader parameters and locals — module-level values are not
-    // in scope, which it says plainly rather than compiling to something wrong.
-    const kneeY = 0.3;
-
-    const atKnee = spin(vec3(aPos.x, aPos.y + kneeY, aPos.z), bend);
-    const limb = spin(vec3(atKnee.x, atKnee.y - kneeY, atKnee.z), hip);
+    const hip = aSkin.z * (1 + 0.45 * run) * sin(gait) * aSkin.x;
+    // **No knee.** A box leg has no joint to fold and nothing to fold it with:
+    // it is one rigid post pivoting at the hip, which is the straight-legged run
+    // the reference has and the only one that makes sense on this animal. What
+    // came out with it was a second rotation, its own amplitude channel and the
+    // offset that put the pivot at knee height.
+    const limb = spin(aPos, hip);
     // The barrel rises and falls, which sells a run more than the legs do. Tied
     // to the gait rather than the clock for the same reason the legs are — a
     // standing unicorn should not be breathing hard.
@@ -332,7 +326,7 @@ export const Unicorn = shader({
     // to the world while the unicorn turns under it, so the lit side stays put
     // as the body rotates — subtle enough to look like a lighting bug and not a
     // transform one.
-    const posed = spin(spin(aNrm, bend), hip);
+    const posed = spin(aNrm, hip);
     v.vNormal = facing.xyz
       .scale(posed.x)
       .add(normal.xyz.scale(posed.y))
@@ -533,7 +527,7 @@ export const Unicorn = shader({
     // It projects to an ellipse when the head is seen at an angle, which is what
     // a circle drawn on a curved surface does, and is what makes it read as an
     // eye rather than as a sticker facing the camera.
-    const pupil = 1 - smoothstep(0.062, 0.0675, length(vFace.sub(vec2(0.6401, 1.4904))));
+    const pupil = 1 - smoothstep(0.07, 0.078, length(vFace.sub(vec2(0.44, 1.78))));
     // Alpha 1 either way. In the reflection pass this is coverage rather than
     // opacity — the target clears transparent, so solid alpha is what tells the
     // road which pixels the unicorn actually reaches.

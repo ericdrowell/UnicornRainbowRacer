@@ -126,9 +126,10 @@ const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 //     to sit anywhere the packer likes them.
 const parts = [
   song(['MENU_SONG', 'dizzy-land-beginning.json']),
-  read('src', 'mesh.js'),
   song(['RACE_SONG', 'dizzy-beats.json']),
   read('src', 'unicorns.js'),
+  // Before game.js, which reads its arrays at module scope to build the mesh.
+  read('src', 'unicorn.js'),
   read('src', 'sonantx-custom.js'),
   read('src', 'circuits.js'),
   read('src', 'text.js'),
@@ -270,6 +271,72 @@ writeFileSync(join(dist, OUT), page);
 // carries `soundEffects.js` twice: once as code, so the effects can be played,
 // and once as text, so their names can be listed. That is a page nobody ships
 // spending a few hundred bytes to stay honest about what is in the file.
+// 5c. dist/editor.html — the box unicorn's shaping tool.
+//
+// **Generated rather than static, for one reason: it must never open showing a
+// stale unicorn.** The tool's whole job is to hand back numbers to paste into
+// game.js, and a copy of those numbers that had drifted from the real ones would
+// hand back a change built on the wrong starting point — the worst failure a
+// tool like this has, because the output still looks plausible.
+//
+// So the arrays are lifted out of src/game.js at build time. They cannot be
+// JSON.parsed where they sit: every row carries a trailing comment naming the
+// part, which is exactly what makes that file readable and exactly what makes it
+// invalid JSON. Stripping line comments is the whole of the transform.
+if (!process.env.DEBUG) {
+  const gameSrc = read('src', 'unicorn.js');
+  const blockNamed = (name) => {
+    const at = gameSrc.indexOf(`const ${name} = [`);
+    const close = gameSrc.indexOf('];', at);
+    return gameSrc.slice(at, close + 2);
+  };
+  const arrayNamed = (name) => {
+    const block = blockNamed(name);
+    return JSON.parse(
+      block
+        .slice(block.indexOf('['), block.lastIndexOf(']') + 1)
+        .replace(/\/\/[^\n]*/g, '')
+        .replace(/,\s*\]/, ']'),
+    );
+  };
+  // Everything the tool needs is a named constant now that the shapes live in a
+  // file of their own, so this is four regexes and no guessing at inline maths.
+  const num = (name) => +gameSrc.match(new RegExp(`const ${name} = ([\\d.]+)`))[1];
+  const model = [
+    `const PARTS = ${JSON.stringify(arrayNamed('PARTS'))};`,
+    `const LEGS = ${JSON.stringify(arrayNamed('LEGS'))};`,
+    `const BELLY = ${num('BELLY')};`,
+    `const LEG_HALF = ${num('LEG_HALF')};`,
+    `const LEG_TOP = ${num('LEG_TOP')};`,
+    // The file itself, so Copy can hand the whole thing back rather than two
+    // arrays the reader then has to graft in.
+    `const FILE_SRC = ${JSON.stringify(read('src', 'unicorn.js'))};`,
+    // **The blocks go over as text as well as as numbers.** The tool has to hand
+    // back something that can be pasted into game.js without losing what is
+    // written around the rows — the comments naming each part and explaining why
+    // the boxes overlap are most of the value of that file. So it gets the
+    // source verbatim and substitutes only the numerals into it, which means a
+    // paste is a diff of numbers rather than a wholesale replacement.
+    `const PARTS_SRC = ${JSON.stringify(blockNamed('PARTS'))};`,
+    `const LEGS_SRC = ${JSON.stringify(blockNamed('LEGS'))};`,
+  ].join('\n');
+  // The reference photo travels with the page as a data URI. design/ is outside
+  // the served root and file:// blocks fetch, so a relative src cannot reach it
+  // either way — the same problem, and the same answer, as the songs in the
+  // sound bench.
+  const refPath = join(root, 'design', 'crossy-road-unicorn.jpg');
+  const ref = existsSync(refPath)
+    ? `data:image/jpeg;base64,${readFileSync(refPath).toString('base64')}`
+    : '';
+  writeFileSync(
+    join(dist, 'editor.html'),
+    read('tools', 'editor.html')
+      .replace('/*MODEL*/', () => model)
+      .replace('/*REF*/', () => ref),
+  );
+  console.log(`  dist/editor.html  ${statSync(join(dist, 'editor.html')).size} bytes  (box editor, not measured)`);
+}
+
 if (!process.env.DEBUG) {
   const deps = [
     read('src', 'sonantx-custom.js'),

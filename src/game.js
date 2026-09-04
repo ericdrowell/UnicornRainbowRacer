@@ -1,6 +1,6 @@
 // Unicorn Rainbow Racer — js13k 2026.
 //
-// The unicorn is the reference model itself: MESH_P and MESH_C are generated
+// The unicorn is twelve boxes, built a few lines down: there is no model file
 // from the STL by tools/stl2mesh.mjs. This file gives it normals and, more
 // interestingly, works out which vertices belong to which leg so the shader can
 // run it — the model is a 3D-print solid with no rigging, so the weights have to
@@ -43,19 +43,6 @@ const MUSIC_ENABLED = true;
 const MUSIC = MUSIC_ENABLED && new (AudioContext || webkitAudioContext)();
 
 
-// ── Skeleton, measured from the model ───────────────────────────────────────
-// Where each leg is, and the height its vertices start belonging to it.
-const BELLY = 0.56; // below this, a vertex is leg rather than body
-const LEG_LEN = 0.52;
-const LEG_R = 0.3; // generous: catches the whole limb including the haunch
-const LEGS = [
-  [0.39, 0.32, 0, -1], // x, z, gait phase, which way the joint folds
-  [0.39, -0.32, Math.PI, -1],
-  [-0.55, 0.32, Math.PI, 1],
-  [-0.55, -0.32, 0, 1],
-];
-
-
 /**
  * Who the player rides before anything is chosen — and so which seat the select
  * screen's carousel opens on. First in the roster, because the screen has to
@@ -63,8 +50,6 @@ const LEGS = [
  * other index opens mid-list and looks like the ring has already been turned.
  */
 const SELECTED_UNICORN = 0;
-
-const SKIN = UNICORNS[SELECTED_UNICORN];
 
 // ── The field ───────────────────────────────────────────────────────────────
 // The roster, once each, and nobody else. It used to be ten — the player plus
@@ -83,29 +68,69 @@ const SKIN = UNICORNS[SELECTED_UNICORN];
 // the compiler works from the source, so the workgroup size and its loop bound
 // are literals there. Change one and change all three.
 const FIELD = UNICORNS.length;
-const RACERS = [];
-const lineUp = (pick) => {
-  for (let i = 0; i < FIELD; i++) RACERS[i] = UNICORNS[(pick + i) % FIELD];
-};
-lineUp(SELECTED_UNICORN);
 
-/**
- * Whether a mesh colour is one the roster repaints. Matched against the value
- * rather than flagged in the mesh, so the model stays exactly as the converter
- * emitted it — and the parts no unicorn recolours (hooves, eyes) keep their
- * colours without needing to be listed anywhere.
- *
- * The model carries five colours and no two are close, so neither test can
- * collide: the hide is the only near-white and the horn the only gold.
- */
-const is = (r, g, b, m) => Math.abs(r - m[0]) < 1e-3 && Math.abs(g - m[1]) < 1e-3 && Math.abs(b - m[2]) < 1e-3;
-const HIDE = [1, 0.97, 0.99];
+// The two defaults a roster entry may leave out: the gold every horn is unless
+// it says otherwise, and the eye bead. Not pure black — the bead is drawn over
+// the hide, and a true zero next to a near-white face reads as a hole punched in
+// the head rather than as an eye.
 const HORN = [1, 0.83, 0.3];
-// Not pure black: the bead is drawn over the hide, and a true zero next to a
-// near-white face reads as a hole punched in the head rather than as an eye.
 const EYE = [0.02, 0.02, 0.03];
 
-// ── Buffers ─────────────────────────────────────────────────────────────────
+// Vector difference, used by the road builder and the livery.
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+
+// ── The unicorn ─────────────────────────────────────────────────────────────
+// **There is no model any more.** What stood here was a 3D print: 248 triangles
+// of smoothed, skinned mesh in a generated data file, and it cost 972 zipped
+// bytes — more than the whole budget was over. Every cheaper way of storing it
+// had already been taken (the wings went, 88 triangles; the coordinates went to
+// integer twentieths) and what remained was irreducible, because it was the
+// shape itself rather than how it was written down.
+//
+// So the shape went. Twelve boxes cost a few dozen bytes of numbers and build
+// themselves. It is a different unicorn and not a worse one — the model this
+// replaces was already being read at fifty metres through a rainbow haze, and a
+// blocky animal reads *better* at that distance than a smooth one, which is the
+// whole reason the genre it is borrowed from looks the way it does.
+//
+// **The shapes are in src/unicorn.js and that file holds nothing else — no
+// comments, no code.** It is the one part of the game shaped by eye rather than
+// reasoned about, and tools/editor.html round-trips it: read the file, drag the
+// boxes, copy the file back. Anything written in there would be something the
+// tool had to preserve and could get wrong, so everything worth saying about
+// those numbers is said here instead.
+//
+// A row of PARTS is two opposite corners and a colour code — 2 is this racer's
+// hide, 1 its mane, 3 its horn. Nothing is painted at build time, because one
+// vertex buffer serves all ten instances and a colour resolved here would be the
+// same colour on every unicorn in the field.
+//
+// The order is barrel, neck and head, muzzle, two ears, horn, mane, tail; the
+// legs come from LEGS, which is four positions sharing LEG_HALF and LEG_TOP.
+//
+// **Every part sinks into the one it grows from.** Boxes that merely touch put
+// two faces in the same plane, and the depth buffer has no way to choose between
+// them — a seam that flickers as the camera moves. Overlapping by a few
+// hundredths costs nothing and cannot z-fight, which is why the muzzle starts
+// inside the skull, the horn and ears below its crown, the tail inside the rump,
+// and why LEG_TOP is past BELLY rather than level with it.
+//
+// A corner of a box, picked out of the eight by three bits: x, then y, then z.
+const corner = (b, k) => [b & 1 ? k[3] : k[0], b & 2 ? k[4] : k[1], b & 4 ? k[5] : k[2]];
+// The six faces, each as four corners wound counter-clockwise seen from outside
+// followed by the direction it faces. The winding is load-bearing — the program
+// culls back faces, so a face listed the other way round is a hole in the animal
+// rather than a face pointing the wrong way.
+const FACES = [
+  [0, 4, 6, 2, -1, 0, 0],
+  [1, 3, 7, 5, 1, 0, 0],
+  [0, 1, 5, 4, 0, -1, 0],
+  [2, 6, 7, 3, 0, 1, 0],
+  [0, 2, 3, 1, 0, 0, -1],
+  [4, 5, 7, 6, 0, 0, 1],
+];
+
+
 const P = [];
 const NR = [];
 const RT = [];
@@ -113,174 +138,47 @@ const SK = [];
 const CL = [];
 
 /**
- * Which leg a vertex belongs to, and how far down it.
+ * One box into the buffers, rooted at a hip if it is a leg.
  *
- * A print model has no bones, so this is inferred: anything below the belly and
- * within reach of a hip is that leg's, and how far below decides how much it
- * moves. Ambiguity only arises between the two legs on the same side, and they
- * are far enough apart in x that nearest-hip wins cleanly.
+ * **Flat normals, and that is the look.** The mesh this replaces averaged the
+ * normals of every face meeting at a corner, because a faceted 3D print read as
+ * a 3D print. A box animal wants the opposite: each face keeps the direction it
+ * actually faces, so the corners stay hard and the light steps between panels
+ * instead of rolling round them.
  *
- * This takes a *vertex*, never a triangle, and that is the whole point. Deciding
- * per triangle — from its centre, say — lets one physical corner come out
- * weighted 0.44 in one face and 0 in the face next to it, because the two
- * triangles classified differently. The corner then swings in one and stays put
- * in the other, and the surface splits along that edge. Those are the triangles
- * that looked static: they were not failing to move, they were being held still
- * by a neighbour that disagreed about them.
- *
- * Keyed on position, a shared corner gets one answer no matter how many faces
- * meet there, so there is nothing to disagree about.
+ * `aSkin.x` is 1 for a whole leg and 0 for everything else, which is what makes
+ * the legs swing rigidly. The mesh needed a gradient there — vertices near the
+ * shoulder had to stay welded to the barrel while the hoof swung — and a box
+ * leg has no shoulder ring to tear: it is one rigid part pivoting at its top,
+ * which is exactly the straight-legged run the reference has.
  */
-function skinFor(x, y, z) {
-  if (y >= BELLY) return null;
-  let best = null;
-  let bestD = LEG_R;
-  for (const leg of LEGS) {
-    const d = Math.hypot(x - leg[0], z - leg[1]);
-    if (d < bestD) {
-      bestD = d;
-      best = leg;
+const put = (k, paint, hip) => {
+  const root = hip ? [hip[0], BELLY, hip[1]] : [0, 0, 0];
+  for (const f of FACES) {
+    const c = [0, 1, 2, 3].map((i) => corner(f[i], k));
+    for (const t of [[0, 1, 2], [0, 2, 3]]) {
+      for (const i of t) {
+        P.push(c[i][0] - root[0], c[i][1] - root[1], c[i][2] - root[2]);
+        NR.push(f[4], f[5], f[6]);
+        RT.push(root[0], root[1], root[2]);
+        SK.push(hip ? 1 : 0, 0, 0.5, 0);
+        CL.push(0, 0, 0, paint);
+      }
     }
   }
-  return best;
-}
+};
 
-/** How far down its limb a vertex sits: 0 at the belly, 1 at full stretch. */
-const weightAt = (y) => Math.min(Math.max((BELLY - y) / LEG_LEN, 0), 1);
+for (const part of PARTS) put(part, part[6]);
+// The legs last, so their hips are the only roots in the buffer that are not the
+// origin — which is what the shader reads to tell one leg from another.
+for (const leg of LEGS)
+  put([leg[0] - LEG_HALF, 0, leg[1] - LEG_HALF, leg[0] + LEG_HALF, LEG_TOP, leg[1] + LEG_HALF], 2, leg);
 
-const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-
-// Smooth normals, gathered while the mesh is built and applied once it is.
-//
-// The model is a 3D print: flat-shaded it reads as the faceted solid it really
-// is, and the brief is a plush toy. Averaging the normals of every face that
-// meets at a corner is the whole of the fix — the geometry keeps its silhouette
-// and its polygon count, and only the shading stops announcing where one
-// triangle ends and the next begins.
-//
-// Keyed on the rounded position, for the same reason `skinFor` is: a shared
-// corner has to give one answer no matter how many faces arrive at it, and
-// floats that came from the same STL vertex are not reliably equal.
-const SMOOTH = new Map();
-const NKEY = [];
-
-// Twice round the mesh: once as stored, once mirrored. Only the z > 0 half of
-// the unicorn is in MESH_P, and it is the single largest thing in the budget, so
-// the other half is rebuilt here for the cost of this loop.
-//
-// The corners are read back to front on the mirrored pass. Negating one axis is
-// a reflection, and a reflection reverses winding — left alone, every mirrored
-// face would point inwards and the whole left side would be culled away.
-//
-// Nothing else has to know about any of this. The gait comes out right on its
-// own: skinFor picks a leg by position, so a mirrored vertex finds the opposite
-// hip and inherits its phase, and the diagonal trot survives without being
-// written down anywhere.
-for (let i = 0; i < MESH_P.length * 2; i += 9) {
-  const mirror = i >= MESH_P.length;
-  const j = mirror ? i - MESH_P.length : i;
-  const tri = [0, 3, 6].map((o) => {
-    const c = mirror ? 6 - o : o;
-    // Twentieths back to units — see the head of mesh.js for why they are stored
-    // that way. The one place the raw mesh is read, so the one place to undo it.
-    const g = (n) => MESH_P[n] * 0.05;
-    return [g(j + c), g(j + c + 1), mirror ? -g(j + c + 2) : g(j + c + 2)];
-  });
-  // Flat normal from the winding. The STL carries its own, but recomputing costs
-  // nothing here and keeps the generated mesh to bare coordinates.
-  const u = sub(tri[1], tri[0]);
-  const v = sub(tri[2], tri[0]);
-  const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-  const L = Math.hypot(n[0], n[1], n[2]) || 1;
-
-  // Each corner is classified on its own, then the face is rooted at whichever
-  // hip its most-committed corner belongs to. A face can only carry one root —
-  // it is a single attribute — but the *weights* stay per corner, and a corner
-  // belonging to no leg keeps weight 0, so it sits still regardless of the root
-  // the face happens to carry. Corners shared with the body therefore stay
-  // welded to it while the rest of the face swings, which is the flex the
-  // shader's smoothstep is there to produce.
-  // Drop the model's own eye patch: five triangles of flat black laid on the
-  // cheek, which the shader now draws for itself. Left in, they sit in the same
-  // place as the head surface with their own angle, so the eye decal lands on
-  // both and the two fight — one circle on the cheek and a second, skewed one on
-  // the patch, z-fighting where they overlap. Repainting them as face was not
-  // enough: it is the geometry that is doubled, not the colour.
-  //
-  // Identified by the colour that is unique to them — 0.05 across, against
-  // hooves at 0.16 and a body at 1.
-  const ci0 = (j / 3) * 4;
-  if (MESH_C[ci0] < 0.1 && MESH_C[ci0 + 3] < 0.5) continue;
-
-  const legs = tri.map((v) => skinFor(v[0], v[1], v[2]));
-  let lead = -1;
-  for (let k = 0; k < 3; k++) {
-    if (legs[k] && (lead < 0 || weightAt(tri[k][1]) > weightAt(tri[lead][1]))) lead = k;
-  }
-  const leg = lead < 0 ? null : legs[lead];
-  const root = leg ? [leg[0], BELLY, leg[1]] : [0, 0, 0];
-  const skin = leg ? [0, leg[2], 0.55, 0.9 * leg[3]] : [0, 0, 0, 0];
-
-  for (let k = 0; k < 3; k++) {
-    P.push(tri[k][0] - root[0], tri[k][1] - root[1], tri[k][2] - root[2]);
-    // Provisional: the face's own normal, replaced below by the average of every
-    // face meeting at this corner. Keyed on the position *before* the root is
-    // subtracted, because that is the coordinate two faces actually share — the
-    // root differs between a body face and a leg face at the very seam where
-    // smoothing matters most.
-    NKEY.push(tri[k].map((c) => Math.round(c * 1000)).join());
-    const a = SMOOTH.get(NKEY[NKEY.length - 1]) || [0, 0, 0];
-    // Unnormalised, so a big triangle pulls the average further than a sliver —
-    // which is what area weighting is, and it costs nothing here because the
-    // cross product's length already is the area.
-    a[0] += n[0];
-    a[1] += n[1];
-    a[2] += n[2];
-    SMOOTH.set(NKEY[NKEY.length - 1], a);
-    NR.push(n[0] / L, n[1] / L, n[2] / L);
-    RT.push(root[0], root[1], root[2]);
-    // How far down the limb this corner sits — the weight the shader scales by.
-    // Read from the corner itself, so every face meeting here agrees.
-    const t = legs[k] ? weightAt(tri[k][1]) : 0;
-    SK.push(t, skin[1], skin[2], skin[3]);
-    const ci = (j / 3) * 4 + k * 4;
-    // The flat black patch the model carries for an eye is repainted as face.
-    // The bead appended further down is the eye now, and leaving the patch black
-    // underneath it puts two dark shapes at slightly different angles in the same
-    // place — which reads as a polygon halo around a circle, and was visible the
-    // moment the bead was made smaller than the patch it covers.
-    //
-    // Identified by its own colour, which is unique in the model: 0.05 across,
-    // against hooves at 0.16 and a body at 1. Repainting it frees the bead to be
-    // any size at all, since there is no longer anything for it to fail to hide.
-    const socket = MESH_C[ci] < 0.1 && MESH_C[ci + 3] < 0.5;
-    // Sockets are interior faces that should read as body, so they take the hide
-    // colour too — the same substitution that used to hard-code white.
-    // Which roster colour, if any, replaces what the converter emitted here.
-    // Which roster colour replaces what the converter emitted here — as a code
-    // for the shader to act on, not as the colour itself. One vertex buffer is
-    // shared by all ten instances, so a colour resolved here would be the same
-    // colour on every unicorn in the field; the code lets each instance answer
-    // for itself. 1 is the mane, which the alpha channel already meant.
-    const paint = socket || is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HIDE)
-      ? 2
-      : is(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], HORN)
-        ? 3
-        : 0;
-    CL.push(MESH_C[ci], MESH_C[ci + 1], MESH_C[ci + 2], paint || MESH_C[ci + 3]);
-  }
-}
-
-// The second pass. Every corner now knows the sum of the faces around it, so
-// the provisional flat normals get overwritten with the direction the *surface*
-// faces rather than the direction one triangle does.
-for (let i = 0; i < NKEY.length; i++) {
-  const a = SMOOTH.get(NKEY[i]);
-  const l = Math.hypot(a[0], a[1], a[2]) || 1;
-  NR[i * 3] = a[0] / l;
-  NR[i * 3 + 1] = a[1] / l;
-  NR[i * 3 + 2] = a[2] / l;
-}
+const RACERS = [];
+const lineUp = (pick) => {
+  for (let i = 0; i < FIELD; i++) RACERS[i] = UNICORNS[(pick + i) % FIELD];
+};
+lineUp(SELECTED_UNICORN);
 
 const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 
@@ -1927,14 +1825,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       heading(0, 1);
     } else if (SCREEN === SELECT_STATE) {
       say(2, 0.88, LARGE, 1);
-      say(NAME_ROW + PICK, 0.55, EXTRA_LARGE, 1);
-      // Level with the unicorn and just outside its neighbours.
+      say(NAME_ROW + PICK, 0.66, EXTRA_LARGE, 1);
+      // Level with the unicorn, which is no longer level with the middle of the
+      // screen: the name above and the two hints below are not symmetric about
+      // it, so centring on zero left the animal riding high with a gap under the
+      // name. Halfway between the name at 0.66 and the first hint at -0.74 is
+      // -0.04, and that is what both this and the model are hung from.
+      //
+      // Just outside its neighbours, too.
       //
       // Its own half-width rather than one of the constants, because an arrow's
       // *position* is its half-width — the ink is at the ends of the row. It
       // scales with the atlas like everything else, so the triangles stay put
       // however long the longest caption gets.
-      say(9, 0, 0.78 * TYPE, 1);
+      say(9, -0.04, 0.78 * TYPE, 1);
       say(3, -0.74, MEDIUM, 1);
       say(4, -0.9, MEDIUM, 1);
     } else if (SCREEN === FLAG_STATE) {
