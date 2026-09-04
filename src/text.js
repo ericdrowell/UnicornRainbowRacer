@@ -122,6 +122,11 @@ const SAYS = [
   '2',                                      // 13
   '1',                                      // 14
   'GO!',                                    // 15
+  // The way on from the finish, when the finish is not the end of the series.
+  // Appended rather than slotted in beside its sibling at 8, because these are
+  // referenced by index: putting it next to the line it replaces would have
+  // renumbered the arrows and the countdown under it.
+  'PRESS ENTER FOR NEXT RACE',              // 16
 ];
 
 /**
@@ -177,16 +182,5 @@ const LINES = [
   ...['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].map((n) => n.padStart(24)),
   // Four suffixes, not ten: first, second, third, and then everything else.
   ...['ST', 'ND', 'RD', 'TH'].map((x) => x.padStart(WIDE)),
-  // The lap, top left, one row a lap.
-  //
-  // Padded the other way for the other corner, and to the full width because
-  // that is as far left as a caption reaches: the ink of a full-width row starts
-  // at the quad's own left edge, so the leftmost a caption can sit is minus its
-  // own half-width. Reaching the edge of the screen therefore *requires* a
-  // half-width of about 0.8 — which is why the lap is drawn at LARGE and not at
-  // MEDIUM. Smaller type simply cannot get to the corner.
-  //
-  // Two rows because the race is two laps. Add a lap and add a row.
-  ...['LAP 1/2', 'LAP 2/2'].map((l) => l.padEnd(WIDE)),
   ...UNICORNS.map((u) => u.name.toUpperCase()),
 ];

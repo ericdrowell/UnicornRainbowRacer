@@ -305,14 +305,26 @@ const TRACK_WIDTH = 27;
  * thousand coordinates sitting in the middle of this file buries everything
  * around them.
  */
-const SELECTED_CIRCUIT = 0;
+let SELECTED_CIRCUIT = 0;
 
 // The course, as a list of places the road passes through. Built from a seed
 // rather than read from a literal — see src/circuits.js — which is why there is
 // no unpacking left here: the generator hands back triples in absolute
 // coordinates, where the authored file held a flat run of steps that had to be
 // summed. Both the unpacking and the running sum went with it.
-const TRACK = CIRCUITS[SELECTED_CIRCUIT];
+// **Everything below is rebuilt when the circuit changes, which is why it is a
+// function and why these names are declared out here.** It was all module-scope
+// `const` when there was one track to race; a series of three means the road,
+// its ring table, its grid and the scalars the shaders take as uniforms all
+// have to be replaced between races, and a `const` cannot be replaced.
+//
+// The declarations are separated from the assignments rather than the whole
+// block being reindented into the function: the values are built in one long
+// dependency order and breaking that order to group the exports would be the
+// only real way to get this wrong.
+let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, RING_ROWS, TI, RING_BASE, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+const lay = () => {
+TRACK = CIRCUITS[SELECTED_CIRCUIT];
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -415,8 +427,8 @@ const CENTRE = [];
   }
 }
 
-const RINGS = CENTRE.length;
-const ring = (i) => CENTRE[(i + RINGS) % RINGS];
+RINGS = CENTRE.length;
+ring = (i) => CENTRE[(i + RINGS) % RINGS];
 
 // Central differences, so a ring's tangent is the direction the road is heading
 // *through* it rather than the direction of the segment on one side of it.
@@ -428,7 +440,7 @@ const TAN = CENTRE.map((_, i) => norm(sub(ring(i + 1), ring(i - 1))));
 // corners, where the spline bulges out past the chord.
 const ALONG = [0];
 for (let i = 1; i < RINGS; i++) ALONG.push(ALONG[i - 1] + dist(ring(i), ring(i - 1)));
-const LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
+LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
 
 // ── Which way is up ─────────────────────────────────────────────────────────
 // Carried along the road, not derived from the world.
@@ -569,15 +581,15 @@ for (let i = 0; i < RINGS; i++) {
 // lap an exact whole number of waves. A multiple of three, because the slow
 // wave is a third of the rate of the fast one and both have to close.
 const WAVES = 3 * Math.max(1, Math.round((LAP * 0.7) / (6 * Math.PI)));
-const PATTERN = (WAVES * 2 * Math.PI) / (0.7 * LAP);
+PATTERN = (WAVES * 2 * Math.PI) / (0.7 * LAP);
 
 // Two vertices per ring, left edge then right. The ring at the start is emitted
 // a second time at the end, carrying a full lap's distance instead of zero:
 // closing the strip by wrapping the indices back to ring 0 would leave the last
 // quad interpolating the distance from LAP down to 0, cramming the entire
 // pattern into two metres of road.
-const TP = [];
-const TE = [];
+TP = [];
+TE = [];
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
   // Across the road, straight off the carried frame. This used to be built here
@@ -610,7 +622,7 @@ for (let i = 0; i <= RINGS; i++) {
 // and is now said outright.
 //
 // Seeded from the circuit, so a track's rings are as fixed as its corners.
-const RING_ROWS = 64;
+RING_ROWS = 64;
 const START_CLEAR = 2;
 const RING_SLOTS = Math.ceil((LAP * PATTERN * 0.4456) / RING_ROWS);
 /** Which third each slot's ring sits in — 0 left, 1 middle, 2 right, 3 none. */
@@ -625,52 +637,61 @@ const RING_LANE = new Float32Array(RING_SLOTS);
 
 // Two triangles per quad. bmIndex draws uint16, so the track has a ceiling of
 // 32k rings — about 65 km of road at this spacing.
-const TI = [];
-/**
- * The rings' own indices, kept apart from the road's.
- *
- * **They share every vertex and cannot share a draw, because they must not write
- * depth.** A ring is a quad twelve metres square with a ring painted somewhere
- * inside it and nothing in the rest — but "nothing" is an alpha of zero, not an
- * absence, and a fragment with zero alpha writes depth like any other. One draw
- * with depth write on therefore has each ring stamping a twelve-metre hole into
- * the depth buffer, and every ring behind it fails the test: looking through a
- * near ring, the road ahead has no rings on it at all.
- *
- * So the same vertices are drawn twice from two index lists — the road with
- * depth write, the rings without. They still *test* against it, so a ring over a
- * crest is still hidden by the crest; they just stop hiding each other.
- */
-const TH = [];
+TI = [];
 for (let i = 0; i < RINGS; i++) {
   const a = i * 2;
   const b = a + 2;
   TI.push(a, b, a + 1, a + 1, b, b + 1);
 }
 
-// **A quad apiece, not a ring of triangles.** The ring itself is drawn by the
-// fragment stage out of `length(uv)`, which costs four vertices instead of forty
-// and gets the glow for nothing: a torus built from geometry has a hard silhouette
-// and this has a falloff, on a surface where every other light is analytic for
-// exactly that reason.
+// **An actual torus apiece.** This was a flat quad with a ring painted on it by
+// the fragment stage, which is four vertices against this one's ninety-one — and
+// no amount of shading rescued it, because what was missing was not light. A
+// painted ring has no silhouette to catch the sky against, no near limb passing
+// in front of its far limb, and no parallax at all: drive at it and it stays a
+// decal, because it is one. The cost of a real one is vertices, and vertices are
+// the one thing here that is nearly free.
 //
-// They ride in the road's own buffers and are drawn by the road's own program.
-// A ring is not the road, and the honest thing would be a second pipeline — but
-// that is a program, a buffer, a bind group and a draw call for four vertices a
-// ring. Marking them in `aEdge` instead costs one branch in each stage.
+// **Being solid is what pays for it.** The old quad was mostly transparent, and
+// a zero-alpha fragment still writes depth — so each ring stamped a twelve-metre
+// hole in the depth buffer and every ring behind it vanished. That needed a
+// second program over the same vertices with depth write off, drawn separately.
+// A torus is opaque everywhere it exists and nowhere else, so it simply joins
+// the road's own index list, and the program, the buffers, the bind group, the
+// uniform upload and the draw call all went with the problem they solved.
 //
-// `aPos` carries the slot and the corner rather than a position: where a ring
-// actually is depends on the road under it, and the road is in a storage buffer
-// the vertex stage can read. Building it here would mean a second copy of the
-// centreline in JavaScript.
+// **Segments are free, so these are generous.** Nothing about this mesh is
+// stored — it is swept at load from the two numbers below, and 24 and 10 are the
+// same two bytes each that 12 and 5 were. The only thing more of them costs is
+// vertices in GPU memory, and at 60 rings this is 16500 of them against a uint16
+// index ceiling of 65536 and a road that uses 1500.
+//
+// So the limit is the ceiling, not the budget. 24 round the ring is a 24-gon
+// silhouette, which stops showing corners at the size these are read at; 10
+// round the tube is what makes the shading sweep rather than facet, since the
+// light is interpolated between vertices.
+//
+// `aPos` still carries the slot rather than a position — where a ring actually
+// is depends on the road under it, and the road is in a storage buffer the
+// vertex stage can read — with the two grid coordinates where the corner used to
+// be. The trigonometry is the vertex stage's, once per vertex.
+const MAJ = 24;
+const MIN = 10;
 for (let i = 0; i < RING_SLOTS; i++) {
   if (RING_LANE[i] > 2) continue;
   const base = TP.length / 3;
-  for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-    TP.push(i, x, y);
-    TE.push(9, 0);
+  for (let u = 0; u <= MAJ; u++) {
+    for (let v = 0; v <= MIN; v++) {
+      TP.push(i, u / MAJ, v / MIN);
+      TE.push(9, 0);
+    }
   }
-  TH.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+  for (let u = 0; u < MAJ; u++) {
+    for (let v = 0; v < MIN; v++) {
+      const a = base + u * (MIN + 1) + v;
+      TI.push(a, a + MIN + 1, a + 1, a + 1, a + MIN + 1, a + MIN + 2);
+    }
+  }
 }
 
 // The ribbon, in the form the physics stage reads it: two vec4s a ring, centre
@@ -698,8 +719,8 @@ for (let i = 0; i < RING_SLOTS; i++) {
 // carry one number is wasteful of GPU memory and free in the zip — this array is
 // generated, not shipped — and it means both readers index it with a slot number
 // and nothing else.
-const RING_BASE = (RINGS + 1) * 3;
-const TRACK_DATA = new Float32Array((RING_BASE + RING_SLOTS) * 4);
+RING_BASE = (RINGS + 1) * 3;
+TRACK_DATA = new Float32Array((RING_BASE + RING_SLOTS) * 4);
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
   TRACK_DATA.set(
@@ -737,15 +758,15 @@ for (let i = 0; i < RING_SLOTS; i++) TRACK_DATA[(RING_BASE + i) * 4] = RING_LANE
 // physics stage already treats as "not yet placed" and fills from the tangent
 // under the body — the same path a respawn takes, so there is one piece of code
 // deciding which way a unicorn faces and not two that can disagree.
-const RACER_BASE = 16;
+RACER_BASE = 16;
 // Six, not five: the sixth carries how much boost a racer has left. Every word
 // of the other five was spoken for — the spare quarter of each was already
 // holding vy, speed, gait, the lit-panel coordinate and the lap distance the
 // CPU reads back — and a timer is the one thing a boost pad needs that cannot be
 // recomputed from where a unicorn is.
-const RACER_SLOTS = 6;
+RACER_SLOTS = 6;
 /** Where the liveries start, six vec4s per racer. */
-const PALETTE = 80;
+PALETTE = 80;
 
 /** The ring nearest a given distance round the lap. */
 const ringAt = (d) => {
@@ -758,7 +779,7 @@ const ringAt = (d) => {
 };
 
 const LANES = 3;
-const GRID = [];
+GRID = [];
 for (let i = 0; i < FIELD; i++) {
   // Racer 0 is the player and goes to the back; the AI fill the rows in front.
   const slot = i ? i - 1 : FIELD - 1;
@@ -778,6 +799,8 @@ for (let i = 0; i < FIELD; i++) {
   const lat = (1 - (slot % LANES)) * TRACK_WIDTH * 0.3;
   GRID.push(CENTRE[g].map((c, k) => c + arm[k] * lat));
 }
+};
+lay();
 
 // ── Driving ─────────────────────────────────────────────────────────────────
 // Keys are the one thing the GPU cannot read, so this is all the CPU still owns
@@ -1064,7 +1087,7 @@ const SONGS = {};
 const playSelectNext = shot(UNICORN_SELECT_NEXT);
 const playSelectPrev = shot(UNICORN_SELECT_PREV);
 const playReady = shot(READY_SIGNAL, 2);
-const playBoost = shot(BOOST, 2);
+const playBoost = shot(BOOST, 3);
 const playMistake = shot(MISTAKE, 2);
 
 // ── The start line ──────────────────────────────────────────────────────────
@@ -1128,7 +1151,14 @@ addEventListener('keydown', (e) => {
   // pause screen, which any key leaves. The result is worth a beat to read, and
   // a player still holding the throttle at the finish would otherwise clear it
   // before seeing it.
-  if (SCREEN === WIN_STATE && e.code === 'Enter') go(TITLE_STATE);
+  if (SCREEN === WIN_STATE && e.code === 'Enter') {
+    // On through the series, or back to the top once it is done — and either way
+    // the road is rebuilt, because returning to the title has to put circuit one
+    // back under the carousel rather than leaving the last one there.
+    const more = SELECTED_CIRCUIT < CIRCUITS.length - 1;
+    swap(more ? SELECTED_CIRCUIT + 1 : 0);
+    go(more ? FLAG_STATE : TITLE_STATE);
+  }
 });
 // A click does whatever a key would at the one place a player might try it.
 addEventListener('pointerdown', () => {
@@ -1271,6 +1301,34 @@ let STATE = null;
 // render targets clear with this same colour, and the reflection target uses
 // alpha as its coverage mask. Cleared to 1 the mask reads "unicorn everywhere"
 // and the road mixes toward black across its whole surface.
+// The three the swap between circuits has to re-point at a new road. Out here
+// rather than inside the setup closure for that reason alone.
+let sim, track, rings;
+
+/**
+ * Move the series on to circuit `i` and rebuild everything that was the old one.
+ *
+ * **A new buffer rather than a rewrite, because the size changes.** Circuits
+ * differ in length, so they differ in ring count, so the ribbon, its index list
+ * and its track record are all a different shape — there is nothing to write
+ * over. `lay()` rebuilds the arrays and this hands the new ones to the two
+ * programs that read them.
+ *
+ * The grid is not touched here: `go(FLAG_STATE)` calls `resetGrid`, which writes
+ * the new `GRID` into the state buffer, and every caller of this follows it with
+ * exactly that.
+ */
+function swap(i) {
+  SELECTED_CIRCUIT = i;
+  lay();
+  rings = bmStore(TRACK_DATA);
+  bmStorages(sim, STATE, rings);
+  bmAttr(track, 0, new Float32Array(TP));
+  bmAttr(track, 1, new Float32Array(TE));
+  bmIndex(track, new Uint16Array(TI));
+  bmStorages(track, STATE, rings);
+}
+
 bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Sixteen vec4 slots of player and camera, five each per racer from slot 16,
   // and six each of livery from slot 80. The first sixteen keep their old
@@ -1306,12 +1364,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // buffer and mapped.
   STATE = bmDevice.createBuffer({ size: state.byteLength, usage: 128 | 8 | 4 });
   bmDevice.queue.writeBuffer(STATE, 0, state);
-  const rings = bmStore(TRACK_DATA);
+  rings = bmStore(TRACK_DATA);
 
   // The simulation. One workgroup of one, dispatched once a frame: there is a
   // single unicorn and nothing here is parallel. It is on the GPU so that the
   // answer never has to come back — see physics.shader.ts.
-  const sim = bmCompute(Physics[0], { u: Physics[3], s: Physics[5] });
+  sim = bmCompute(Physics[0], { u: Physics[3], s: Physics[5] });
   bmStorages(sim, STATE, rings);
 
   // ── The field, as instance data ─────────────────────────────────────────
@@ -1348,7 +1406,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Blending, for the boost rings only: they ride in this buffer and fade out
   // into their own quads' corners. The road returns an alpha of 1 and is
   // untouched by it.
-  const track = bmProgram(Track[0], {
+  track = bmProgram(Track[0], {
     blend: 1,
     a: Track[1],
     i: Track[2],
@@ -1360,22 +1418,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   bmAttr(track, 1, new Float32Array(TE));
   bmIndex(track, new Uint16Array(TI));
   bmStorages(track, STATE, rings);
-
-  // The rings, from the same shader over the same vertices — the pipeline
-  // differs in one flag and nothing else does.
-  const hoops = bmProgram(Track[0], {
-    blend: 1,
-    zwrite: 0,
-    a: Track[1],
-    i: Track[2],
-    u: Track[3],
-    t: Track[4],
-    s: Track[5],
-  });
-  bmAttr(hoops, 0, new Float32Array(TP));
-  bmAttr(hoops, 1, new Float32Array(TE));
-  bmIndex(hoops, new Uint16Array(TH));
-  bmStorages(hoops, STATE, rings);
 
   // The sky. One triangle big enough to cover the screen — the corners run to 3
   // rather than 1 so a single one spans the viewport with the excess clipped
@@ -1479,15 +1521,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   /** The row each unicorn's name landed on. */
   const NAME_ROW = LINES.length - UNICORNS.length;
   /** The row of the numeral "1"; the other nine follow it. */
-  const PLACE_ROW = NAME_ROW - 16;
+  const PLACE_ROW = NAME_ROW - 14;
   /** "CIRCUIT 1 / 2" and its siblings, one a circuit, just above the numerals. */
   const CIRCUIT_ROW = PLACE_ROW - CIRCUITS.length;
   /** The countdown's own glyphs: 3, 2, 1, GO!. */
   const COUNT_ROW = 12;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
-  const SUFFIX_ROW = NAME_ROW - 6;
-  /** The row of "LAP 1/2"; one row a lap. */
-  const LAP_ROW = NAME_ROW - 2;
+  const SUFFIX_ROW = NAME_ROW - 4;
   const card = document.createElement('canvas');
   card.width = CARD_W;
   card.height = LINES.length * ROW_H;
@@ -1588,14 +1628,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // The circuit's boost phase, to the two stages that have to agree about where
   // the pads are: the physics decides whether a unicorn is standing on one, the
   // road draws them, and a disagreement is a pad you can see and not use. Sent
-  // once — it is a property of the circuit, and the circuit does not change
-  // inside a race. `tu` already carries four floats to the road and the sky and
-  // was using one of them.
-  // The road stage no longer hashes the rings out of the seed — game.js decides
-  // where they are, so what the two stages need is how to find them.
-  tu[1] = 1 / (PATTERN * 0.4456 * 2);
-  tu[2] = RING_BASE;
-  step[10] = RING_BASE;
   // ── Counting laps ───────────────────────────────────────────────────────
   // One 16-byte read, six times a second, of the one number that decides when
   // the race is over: how far round the lap racer zero is.
@@ -1611,7 +1643,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // mapAsync on an already-mapped buffer is an error, and allocating a fresh
   // staging buffer six times a second is a leak with extra steps.
   /** Laps to race. Crossings needed is one more, for the start. */
-  const LAPS = 2;
   // MAP_READ | COPY_DST. WebGPU allows MAP_READ to pair with COPY_DST and
   // nothing else, so a staging buffer is the *destination* of the copy; the
   // storage buffer is the one that needs COPY_SRC.
@@ -1677,14 +1708,16 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
         if (DONE[i] * LAP + ROUND[i] > mine) ahead++;
       }
       place = ahead;
-      // The player's own count is DONE[0], the same number the order is built
-      // from. It used to be tracked separately with its own copy of the wrap
-      // test; two counters of the same thing is one too many, and the one that
-      // drifts is the one nobody is watching.
+      // **Two crossings, not one: the grid sits behind the line.** The first
+      // crossing is the start, the second is the finish, and a circuit is one
+      // lap now — there is no lap count anywhere any more, and no lap caption in
+      // the corner to keep in step with one.
       //
-      // One more crossing than laps raced: the grid is behind the line, so the
-      // first crossing is the start.
-      if (DONE[0] > LAPS) go(WIN_STATE);
+      // `DONE` stays even with a single lap to race, because it is not a lap
+      // counter, it is what keeps the running order honest across the line: a
+      // racer who has just crossed has a `ROUND` of nearly nothing, and ordering
+      // on that alone would show whoever is winning as last.
+      if (DONE[0] > 1) go(WIN_STATE);
     });
   };
 
@@ -1749,6 +1782,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[2] = driving * (held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft'));
     step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
+    step[10] = RING_BASE;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
     step[7] = TIME;
@@ -1769,6 +1803,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
 
     u[0] = TIME;
     tu[0] = TIME;
+    // **Per frame, though they only change between races.** These were written
+    // once at start-up, when there was one circuit and it could not change; a
+    // series of three replaces the road under them, and a uniform set once is a
+    // uniform still describing the previous track. Three assignments a frame is
+    // cheaper than remembering to reissue them from the one place that swaps.
+    tu[1] = 1 / (PATTERN * 0.4456 * 2);
+    tu[2] = RING_BASE;
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
@@ -1812,8 +1853,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // the CPU at all.
     bmUniforms(track, tu);
     bmDraw(track);
-    bmUniforms(hoops, tu);
-    bmDraw(hoops);
 
     // ── The overlay ─────────────────────────────────────────────────────────
     // Whatever this screen has to say, gathered into the instance buffer and
@@ -1880,14 +1919,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // height follows its half-width.
       say(PLACE_ROW + place, 0.86, EXTRA_LARGE, 1);
       say(SUFFIX_ROW + Math.min(place, 3), 0.89, SUFFIX, 1);
-      // The crossing that starts lap one happens as the grid rolls over the
-      // line, so before it there is no lap yet — hence the floor at 1.
-      //
-      // LARGE and not MEDIUM, and that is forced rather than chosen: a
-      // full-width row's ink starts at the quad's left edge, so the leftmost a
-      // caption reaches is minus its half-width. MEDIUM only gets to -0.64,
-      // which reads as floating rather than as a corner.
-      say(LAP_ROW + Math.min(Math.max(DONE[0], 1), LAPS) - 1, 0.89, LARGE, 1);
     }
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);
@@ -1922,7 +1953,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     } else if (SCREEN === PAUSE_STATE) {
       heading(5, 6);
     } else if (SCREEN === WIN_STATE) {
-      heading(7, 8);
+      heading(7, SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 16 : 8);
     }
 
     if (n) {

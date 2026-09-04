@@ -201,5 +201,18 @@ const circuit = (seed) => {
   return points;
 };
 
-/** The circuits this game ships, one seed each. */
-const CIRCUITS = [circuit(20260830)];
+/**
+ * The circuits this game ships, one seed each, in the order they are raced.
+ *
+ * Ordered by how much road there is and how much of it is in the air: 4.3km of
+ * rolling circuit, then 4.9km with longer sweeps, then 5.3km with the biggest
+ * climbs and the sharpest direction changes on the roster. A player who has
+ * learned the first has something left to learn on the third.
+ *
+ * Chosen by measurement rather than by taste, because nobody can drive a hundred
+ * of them: each candidate was generated and scored on lap length, the sharpest
+ * heading change between points, total climb, and how round the ground path is,
+ * and these three were the spread that came out of it. The generator's two
+ * guarantees mean the ones not chosen were boring rather than broken.
+ */
+const CIRCUITS = [circuit(20260830), circuit(20261225), circuit(20260902)];

@@ -735,7 +735,19 @@ export const Physics = shader({
       // over and arrives at the average anyway. Going all the way immediately
       // makes a light touch feel like hitting a wall.
       speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5);
-      knock = max(knock, hit);
+      // **On `nose`, not on `hit` — the cue follows the speed loss, not the
+      // contact.** The line above already says a side swipe costs nothing: at
+      // nose 0 the mix weight is 0 and the two racers part with the speeds they
+      // arrived at. Ringing the mistake bell on every touch told the player they
+      // had been punished for something that was free, which is worse than
+      // silence — it teaches them to avoid a manoeuvre that has no downside.
+      //
+      // Half is where the trade becomes worth hearing: 60 degrees off the
+      // direction of travel, past which contact is a rear-end and below which it
+      // is a scrape down the flank. A hard step rather than scaling the cue's
+      // volume, because this drives a clock the CPU only samples six times a
+      // second — it either happened or it did not by the time anyone reads it.
+      knock = max(knock, hit * step(0.5, nose));
     }
 
     // What gets *drawn*, and deliberately past even the nose. The gap between
@@ -784,11 +796,23 @@ export const Physics = shader({
     pos = pos.add(upT.scale(vy * dt));
 
     // ── The rails hold ────────────────────────────────────────────────────
-    // **You cannot leave the road sideways any more. You can only scrub speed
-    // against the edge.** Falling off was a real punishment — a respawn at the
-    // start line, half a lap gone — for the one mistake a player makes without
-    // meaning to, and the AI made it too: hairpins taken a shade wide and a
-    // racer simply left the world. What replaced it is a wall you can lean on.
+    // **You cannot leave the road sideways, and touching the edge costs you
+    // nothing.** Falling off was a real punishment — a respawn at the start
+    // line, half a lap gone — for the one mistake a player makes without meaning
+    // to, and the AI made it too: hairpins taken a shade wide and a racer simply
+    // left the world. What replaced it is a wall you can lean on.
+    //
+    // **The wall used to scrub speed and no longer does.** On the opening
+    // circuit that read as a fair cost for a wide line; across a series with
+    // loops and corkscrews in it, the edge is somewhere the road puts you rather
+    // than somewhere you chose to go, and being slowed for it is being taxed on
+    // the track's geometry. The clamp stays because falling off is worse than
+    // either — it just does its job silently now.
+    //
+    // Nothing downstream reads the contact any more, which is the point: it is
+    // gone from the speed, gone from `knock`, and therefore gone from both the
+    // mistake cue and the halving. A rail that costs nothing must not ring a
+    // bell that says it did.
     //
     // A clamp on where the body sits across the road, not a force pushing it
     // back: forces bounce, and bouncing off a rail at speed hands the mistake
@@ -801,13 +825,40 @@ export const Physics = shader({
     const kerb = uWidth * 0.5 - 1.2;
     const held = clamp(off, 0 - kerb, kerb);
     pos = pos.add(sideT.scale(held - off));
-    // The cost of leaning on it. Exponential rather than a fixed subtraction, so
-    // a graze costs a little and a long scrape down the outside of a corner
-    // costs a lot — and it is the same shape as the drag term above, which is
-    // what keeps it feeling like the road rather than like a rule.
-    const scrape = step(0.001, abs(off - held));
-    speed = speed - speed * scrape * dt * 1.6;
-    knock = max(knock, scrape);
+
+    // **Half your speed, once per contact.** A graze used to cost a rounding
+    // error: the rail bled 1.6 a second and a rear-end walked the two speeds
+    // together a fraction at a time, so the honest line and the line that
+    // bounced off everything finished within a length of each other. There was
+    // no reason to drive cleanly.
+    //
+    // On the *edge* of contact and not the fact of it, which is the whole
+    // difference between a penalty and a wall. Contact lasts as long as two
+    // bodies overlap — a firm shunt is ten or fifteen frames — and halving every
+    // frame is 0.5^15, which is not a penalty, it is a full stop. `was.z` is
+    // last frame's answer to the same question, so this fires on the frame
+    // contact begins and stays quiet until it has ended and begun again.
+    //
+    // Rear-ending is now the only thing that reaches this. The rail used to as
+    // well, through the same `knock`, and it was removed rather than reduced —
+    // see the rails above.
+    // **The player's rule, and only the player's.** `player` is the gate. The
+    // rail is not a hazard the AI can be trusted with: they hold a line by
+    // steering at an aim point, and an aim point near the edge on a tightening
+    // corner puts them against it for a second at a time through no decision of
+    // their own. Halving them for it turns a corner into a lottery over who was
+    // on the outside, and a field that arrives at the flag in an order the road
+    // picked is not a race.
+    //
+    // The bleed above and the speed traded on contact stay on everyone, so the
+    // field still behaves like bodies on a road — it is the *penalty* that is
+    // the player's, in the same way the mistake cue already is.
+    //
+    // Rear-ending is gated with it rather than separately. Ten racers in a pack
+    // touch constantly, and halving each of those would have the field crawling
+    // within a lap of the start.
+    const bang = knock * (1 - was.z) * player;
+    speed = speed * (1 - 0.5 * bang);
 
     // Height above the surface. There is no "is there surface here" test any
     // more: the clamp above guarantees there is.
@@ -1086,7 +1137,16 @@ export const Physics = shader({
     storageWrite(
       uState,
       mine + 5,
-      vec4(boost, max(was.y - dt, max(knock, bMiss) * 0.2), 0, 0),
+      // **A crash ends the boost, and it has to.** The pin above sets speed to
+      // TOP_SPEED * 1.5 outright on every frame a boost is live, and it runs
+      // long before contact is resolved — so halving the speed down here and
+      // leaving the clock alone means the very next frame puts it straight back.
+      // The penalty would apply everywhere except while boosting, which is the
+      // one time a player is fast enough for it to matter.
+      //
+      // .z is last frame's contact, for the edge test above. It costs nothing:
+      // the word was being written as a zero either way.
+      vec4(boost * (1 - bang), max(was.y - dt, max(knock, bMiss) * 0.2), knock, 0),
     );
 
     // ── And what only the player leaves behind ─────────────────────────────

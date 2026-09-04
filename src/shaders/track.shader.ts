@@ -15,6 +15,7 @@ import {
   smoothstep,
   sqrt,
   cross,
+  dot,
   step,
   storageRead,
   type Vec3,
@@ -127,24 +128,68 @@ export const Track = shader({
     const up = storageRead(uTrack, ri + 2).xyz;
     // Nine metres between lane centres — a third of the road — and the ring's
     // own radius is 4.5, so it sits with its bottom on the surface and bobs a
-    // metre either side of that. The bob is decoration: what decides a boost is
-    // the same lateral band it always was, in physics.shader.ts. A unicorn
+    // metre either side of that. It does dip through the road at the bottom of
+    // the cycle: hanging it clear of the surface instead was tried, and a ring
+    // that never breaks the road reads as floating well above it.
+    //
+    // The bob is decoration: what decides a boost is the same lateral band it
+    // always was, in physics.shader.ts, which never looks at height. A unicorn
     // cannot jump, so a ring it had to be under would be a ring it could miss
     // for reasons it could do nothing about.
     const hub = storageRead(uTrack, ri)
       .xyz.add(arm.scale((storageRead(uTrack, uBase + slot).x - 1) * 9))
       .add(up.scale(4.5 + sin(uTime * 1.2 + slot) * 1.2));
+    // **A torus, swept here rather than stored.** `aPos.y` runs round the ring
+    // and `aPos.z` round the tube, both 0 to 1, and the two angles they become
+    // are all a torus is. `rad` is the outward direction in the ring's plane —
+    // the plane the quad used to span — and the tube is swept from `rad` toward
+    // the road's tangent, which is the ring's axis and therefore the direction
+    // you drive through it.
+    //
+    // Every basis vector here is already unit length and mutually perpendicular
+    // (`arm` is the cross of the other two), so `nrm` comes out unit without a
+    // normalize: it is a unit combination of two orthogonal unit vectors.
+    //
+    // 4.5 is the radius the ring has always had, a third of the road. 0.6 is the
+    // tube — thick enough to catch a highlight across it, thin enough that the
+    // hole is still the thing you aim at.
+    const th = aPos.y * 6.2832;
+    const ph = aPos.z * 6.2832;
+    const cp = cos(ph);
+    const sp = sin(ph);
+    const tng = storageRead(uTrack, ri + 1).xyz;
+    const rad = arm.scale(cos(th)).add(up.scale(sin(th)));
     const world = mix(
       aPos,
-      hub.add(arm.scale(aPos.y * 6)).add(up.scale(aPos.z * 6)),
+      hub.add(rad.scale(4.5 + 0.6 * cp)).add(tng.scale(0.6 * sp)),
       isRing,
     );
 
     // The ring's corner rides out on the road's own two varyings rather than a
     // third: 9 is outside anything `vU` can otherwise be, so `vU - 9` is the
     // corner and the marker at once.
-    v.vU = mix(aEdge.x, 9 + aPos.y, isRing);
-    v.vV = mix(aEdge.y, aPos.z, isRing);
+    // Lit here, once a vertex, and sent down as a single number. A normal wants
+    // a varying of its own, and the fragment stage does not need one for this:
+    // the surface is a smooth swept tube with no texture on it, so between two
+    // vertices there is nothing for a per-pixel normal to say that interpolating
+    // the shading does not already say. The marker keeps its own varying; the
+    // light rides in the other, in place of the corner it no longer needs.
+    //
+    // Fixed in world space, near enough overhead, so the highlight stays put on
+    // the ring as the road rolls and banks under it — the one cue that says this
+    // is an object sitting in the scene rather than a sprite turning with the
+    // camera.
+    // The marker carries the ring's colour with it. 9 is still the flag — no
+    // road vertex reaches 2 — and the fraction on top is this ring's own hash,
+    // so `vU - 9` in the fragment is the seed. A varying that was going to be a
+    // constant is a varying wasted; this is the same trick the quad corner used
+    // to ride on.
+    v.vU = mix(aEdge.x, 9 + fract(sin(slot * 12.99) * 43758.5), isRing);
+    v.vV = mix(
+      aEdge.y,
+      0.22 + 0.78 * max(dot(rad.scale(cp).add(tng.scale(sp)), vec3(0.28, 0.86, 0.43)), 0),
+      isRing,
+    );
     // The road point itself, unprojected. The shadow below is cast in world
     // space, so it needs where this fragment actually is — the position this
     // stage returns has already been through the camera and lost that.
@@ -338,41 +383,63 @@ export const Track = shader({
     const core = smoothstep(0.9, 1, edge);
     const lip = smoothstep(0.78, 0.97, edge);
     const halo = pow(smoothstep(0.3, 1, edge), 2);
+
     // ── The ring ───────────────────────────────────────────────────────────
-    // **Drawn out of `length(uv)`, not out of geometry.** A torus of triangles
-    // has a silhouette; this has a falloff, on a surface where every other light
-    // is analytic for exactly that reason. It is also four vertices a ring
-    // instead of forty.
+    // **Nothing to compute: the shape arrived as triangles.** This was a disc
+    // drawn out of `length(uv)` on a flat quad, and the whole of it — the radius
+    // test, the tube normal reconstructed from a cross-section coordinate, the
+    // hand-written light — existed to imply a solid that was not there. The
+    // vertex stage sweeps a real torus now, so all that is left here is the gold
+    // it is made of and the light it already carries in `vV`.
     //
-    // 0.75 is the ring's radius in a quad whose half-width is 6 metres, which
-    // puts the ring at 4.5 across — a third of the road, as asked — and leaves a
-    // metre and a half of quad outside it for the glow to spread into.
+    // **Gold is a ratio, and only survives if it is under the clip.** Driving
+    // red and green both past 1 gives (1, 1, b), which is yellow by definition
+    // and no adjustment underneath can fix it, because the clip has thrown the
+    // ratio away. Green sits at 0.78 of red at full light — bright enough to
+    // read as gold rather than bronze, short enough of red to stay gold rather
+    // than turn into a highlighter.
     //
-    // The alpha is the glow. That is what keeps the corners of the quad from
-    // being opaque black over the road behind: the program blends, the road
-    // returns 1 and is untouched by it, and the ring fades out into nothing
-    // before it reaches its own edges.
+    // The specular is the only white, and `pow(vV, 30)` keeps it to a hotspot
+    // the size a real one would be on a tube this thin.
     //
-    // Gold, and the animation moved from hue to brightness: a bright band travels
-    // round the ring instead of the colour changing. Cheaper too — a rainbow cost
-    // a `spectrum` call, which is three cosines, and this is one sine.
-    //
-    // 2.2 and 1.45 against 0.3 of blue is past 1 in two channels, so the core
-    // clips to a warm white and the gold lives in the falloff either side of it.
-    // That is how the rails and the tiles are lit; a gold painted at 1 would be
-    // the dullest thing on a road that is already glowing.
-    const rx = vU - 9;
-    const glow = pow(1 - smoothstep(0, 0.32, abs(sqrt(rx * rx + vV * vV) - 0.75)), 3);
+    // Opaque, so the alpha is 1 for the road and the rings alike, and the
+    // separate depth-write-off pass that the transparent version needed is gone.
+    // **`min` here is load-bearing.** `vV` carries the light on a ring and the
+    // distance travelled on the road — hundreds, thousands by the last lap — and
+    // this branch is evaluated for *every* fragment, the road's included,
+    // because `mix` computes both sides before it picks one. Left unclamped that
+    // put a number in the billions through the ring branch; when that reached
+    // `pow` it became Inf, and `mix(road, Inf, 0)` is not `road`, it is
+    // `road + 0 * (Inf - road)` — and `0 * Inf` is NaN. The whole road went dark
+    // and it was not dark, it was undefined. On a ring this is already 0.22 to 1
+    // and the clamp never bites.
+    const gold = min(vV, 1);
+    // The rings take their colours from the stars, off the same palette and the
+    // same 0.45 toward white — the pastels overhead, on the road. `vU - 9` is
+    // the ring's hash, laid into the marker by the vertex stage.
+    const tint = mix(vec3(1, 1, 1), spectrum((vU - 9) * 40), 0.45);
     return vec4(
       mix(
         lit
           .add(glass.scale(halo * 0.8))
           .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
           .add(vec3(1, 0.97, 1).scale(core * 3.4)),
-        vec3(2.2, 1.45, 0.3).scale(glow * (1.6 + 0.5 * sin(rx * 3 + vV * 2 + uTime * 3))),
+        // **Driven past 1, which is the only bloom on this road.** There is no
+        // post-process anywhere here: everything that glows does it by being
+        // brighter than the display can hold, so the core clips to white and the
+        // colour survives in the falloff either side. 2.2 on a squared lambert
+        // takes the lit crown of the tube well past the clip while the shaded
+        // underside stays at 0.55 — lifted, so a ring reads as something
+        // emitting rather than something lit, and is still legible from the far
+        // side of a corner where nothing is shining on it.
+        //
+        // Squared rather than linear so the falloff from the crown is quick;
+        // linear spreads the bright band over most of the tube and the whole
+        // thing washes out to white.
+        tint.scale(0.85 + 3.4 * gold * gold),
         step(2, vU),
       ),
-      mix(1, min(glow * 1.6, 1), step(2, vU)),
+      1,
     );
   },
 });

@@ -116,7 +116,10 @@
 // The songs the game ships, by the name the game knows each one by — which is
 // what goes into the effect, since an effect names its song and the same track
 // number means a different instrument depending on which it borrows from.
-const SONGS = { RACE_SONG, MENU_SONG };
+// Custom instruments are wrapped as one-track songs so they appear in the same
+// dropdown and can be auditioned note by note like any other. Add a line here
+// for each one soundEffects.js defines.
+const SONGS = { RACE_SONG, MENU_SONG, WHOOSH: { songData: [WHOOSH] } };
 
 // What src/soundEffects.js already defines, read out of its own source so this
 // page cannot drift from the file.
