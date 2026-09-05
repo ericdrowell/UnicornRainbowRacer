@@ -841,6 +841,7 @@ let ROLL = 0;
  * are now the player's alone.
  */
 let wasBoost = 0;
+let warpUntil = 0;
 /**
  * Earliest wall-clock time the next mistake may be heard.
  *
@@ -1328,10 +1329,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // `zwrite: 0` and drawn before everything else: it fills the frame with sky,
   // leaves the depth buffer as it found it, and the road and the unicorn then
   // paint over it wherever they are.
+  const su = new Float32Array(2);
   const sky = bmProgram(Sky[0], { a: Sky[1], u: Sky[3], s: Sky[5], zwrite: 0 });
   bmAttr(sky, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
   bmIndex(sky, new Uint16Array([0, 1, 2]));
   bmStorages(sky, STATE);
+
+  // The warp, from the same shader over the same triangle — the pipeline differs
+  // in a blend and nothing else does. Drawn last so it lands over the road, and
+  // gated on a clock so this second full-screen pass only runs in the second
+  // after a ring rather than every frame of every race.
+  const warp = bmProgram(Sky[0], { a: Sky[1], u: Sky[3], s: Sky[5], zwrite: 0, blend: 1 });
+  bmAttr(warp, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
+  bmIndex(warp, new Uint16Array([0, 1, 2]));
+  bmStorages(warp, STATE);
 
   // The captions, baked. Every line the game shows lives in src/text.js; this
   // paints them into the rows of one texture.
@@ -1595,6 +1606,17 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // contact is routinely missed and the raised clock left behind never is.
       const lit = seen[20];
       if (lit > wasBoost) playBoost();
+      // **The gate mirrors the shader's own condition rather than counting its
+      // own second.** It used to be set from the rise, one second long, which
+      // put two clocks on the same effect — and the pass stopped being issued
+      // while the shader was still fading, so the streaks vanished mid-fade.
+      //
+      // 1.8 is where the shader's envelope reaches zero, and the third of a
+      // second is cover for this poll: it runs six times a second, so a gate
+      // renewed on every read that finds the clock still up cannot lapse while
+      // there is anything left to draw. Past that the pass draws nothing anyway;
+      // this only decides whether it is issued at all.
+      if (lit > 1.8) warpUntil = TIME + 0.34;
       wasBoost = lit;
       let ahead = 0;
       for (let i = 0; i < FIELD; i++) {
@@ -1741,7 +1763,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     u[3] = SCREEN === SELECT_STATE ? 1 : 0;
 
     bmPassTo();
-    bmUniforms(sky, tu);
+    su[0] = TIME;
+    su[1] = 0;
+    bmUniforms(sky, su);
     bmDraw(sky);
     if (shown) {
       bmUniforms(prog, u);
@@ -1754,6 +1778,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // the CPU at all.
     bmUniforms(track, tu);
     bmDraw(track);
+
+    if (TIME < warpUntil) {
+      su[1] = 1;
+      bmUniforms(warp, su);
+      bmDraw(warp);
+    }
 
     // ── The overlay ─────────────────────────────────────────────────────────
     // Whatever this screen has to say, gathered into the instance buffer and

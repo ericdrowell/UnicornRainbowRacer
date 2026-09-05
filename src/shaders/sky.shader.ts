@@ -112,18 +112,28 @@ export const Sky = shader({
     /** One oversized triangle in clip space: (-1,-1), (3,-1), (-1,3). */
     aCorner: 'vec2',
   },
-  uniforms: { uTime: 'float' },
+  /**
+   * uOver is which of this shader's two jobs is being asked for: 0 draws the
+   * sky, 1 draws the warp over the top of everything. Appended after uTime and
+   * never in front of it — the block is filled by index from JS, so a uniform
+   * inserted above another silently renumbers it.
+   */
+  uniforms: { uTime: 'float', uOver: 'float' },
   storage: { uState: 'vec4' },
   varyings: { vNdc: 'vec2' },
 
-  vertex({ aCorner }, {}, v) {
+  vertex({ aCorner }, { uOver }, v) {
     v.vNdc = aCorner;
-    // Straight through, at a depth chosen only to pass a `less` test against a
-    // cleared buffer. Nothing depends on the value: this program writes no depth.
-    return vec4(aCorner.x, aCorner.y, 0.5, 1);
+    // **Two depths, because this triangle is drawn twice.** As the sky it sits
+    // at half depth, in front of nothing and behind nothing, and everything
+    // afterwards tests against a buffer it never touched. As the warp it is
+    // drawn last and has to beat the road, and `depthCompare` is fixed at
+    // `less` with no way to switch the test off — so it goes to the near plane
+    // instead, where it passes against anything. Neither pass writes depth.
+    return vec4(aCorner.x, aCorner.y, mix(0.5, 0 - 1, uOver), 1);
   },
 
-  fragment({ uState, uTime }, { vNdc }) {
+  fragment({ uState, uTime, uOver }, { vNdc }) {
     const c0 = storageRead(uState, 4);
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
@@ -226,7 +236,96 @@ export const Sky = shader({
     // field out of the lit side — about forty lines and 127 zipped bytes for a
     // four-degree shape in one corner of a sky that is mostly rainbow and cloud.
     // git log has it if it is ever wanted back.
-    const sky = haze.add(field);
-    return vec4(sky.scale(1 - veilAmt).add(lit.scale(veilAmt)), 1);
+    // ── The warp ────────────────────────────────────────────────────────
+    // **A second of hyperspace when a ring is taken.** Streaks racing outward
+    // from the point the camera is aimed at, which is the point the road runs
+    // to — so they converge exactly where the unicorn is going, and the effect
+    // reads as travelling rather than as a filter laid over the frame.
+    //
+    // **No new pass, no new program, no new uniform.** The sky is already a
+    // triangle over the whole screen with the state buffer bound, and the boost
+    // clock is already in it — racer zero's slot 5, counting 3 down to 0. So
+    // this is a few lines on the end of a shader that was going to run anyway,
+    // where an overlay would have been a second pipeline, a second draw and a
+    // blend state.
+    //
+    // The cost of that choice is that the road occludes the streaks, and it is
+    // the right behaviour rather than a compromise: the tunnel is out in space,
+    // and the rainbow is solid and in front of you.
+    //
+    // The clock starts at 3 and falls at one a second, so this reads seconds
+    // since the ring backwards: full for the first half second, then seven
+    // tenths of a second easing to nothing. The fade used to be a quarter of a
+    // second ending exactly where the CPU stopped issuing the pass, which is two
+    // ways of ending the same effect racing each other — and the visible result
+    // was a cut rather than a fade whenever the readback landed first.
+    //
+    // Taking a second ring re-arms the clock to 3 and this fires again, which is
+    // what a chain of rings should look like.
+    const hyper = smoothstep(1.8, 2.5, storageRead(uState, 21).x);
+    // **The direction is quantised into spokes before it is hashed, and it has
+    // to be.** Every pixel along one ray normalises to the same vector, so a
+    // hash of that vector is constant down a whole streak — which is what makes
+    // these radial with no angle ever computed, since `atan2` is not exported.
+    // But hashing the direction *continuously* gives a different answer a pixel
+    // over, and the streaks come out narrower than a pixel and alias into
+    // nothing. That was the first version, and it drew an empty sky.
+    //
+    // Seventy cells to the unit lands about three hundred spokes round the
+    // circle, a degree or so each. Fifty was the first try and it drew wedges
+    // rather than stars — a warp field is made of *many thin* streaks, and the
+    // count is what separates the two. They are not perfectly even, because the
+    // cells are square and the circle is not, and that is closer to a real
+    // starfield than an even fan would be.
+    const nd = normalize(vNdc);
+    const seed = fract(sin((floor(nd.x * 70) * 97 + floor(nd.y * 70)) * 12.99) * 43758.5);
+    const rr = sqrt(dot(vNdc, vNdc));
+    // Each streak runs its own lap of the screen, offset by its own seed so they
+    // do not pulse together, and squared so the leading edge is hard and the
+    // tail draws out behind it.
+    // **Streaks are born a third of the way out, not at the middle.** Running
+    // them from zero filled the centre of the frame and the effect read as a
+    // starburst; a tunnel has a mouth, and the mouth is the hole they come from.
+    // 0.3 out to 1.8 is that hole and the run to the corners.
+    const gap = rr - (0.3 + fract(seed * 13.7 + uTime * 2.4) * 1.5);
+    // Short, and cubed on top of that. Half the screen long was the first
+    // version and it read as searchlights; a warp streak is a star smeared by a
+    // frame or two of motion, not a beam.
+    const body = 1 - smoothstep(0, 0.13, sqrt(gap * gap));
+    // A quarter of the spokes carry one. Nothing at the vanishing point: a
+    // streak that reaches the middle is a blob there, because every spoke
+    // arrives at the same pixel.
+    const bolt =
+      smoothstep(0.74, 0.8, seed) * body * body * body * smoothstep(0.28, 0.58, rr) * hyper;
+
+    // **The warp is a second pass over the top, not part of the sky.** Drawn
+    // into the sky it sat behind the road, which put the tunnel under the thing
+    // you are driving on — and a tunnel you are inside does not have a floor
+    // over it. So the same triangle is drawn again at the end of the frame with
+    // the streaks as its colour and their brightness as its alpha, and the road
+    // is inside the effect rather than in front of it.
+    //
+    // One shader, two programs, told apart by one uniform: the alternative was
+    // a second shader that shared the ray reconstruction, the palette and the
+    // hash with this one and would have had to be kept in step with all three.
+    // **The hue has to survive the brightness, and it only does if the colour is
+    // not flat.** Alpha carries the streak's falloff now, so a colour scaled by
+    // a constant is that constant everywhere — at 2.6 every channel clipped and
+    // every streak came out white. Tying the scale to the falloff instead puts a
+    // white-hot core in the middle of each one and leaves the head and tail
+    // under the clip, which is where the colour lives.
+    //
+    // And the palette is walked along the streak as well as between them:
+    // `spectrum` takes the seed *plus the radius*, so each star shifts hue as it
+    // runs outward rather than being one flat colour flying past.
+    const sky = haze.add(field).scale(1 - veilAmt).add(lit.scale(veilAmt));
+    return vec4(
+      mix(
+        sky,
+        mix(vec3(1, 1, 1), spectrum(seed * 40 + rr * 2.5), 0.7).scale(0.85 + 1.9 * bolt),
+        uOver,
+      ),
+      mix(1, min(bolt * 1.7, 1), uOver),
+    );
   },
 });

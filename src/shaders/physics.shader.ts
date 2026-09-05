@@ -720,14 +720,35 @@ export const Physics = shader({
     let knock = 0;
     for (let j = 0; j < FIELD; j += 1) {
       const away = pos.sub(storageRead(uState, RACER + j * SLOTS).xyz);
-      const gap = length(away);
-      const hit = step(0.5, abs(j - me)) * step(0.001, gap) * (1 - step(2.4, gap));
+      const raw = length(away);
+      // **Measured in barrel widths, not metres.** A sphere of 2.4 was the old
+      // test, and a unicorn is not a sphere: its barrel is 2.08 long and 1.22
+      // wide once the model scale is in, so a radius that let two of them pass
+      // nose to tail held them 2.4 apart side by side — nearly twice the gap
+      // there should be, and the space between them was visible.
+      //
+      // Dividing the separation by the barrel's own half-extents along each axis
+      // turns the box into a unit sphere, so one comparison against 1 does the
+      // whole job. It is an ellipsoid rather than a box, which differs from one
+      // only at the corners — and a corner of a barrel is a haunch.
+      //
+      // Split on this racer's own heading rather than each pair's. On a road
+      // everyone points much the same way, and a per-pair frame would mean
+      // reading the other's course inside the loop for a difference nobody could
+      // see in a photograph.
+      const nos = dot(away, courseDir);
+      const sway = away.sub(courseDir.scale(nos));
+      const gap = sqrt((nos * nos) / 4.33 + dot(sway, sway) / 1.49);
+      const hit = step(0.5, abs(j - me)) * step(0.001, raw) * (1 - step(1, gap));
       // Divided rather than normalised: at gap zero — self, or two bodies exactly
       // coincident — `hit` is already zero, so this contributes nothing, and the
       // max() keeps the divide itself finite instead of producing the NaN that
       // normalize() would and then spreading it through the whole position.
-      const line = away.scale(1 / max(gap, 0.001));
-      pos = pos.add(line.scale(hit * (2.4 - gap) * 0.5));
+      const line = away.scale(1 / max(raw, 0.001));
+      // The overlap is in those same barrel units, so it is put back into metres
+      // on the way out — 0.9 is about the mean half-extent, which is what makes
+      // a shove separate them at the rate it used to.
+      pos = pos.add(line.scale(hit * (1 - gap) * 0.9));
       const nose = abs(dot(line, courseDir));
       const theirs = storageRead(uState, RACER + j * SLOTS + 1).w;
       // Not the whole way to the average in one frame: contact lasts while the
