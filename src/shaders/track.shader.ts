@@ -225,8 +225,8 @@ export const Track = shader({
     // **The gate sits high, not centred.** Hung on the centreline with its middle
     // on the road surface it is half buried, and the half you see is a hoop with
     // its widest point at knee height — which reads as a ring lying *on* the road
-    // rather than an arch over it. Lifting the centre by 0.32 of the radius puts
-    // two thirds of the ring above the surface (5.44 of 17): the road still runs through it,
+    // rather than an arch over it. Lifting the centre 5.44 metres puts roughly
+    // two thirds of the ring above the surface: the road still runs through it,
     // the sides still come down past the edges, and the shape overhead is the
     // one the eye picks up from a long way back.
     const hub = storageRead(uTrack, ri)
@@ -348,9 +348,10 @@ export const Track = shader({
     // measures 1.7 across at its widest against the ring's 9, so the two never
     // read as the same object even when they sit in the same lane.
     const sf = 1.2 * sFade;
-    // 17 is about 1.26 track widths across against the ring's 4.5 — wide enough that
-    // the road passes through the middle of it with room at the edges, and tall
-    // enough to read as an arch from the far side of the circuit.
+    // The rotating decagon must clear both road edges even when a flat faces
+    // them. With a 13.5 m half-width, 5.44 m hub height and 2.4 m tube,
+    // R >= 2.4 + length(vec2(13.5, 5.44)) / cos(pi / 10) = 17.704.
+    // 17.9 leaves about 20 cm of clearance at each road edge at every angle.
     // The gate's tube is four times a boost ring's. It is drawn at three and a
     // half times the radius and read from much further off, and 0.6 at that size
     // is a wire — thin enough that the arch breaks up against the star field
@@ -359,7 +360,7 @@ export const Track = shader({
     // The film is a flat fan, so its radius is simply the fraction of the way
     // out — from nought at the middle to the tube's *inner* edge, where it meets
     // the ring without poking through it.
-    const ringR = mix(4.5, 17, isFin);
+    const ringR = mix(4.5, 17.9, isFin);
     const radial = mix(
       mix(ringR + tube * cp, (ringR - tube) * aPos.z, isFilm),
       sf * (1 + 0.4 * sin(th * 5)) * (1 - abs(cp)),
@@ -468,7 +469,9 @@ export const Track = shader({
     // It carried facet coordinates for a star for a while, because a faceted
     // star needed to know where on a facet a pixel sat and there was no third
     // varying free. A sphere has no facets and wants nothing here.
-    v.vWorld = world;
+    // Film coordinates stay attached to the gate and have the same scale on
+    // boost rings and the finish gate. Other surfaces retain world coordinates.
+    v.vWorld = mix(world, vec3(cos(th) * aPos.z, sin(th) * aPos.z, 0), isFilm);
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
@@ -712,28 +715,21 @@ export const Track = shader({
     const gold = min(vV, 1);
     const film = step(31, vU);
     const star = step(20, vU) * (1 - film);
-    // **A bubble's colour comes from how thick its skin is, and that thickness
-    // wanders.** It is not a set of rings around the middle — that reads as a
-    // target, which is exactly what keying the hue on the radius alone gave.
-    //
-    // Two sines whose arguments are themselves sines is the cheapest thing that
-    // looks like wandering rather than like a pattern: the inner one bends the
-    // outer one's phase, so the bands fold back on themselves, pinch, and never
-    // close into a circle. It is a poor noise function and a good *skin* — the
-    // eye is looking for something organic here, not for randomness.
-    //
-    // Taken off `vWorld` rather than the radius, so the pattern belongs to the
-    // film in space: it swims as the ring turns under it, and two rings never
-    // wear the same one.
-    const swirl =
-      sin(vWorld.x * 0.27 + sin(vWorld.z * 0.19 + uTime * 0.5) * 2.4) +
-      sin(vWorld.z * 0.31 + sin(vWorld.y * 0.23 - uTime * 0.4) * 2.1);
-    const thick = 5.5 + swirl * 2.4 + gold * gold * 4;
-    const iris = vec3(
+    // Broad, slowly drifting interference colours, softly diluted with white.
+    // The center stays almost clear; grazing reflections gather at the rim.
+    const swirl = sin(vWorld.x * 2 + sin(vWorld.y * 3 - uTime * 0.12)) +
+      sin(vWorld.y * 2.5 + uTime * 0.09);
+    const thick = 5.5 + swirl * 1.2 + gold * gold * 2;
+    const iris = mix(vec3(1, 1, 1), vec3(
       0.5 + 0.5 * cos(thick),
       0.5 + 0.5 * cos(thick * 1.18),
       0.5 + 0.5 * cos(thick * 1.44),
-    );
+    ), 0.42);
+    const filmRim = pow(gold, 4);
+    // A soft upper-left reflection breaks up the silhouette. Clamp its input
+    // because this expression also runs on world coordinates for the road.
+    const reflection = pow(min(1, max(0, -vWorld.x * 0.6 + vWorld.y * 0.8)), 8);
+    const sheen = filmRim * (0.12 + reflection * 0.55);
     // Both kinds take their colour from the sky, off the same cosine palette and
     // the same 0.45 toward white — the pastels overhead, on the road.
     // `fract(vU)` is the slot's hash, laid into the marker by the vertex stage.
@@ -768,45 +764,23 @@ export const Track = shader({
           // Squared rather than linear so the falloff from the crown is quick;
           // linear spreads the bright band over most of the tube and the whole
           // thing washes out to white.
-          // **The star carries a floor of its own light**, which is what makes it
-        // glow rather than simply be lit. A ring runs 0.85 to 4.25 across its
-        // tube and goes dark where the light does not reach; adding a constant
-        // for a star lifts even its unlit facets past the clip, so it reads as
-        // something *emitting* from every angle — which is what a thing you are
-        // meant to spot from down the road has to do.
-        tint.scale(0.85 + 3.4 * gold * gold + 2.6 * star),
+          // **No emissive floor on a star, and that is what keeps it a star.** A
+        // constant added here lifts every facet past the clip at once: red and
+        // green peg at 1 whatever the light is doing, the ten faces stop
+        // differing from each other, and the thing renders as a glowing ball
+        // with no shape in it. Left alone, blue runs from 0.16 on the shaded
+        // facets to 0.68 on the lit ones, and that spread is the whole silhouette
+        // — the gold reads because the facets differ, not because they are
+        // bright.
+        tint.scale(0.85 + 3.4 * gold * gold),
           step(4, vU),
         ),
-        // **The film, and it is nearly all rim.** `gold` is the fraction of the
-        // way out here rather than a light, and raising it to the fourth keeps the
-        // middle almost clear while the last tenth of the radius lifts into a
-        // bright edge — which is what a soap film does, and what stops this
-        // reading as a coloured pane set into the ring.
-        // **This is thin-film interference, not a rainbow**, and the difference
-        // is one line. Light bouncing off the front of a film and off the back
-        // travels an extra `2 * n * t * cos(theta)`, so a wavelength survives
-        // where that is a whole number of its own cycles and cancels where it is
-        // a half — which is why a bubble bands.
-        //
-        // The whole of it is that *each channel has its own frequency*, set by
-        // its own wavelength: red 650nm, green 550, blue 450, so 1, 1.18 and
-        // 1.44 against red. `spectrum` — one frequency, three phase offsets — is
-        // a colour wheel, and a colour wheel is what made this look like a
-        // target. Three frequencies beat against each other instead, and the
-        // sweep runs cyan, gold, magenta and back: the sequence an actual bubble
-        // walks through as its skin thins.
-        //
-        // `thick` is the film's thickness, which is what a bubble's colour is
-        // really a picture of. It wanders on the swirl and thickens toward the
-        // rim, the way a real one drains.
-        iris.scale(0.8 + 2.2 * gold * gold * gold * gold),
+        iris.add(vec3(1, 1, 1).scale(sheen)),
         film,
       ),
-      // Transparent, and the road pass already blends. It draws after the
-      // unicorns and before the warp, so it lays over a body that has gone
-      // through the gate and nothing that matters is drawn after it to be
-      // hidden by the depth it writes.
-      1 - 0.42 * film,
+      // Films blend after opaque geometry, testing depth without writing it.
+      // The opacity is identical from either side of the gate.
+      mix(1, 0.36 + filmRim * 0.22 + sheen * 0.28, film),
     );
   },
 });

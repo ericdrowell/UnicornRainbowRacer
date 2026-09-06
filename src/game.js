@@ -223,7 +223,7 @@ let SELECTED_CIRCUIT = 0;
 // block being reindented into the function: the values are built in one long
 // dependency order and breaking that order to group the exports would be the
 // only real way to get this wrong.
-let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
 TRACK = CIRCUITS[SELECTED_CIRCUIT];
 
@@ -685,10 +685,12 @@ for (let i = 0; i < PICK_SLOTS; i++) {
 // own radius is what the shader reads instead.
 const filmAt = (slot, mark) => {
   const fb = TP.length / 3;
+  // Match the host polygon: pickups start half a segment over; the gate does not.
+  const offset = mark === 9 ? 0.5 : 0;
   for (let u = 0; u <= 10; u++) {
-    TP.push(slot, (u + 0.5) / 10, 0);
+    TP.push(slot, (u + offset) / 10, 0);
     TE.push(mark, 1);
-    TP.push(slot, (u + 0.5) / 10, 1);
+    TP.push(slot, (u + offset) / 10, 1);
     TE.push(mark, 1);
   }
   for (let u = 0; u < 10; u++) TI.push(fb + u * 2, fb + u * 2 + 1, fb + u * 2 + 3);
@@ -734,25 +736,9 @@ const filmAt = (slot, mark) => {
   }
 }
 
-// **Every film, last, and that ordering is the whole of a rendering bug.**
-//
-// A film is transparent but it still *writes depth*, because it shares the
-// road's program and a depth-write flag is a pipeline state, not a per-vertex
-// one. Inside one draw call the order that matters is the index buffer's — so a
-// film emitted next to its own ring wrote depth in front of every ring and star
-// emitted after it, and those failed the depth test and vanished. Looking down
-// the road through a near gate, the rings beyond it were simply not there.
-//
-// Emitting the films after all of the solid geometry fixes it: nothing opaque is
-// ever drawn after a film, so nothing opaque can be culled by one. The road, the
-// rings, the stars and the gate all land in the depth buffer first and the films
-// lay over the top of them.
-//
-// **What this does not fix is a film in front of another film**, which is the
-// same ordering problem one level down and cannot be solved by a static order at
-// all — which of two gates is nearer depends on where the camera is. It needs
-// either a depth-write-off pass of its own or a back-to-front sort every frame,
-// and neither is worth it for a handful of nearly-clear discs.
+// Transparent films use a separate pass with depth writes disabled, so a
+// nearer film cannot prevent a farther one from rendering as the camera turns.
+FILM_START = TI.length;
 for (let i = 0; i < PICK_SLOTS; i++) {
   if (PICK_LANE[i] > 2 || PICK_TYPE[i]) continue;
   filmAt(i, 9);
@@ -1562,7 +1548,16 @@ let STATE = null;
 // and the road mixes toward black across its whole surface.
 // The four the swap between circuits has to re-point at a new road. Out here
 // rather than inside the setup closure for that reason alone.
-let sim, track, rings;
+let sim, track, films, rings;
+
+function uploadTrack() {
+  for (const program of [track, films]) {
+    bmAttr(program, 0, new Float32Array(TP));
+    bmAttr(program, 1, new Float32Array(TE));
+    bmIndex(program, new Uint16Array(program === track ? TI.slice(0, FILM_START) : TI.slice(FILM_START)));
+    bmStorages(program, STATE, rings);
+  }
+}
 
 /**
  * Move the series on to circuit `i` and rebuild everything that was the old one.
@@ -1582,10 +1577,7 @@ function swap(i) {
   lay();
   rings = bmStore(TRACK_DATA);
   bmStorages(sim, STATE, rings);
-  bmAttr(track, 0, new Float32Array(TP));
-  bmAttr(track, 1, new Float32Array(TE));
-  bmIndex(track, new Uint16Array(TI));
-  bmStorages(track, STATE, rings);
+  uploadTrack();
 }
 
 bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
@@ -1662,21 +1654,17 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Drawn without culling: the ribbon is one surface with nothing under it, and
   // half a lap of it is above the camera on the climb, so the underside is on
   // screen as often as the top.
-  // Blending, for the boost rings only: they ride in this buffer and fade out
-  // into their own quads' corners. The road returns an alpha of 1 and is
-  // untouched by it.
-  track = bmProgram(Track[0], {
-    blend: 1,
+  // Opaque geometry draws first; the two-sided films blend over it separately.
+  const trackOptions = {
     a: Track[1],
     i: Track[2],
     u: Track[3],
     t: Track[4],
     s: Track[5],
-  });
-  bmAttr(track, 0, new Float32Array(TP));
-  bmAttr(track, 1, new Float32Array(TE));
-  bmIndex(track, new Uint16Array(TI));
-  bmStorages(track, STATE, rings);
+  };
+  track = bmProgram(Track[0], trackOptions);
+  films = bmProgram(Track[0], { ...trackOptions, blend: 1, zwrite: 0 });
+  uploadTrack();
 
   // The sky. One triangle big enough to cover the screen — the corners run to 3
   // rather than 1 so a single one spans the viewport with the excess clipped
@@ -2219,6 +2207,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // the CPU at all.
     bmUniforms(track, tu);
     bmDraw(track);
+    bmUniforms(films, tu);
+    bmDraw(films);
 
     if (TIME < warpUntil) {
       su[1] = 1;
