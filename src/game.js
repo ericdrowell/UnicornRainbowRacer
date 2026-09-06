@@ -1287,7 +1287,16 @@ let PLAYING_NAME = null;
 
 function syncMusic() {
   if (!MUSIC_ENABLED) return;
-  const want = SCORE[SCREEN];
+  // **Star power silences the race and leaves the pulse.** Seven seconds where
+  // the road is going past at twice the speed and the only thing you can hear is
+  // a heartbeat: the noise stopping is a louder event than any noise starting,
+  // and it says *the rules are different right now* without adding a sound to a
+  // screen that already has plenty going on.
+  //
+  // Gated on RACE_STATE rather than on the clock alone. Pausing mid-run leaves
+  // the clock exactly where it was — the physics is what counts it down and the
+  // physics is stopped — so without this a paused game would sit there beating.
+  const want = SCREEN === RACE_STATE && starLeft ? 'star' : SCORE[SCREEN];
   // Already playing the right thing. **This test is the whole reason pausing
   // does not restart the menu music**: PAUSE_STATE and SELECT_STATE and WIN_STATE all ask for the
   // same song, so unpausing mid-bar drops straight back into the race rather
@@ -1360,7 +1369,7 @@ function syncMusic() {
 function renderLoop(song, into) {
   const slots = Math.min(
     song.endPattern + 1,
-    Math.max(...song.songData.map((ch) => ch.p.length)),
+    Math.max(...song.songData.map((ch) => ch[29].length)),
   );
   song.endPattern = slots - 1;
   const loop = (slots * 32 * 60) / (Math.round(661500 / song.rowLen) * 4);
@@ -1383,7 +1392,13 @@ if (MUSIC_ENABLED) {
   // screen is silent, and the very next state wants it. Rendered in series
   // rather than together — each is a full offline mix, and the frame the page
   // loads is already busy compiling shaders and building a circuit.
-  renderLoop(MENU_SONG, 'menu').then(() => renderLoop(RACE_SONG, 'race'));
+  renderLoop(MENU_SONG, 'menu')
+    .then(() => renderLoop(RACE_SONG, 'race'))
+    // Last of the three, because it is the one nothing can be waiting on: a
+    // player has to reach a race and collect ten stars before it can be asked
+    // for, and both other mixes are long done by then. One channel and a quarter
+    // of the menu's length, so it costs almost nothing to sit at the back.
+    .then(() => renderLoop(STAR_SONG, 'star'));
 
 
   // Autoplay is not something a page gets to decide. Every current browser
@@ -1891,7 +1906,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // half second, and the triad that has already played three notes on the
       // way to arming is what tells the player they got there.
       if (nowStar > starLeft) playBoost();
+      // Both ends of the run, and only those. `syncMusic` returns early when the
+      // answer has not changed, but this poll lands six times a second and there
+      // is no reason to ask it that often.
+      const swap = !nowStar !== !starLeft;
       starLeft = nowStar;
+      if (swap) syncMusic();
       // **The warp is issued for a boost or for a run, and a run is the long
       // one.** Read straight out of `seen` rather than off `starLeft`, which is
       // last poll's answer — a sixth of a second of no tunnel at the top of a

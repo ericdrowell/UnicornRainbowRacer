@@ -91,11 +91,44 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 // sound.
 //
 // The one thing it cannot do is sound un-musical. Every effect is a note of a
-// dizzy-beats instrument, so a scrape or a thud is out of reach; that is the day
+// race song's instruments, so a scrape or a thud is out of reach; that is the day
 // a noise oscillator would earn its keep.
 
 const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
-const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
+// ── The instrument, flattened ───────────────────────────────────────────────
+// **The songs are authored with names and shipped without them.** A SoundBox
+// instrument is twenty-nine named fields, and the names are the expensive part:
+// `fx_resonance` and its twenty-eight siblings come to about three kilobytes
+// across the eight instruments in the three songs, plus one more copy of each in
+// the synthesiser that reads them. None of it says anything that a fixed
+// position in a list does not.
+//
+// So the files on disk keep the format they were exported in — SoundBox's own
+// shape, which is what the bench opens and what a person edits — and this turns
+// each instrument into an array on the way into the bundle. The order below is
+// the whole contract, and lib/sonantx-custom.js carries it again as a legend
+// over the function that indexes it. Nothing checks that the two agree: a wrong
+// index is not an error, it is an instrument that sounds different.
+//
+// `p` and `c` ride along on the end at 29 and 30, so a channel is one flat array
+// rather than an array and an object.
+const SYNTH = [
+  'osc1_oct', 'osc1_det', 'osc1_detune',
+  'osc1_xenv', 'osc1_vol', 'osc1_waveform',
+  'osc2_oct', 'osc2_det', 'osc2_detune',
+  'osc2_xenv', 'osc2_vol', 'osc2_waveform',
+  'noise_fader', 'env_attack', 'env_sustain',
+  'env_release', 'env_master', 'fx_filter',
+  'fx_freq', 'fx_resonance', 'fx_delay_time',
+  'fx_delay_amt', 'fx_pan_freq', 'fx_pan_amt',
+  'lfo_osc1_freq', 'lfo_fx_freq', 'lfo_freq',
+  'lfo_amt', 'lfo_waveform',
+];
+const song = (name) => {
+  const s = JSON.parse(read('src', 'songs', name[1]));
+  s.songData = s.songData.map((ch) => [...SYNTH.map((k) => ch[k]), ch.p, ch.c]);
+  return `const ${name[0]} = ${JSON.stringify(s)};`;
+};
 
 // The inspector is appended only for `npm run debug`, so it cannot creep into a
 // release: the file simply is not in the program that gets minified.
@@ -132,8 +165,13 @@ const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 // repo, and is the one place where the right move is usually to leave the
 // arithmetic alone.
 const parts = [
-  song(['MENU_SONG', 'dizzy-land-beginning.json']),
-  song(['RACE_SONG', 'dizzy-beats.json']),
+  song(['MENU_SONG', 'menu.json']),
+  song(['RACE_SONG', 'race.json']),
+  // The heartbeat under star power. It is the menu song's third channel and
+  // nothing else — same instrument, same single note struck in pairs — lifted
+  // into a song of its own so the bench can open it and so nothing has to
+  // reach into another song's channels at runtime to find it.
+  song(['STAR_SONG', 'star.json']),
   read('src', 'unicorns.js'),
   // Before game.js, which reads its arrays at module scope to build the mesh.
   read('src', 'unicorn.js'),
@@ -348,8 +386,8 @@ if (!process.env.DEBUG) {
 if (!process.env.DEBUG) {
   const deps = [
     read('lib', 'sonantx-custom.js'),
-    song(['RACE_SONG', 'dizzy-beats.json']),
-    song(['MENU_SONG', 'dizzy-land-beginning.json']),
+    song(['RACE_SONG', 'race.json']),
+    song(['MENU_SONG', 'menu.json']),
     read('src', 'soundEffects.js'),
     `const SFX_SOURCE = ${JSON.stringify(read('src', 'soundEffects.js'))};`,
   ].join('\n');

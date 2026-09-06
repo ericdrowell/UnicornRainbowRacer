@@ -5,22 +5,21 @@ const READY_SIGNAL = [RACE_SONG, 1, 55];
 // instrument in the songs can be one. This is its own instrument instead, spread
 // from the race song's fourth track — already noise behind a swept filter
 // (`noise_fader` full, `lfo_fx_freq` on), just shaped as a percussive hit.
-const WHOOSH = {
-  ...RACE_SONG.songData[3],
-  osc1_vol: 0, // drop the tone, leave only the noise
-  osc2_vol: 0,
-  env_attack: 7500, // a swell and a long fall, not a 1ms hit. 1.77s all told
-  env_sustain: 10500,
-  env_release: 60000,
-  fx_filter: 3, // band-pass; the inherited high-pass just opens onto hiss
-  fx_freq: 2600, // the top of the sweep, so this is what sets the pitch
-  // The LFO period is rowLen * 2^(8 - freq) samples = 96000 here, against a
-  // 78000-sample effect: one arc, up and most of the way back down, rather than
-  // the two-and-a-half whooshes a faster LFO gives over a sound this long.
-  lfo_freq: 4,
-  lfo_amt: 255,
-  fx_delay_amt: 0,
-};
+// Indices are the flattened instrument's — see SYNTH in build.mjs for the order
+// and the legend in lib/sonantx-custom.js for what each slot is.
+const WHOOSH = [...RACE_SONG.songData[3]];
+WHOOSH[4] = WHOOSH[10] = 0; // drop both tones, leave only the noise
+WHOOSH[13] = 7500; // a swell and a long fall, not a 1ms hit. 1.77s all told
+WHOOSH[14] = 10500;
+WHOOSH[15] = 60000;
+WHOOSH[17] = 3; // band-pass; the inherited high-pass just opens onto hiss
+WHOOSH[18] = 2600; // the top of the sweep, so this is what sets the pitch
+// The LFO period is rowLen * 2^(8 - freq) samples = 96000 here, against a
+// 78000-sample effect: one arc, up and most of the way back down, rather than
+// the two-and-a-half whooshes a faster LFO gives over a sound this long.
+WHOOSH[26] = 4;
+WHOOSH[27] = 255;
+WHOOSH[21] = 0;
 const BOOST = [WHOOSH, 0, 60];
 
 const MISTAKE = [RACE_SONG, 0, 47];
@@ -43,7 +42,24 @@ const shot = ([song, track, note], loud) => {
     buf = renderNote(MUSIC, song.songData ? song.songData[track] : song, note);
   }
   return (vol = loud, rate) => {
-    if (!buf) return;
+    // **Nothing sounds while star power is up.** Every effect in the game comes
+    // through here — the pad, the pickup triad, the mistake, the countdown — so
+    // one test is the whole of it, and the seven seconds are the heartbeat and
+    // nothing else. The silence is the point: it is what makes a run feel like
+    // a different mode rather than a faster one, and a boost pad chirping
+    // through it would put the ordinary race back in the player's ear.
+    //
+    // The whoosh that *announces* a run still sounds, and that is not an
+    // exception to this — it fires on the frame the clock goes up, from the edge
+    // test in game.js, which reads `starLeft` before it is assigned. The gate
+    // closes immediately behind it. That is the order the effect wants: one
+    // sound, and then the floor drops out.
+    //
+    // `starLeft` lives in game.js, which is concatenated after this file. Safe
+    // because nothing here runs at load — a `let` is only in its dead zone until
+    // its own line has run, and by the time a player can make a noise happen
+    // every line in the bundle has.
+    if (!buf || starLeft) return;
     const s = MUSIC.createBufferSource();
     s.buffer = buf;
     // Pitch by resampling. The power-up asks for it so one rendered note can be

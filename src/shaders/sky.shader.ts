@@ -275,10 +275,10 @@ export const Sky = shader({
     // a boost is an event that decays, and star power is a state that ends, so
     // this one wants to be *on* for the duration and to stop rather than to fade
     // from the moment it starts.
-    const hyper = max(
-      smoothstep(1.8, 2.5, storageRead(uState, 21).x),
-      smoothstep(0, 0.6, storageRead(uState, 22).z),
-    );
+    // Pulled out of the `max` below because the tunnel is star power's alone —
+    // the streaks are shared with the boost pad and this is not.
+    const starLit = smoothstep(0, 0.6, storageRead(uState, 22).z);
+    const hyper = max(smoothstep(1.8, 2.5, storageRead(uState, 21).x), starLit);
     // **The direction is quantised into spokes before it is hashed, and it has
     // to be.** Every pixel along one ray normalises to the same vector, so a
     // hash of that vector is constant down a whole streak — which is what makes
@@ -313,6 +313,32 @@ export const Sky = shader({
     // arrives at the same pixel.
     const bolt =
       smoothstep(0.74, 0.8, seed) * body * body * body * smoothstep(0.28, 0.58, rr) * hyper;
+    // ── Tunnel vision ──────────────────────────────────────────────────────
+    // **The edges wash out while the middle stays sharp.** Not a blur — a blur
+    // means sampling the scene, and the scene is never in a texture: every pass
+    // in this game draws straight at the screen, so putting one there would cost
+    // a second target, a second program and a sampling pass to read it back.
+    //
+    // What is actually wanted from a blur here is *the periphery stops carrying
+    // information*, and a veil does that for two terms. This pass is already
+    // fullscreen and already only drawn while the clock is up, so the edges
+    // simply fade into the same pastel the streaks are made of: detail out there
+    // goes, the road ahead stays clean, and the eye is pushed down the middle of
+    // the screen — which is where it wants to be at twice the speed anyway.
+    //
+    // `rr` is the distance from the centre in NDC, so it is 1 at the middle of
+    // an edge and about 1.7 into a corner. Nothing at all inside half a screen
+    // out, and thickest in the corners, which is the shape of looking down a
+    // tube.
+    //
+    // **On `starLit` and not on `hyper`, which is the difference between the two
+    // things this pass draws.** The streaks are shared: a boost pad and a run
+    // both throw them, because both are "going faster than usual" and the
+    // tunnel of light is what that looks like. Closing the edges down is not
+    // that — it is the world narrowing to the road, and a pad taken on an
+    // ordinary lap is not worth narrowing anything for. Three seconds of it
+    // every lap would also stop it meaning anything by the time a run arrived.
+    const rim = smoothstep(0.5, 1.35, rr) * starLit * 0.62;
 
     // **The warp is a second pass over the top, not part of the sky.** Drawn
     // into the sky it sat behind the road, which put the tunnel under the thing
@@ -341,7 +367,7 @@ export const Sky = shader({
         mix(vec3(1, 1, 1), spectrum(seed * 40 + rr * 2.5), 0.7).scale(0.85 + 1.9 * bolt),
         uOver,
       ),
-      mix(1, min(bolt * 1.7, 1), uOver),
+      mix(1, min(bolt * 1.7 + rim, 1), uOver),
     );
   },
 });

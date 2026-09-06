@@ -878,6 +878,10 @@ export const Physics = shader({
     // neighbour is only known inside the loop below and is gone by the time it
     // finishes.
     let knock = 0;
+    // Which way a starred racer is currently shoving this one: 0 for nobody,
+    // otherwise -1 or 1 for the side of the road to be thrown at. Only racer
+    // zero can ever be starred, so this is 0 or ±1 and never sums.
+    let bull = 0;
     for (let j = 0; j < FIELD; j += 1) {
       const away = pos.sub(storageRead(uState, RACER + j * SLOTS).xyz);
       const raw = length(away);
@@ -916,6 +920,22 @@ export const Physics = shader({
       // separate, but the speed trade and the mistake bell are both called off.
       // Being billed for the power-up is not the power-up.
       const free = starGo;
+      // **Bulldozed.** Touching a starred racer throws this one at the rail —
+      // the whole of what star power does to the field, and it does not touch
+      // their speed: they are shoved aside, not stopped, and carry on racing
+      // from wherever they end up. Being run off your line at ninety metres a
+      // second costs you the corner without needing a penalty attached.
+      //
+      // `line` points from the other body to this one, so its side-of-road
+      // component is already "away from whatever hit me". The sign is all that
+      // is taken and not the size: a rear-end shunt has almost no lateral
+      // component, and a bulldozer that only works side-on is not a bulldozer.
+      // `step(0, ·) * 2 - 1` is the sign, which this DSL has no operator for.
+      bull =
+        bull +
+        hit *
+          step(0.001, storageRead(uState, RACER + j * SLOTS + 6).z) *
+          (step(0, dot(line, sideT)) * 2 - 1);
       // Not the whole way to the average in one frame: contact lasts while the
       // two are still overlapping, so a firm shunt applies this several times
       // over and arrives at the average anyway. Going all the way immediately
@@ -982,7 +1002,18 @@ export const Physics = shader({
     // hanging over the drop, which at this scale is most of a hoof.
     const off = dot(pos.sub(centre.xyz), sideT);
     const kerb = uWidth * 0.5 - 1.2;
-    const held = clamp(off, 0 - kerb, kerb);
+    // **The shove rides in the rail's own clamp, because it is the same word.**
+    // Both are answering "where across the road is this body allowed to be", so
+    // a bulldozed racer is one whose answer has moved to the kerb — no lateral
+    // velocity to carry, no clock to count down, nothing to store between
+    // frames.
+    //
+    // Six tenths of the way there per frame of contact. Contact lasts two or
+    // three frames at the closing speed a starred player arrives with, which
+    // compounds to most of the road: from the middle they are at the rail and
+    // pinned there while the player is still alongside. It reads as being swept
+    // aside rather than nudged, and it stops dead the moment the contact does.
+    const held = clamp(mix(off, kerb * bull, abs(bull) * 0.6), 0 - kerb, kerb);
     pos = pos.add(sideT.scale(held - off));
 
     // **Half your speed, once per contact.** A graze used to cost a rounding

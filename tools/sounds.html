@@ -171,10 +171,10 @@ async function play(track, note, label, fromSong) {
 
 function describe(t) {
   const wave = ['sine', 'square', 'saw', 'triangle'];
-  const bits = [`osc1 ${wave[t.osc1_waveform]}`, `osc2 ${wave[t.osc2_waveform]}`];
+  const bits = [`osc1 ${wave[t[5]]}`, `osc2 ${wave[t[11]]}`];
   if (t.noise_fader) bits.push(`noise ${t.noise_fader}`);
-  if (t.fx_filter) bits.push(`filter ${t.fx_filter}`);
-  bits.push(`a${t.env_attack} s${t.env_sustain} r${t.env_release}`);
+  if (t[17]) bits.push(`filter ${t[17]}`);
+  bits.push(`a${t[13]} s${t[14]} r${t[15]}`);
   return bits.join(' · ');
 }
 
