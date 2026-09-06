@@ -2282,7 +2282,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // screen, into the circuit title; LARGE puts it in the corner where it
       // belongs, and thirteen characters still stop short of the title.
       const starY = HUD_TOP - tall(LARGE);
-      say(17, starY, LARGE, 1);
+      say(16, starY, LARGE, 1);
       // **The gap is set by the plate, not by the ink.** `tall` measures the
       // five pixels of ink, but what is actually drawn is the whole seven-pixel
       // row — the dark plate behind the letters — so two rows stacked by their
@@ -2296,17 +2296,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       const plate = tall(LARGE) * (7 / 5);
       // Clamped to the gauge's own length — see CELLS in text.js, which is where
       // the ten comes from and which generates exactly this many rows.
-      say(18 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
-      // **And while it is running, say so.** The gauge tells you how far along
-      // you are; it does not tell you that the rules have changed for the next
-      // the run. Off the clock rather than off a full gauge, which is the
-      // only thing that works now that the fourth star spends all four in the
-      // same frame — the gauge is never seen full, so a message waiting for it
-      // to be full would never appear.
-      //
-      // Pulsed rather than steady, because it arrives in the middle of a race
-      // and a static line at the bottom of the screen is furniture.
-      if (starLeft > 0 && SCREEN === RACE_STATE) say(16, -0.86, MEDIUM, 0.55 + 0.45 * Math.sin(TIME * 7));
+      say(17 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
     }
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);

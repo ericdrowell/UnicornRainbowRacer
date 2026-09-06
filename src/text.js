@@ -100,7 +100,7 @@ const SAYS = [
   'UNICORN RAINBOW RACER',       // 0
   'PRESS ANY KEY TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
-  'ARROWS OR A D', // 3
+  'ARROWS TO CHOOSE', // 3
   'PRESS ENTER TO RACE',          // 4
   'PAUSED',                      // 5
   'PRESS ANY KEY TO CONTINUE',   // 6
@@ -134,7 +134,7 @@ const SAYS = [
   // drops. **Steering is the whole of it.** There was a "PRESS UP TO GO" over
   // this one, back when the throttle was a key: it is held down for the player
   // now, so the line was an instruction to press something that does nothing.
-  'ARROWS OR A D',          // 10
+  'PRESS ARROWS TO STEER',          // 10
   // The countdown, and then the flag. One glyph a beat, drawn huge in the middle
   // of the screen — see the note on sizing where game.js draws them.
   //
@@ -150,11 +150,6 @@ const SAYS = [
   // referenced by index: putting it next to the line it replaces would have
   // renumbered the arrows and the countdown under it.
   'PRESS ENTER FOR NEXT RACE',              // 15
-  // Shown while star power is actually running, not as an instruction to press
-  // anything: it engages itself on the fourth star. What the player needs from
-  // the middle of the screen is confirmation that the rules have changed and a
-  // sense of the clock running down, which the pulse it is drawn with gives.
-  'STAR POWER!',                            // 16
 ];
 
 /**
@@ -218,13 +213,13 @@ const LINES = [
   // Padded to the full width for the corner, the same reason the lap caption
   // that used to live here was: a full-width row's ink starts at the quad's own
   // left edge, so the leftmost a caption can reach is minus its half-width.
-  'STAR POWER'.padEnd(WIDE),                                                        // 17
+  'STAR POWER'.padEnd(WIDE),                                                        // 16
   // Eleven rows for eleven states, nought through full, indexed straight off the
   // count. Generated rather than written out, so the gauge's length is the one
   // number `CELLS` and nothing here has to be counted by hand — it was four
   // cells and the change touched this line and the two thresholds and nothing
   // else.
-  ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 18-28
+  ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 17-27
   // Which circuit this is, one row each. Built from the roster of seeds rather
   // than written out, so adding a track adds its own caption — and the "/ 2"
   // on every one of them corrects itself, which a hand-written list would not.
