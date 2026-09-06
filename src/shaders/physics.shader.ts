@@ -298,22 +298,18 @@ export const Physics = shader({
     //
     // It is also seventeen reads a racer instead of one per ring.
     let nearest = 0;
-    let nearestD = 1000000;
+    let nearestD = 100;
     for (let k = 0; k < 17; k += 1) {
       const i = mod(wasRing + k + uRings - 8, uRings);
       const c = storageRead(uTrack, i * 3);
-      const d = length(c.xyz.sub(pos));
+      const d = length(c.xyz.sub(pos).add(courseDir));
       if (d < nearestD) {
         nearestD = d;
         nearest = i;
       }
     }
 
-    const here = storageRead(uTrack, nearest * 3);
-    const ahead = storageRead(uTrack, nearest * 3 + 3);
-    const forward = step(0, dot(pos.sub(here.xyz), ahead.xyz.sub(here.xyz)));
-    const a = mix(max(nearest - 1, 0), nearest, forward);
-
+    const a = nearest;
     const ca = storageRead(uTrack, a * 3);
     const ta = storageRead(uTrack, a * 3 + 1);
     const ua = storageRead(uTrack, a * 3 + 2);
@@ -575,12 +571,12 @@ export const Physics = shader({
     // dropped so nine racers converging on the same nine-metre ring arrive
     // spread across it instead of stacked on its centre line, shunting each
     // other out of a boost they all earned.
-    const wander = (fract(roll * 7.7) - 0.5) * uWidth * 0.55;
-    const next = storageRead(uTrack, uBase + (floor(bSlot * 0.25) + 1) * 4).x;
+    const wander = (fract(roll * 7.7) - 0.5) * uWidth * 0.5;
+    const next = storageRead(uTrack, uBase + (floor(bSlot / 4) + 1) * 4).x;
     // The ring, or the wander.
     const lane = mix(
       wander,
-      (next - 1) * uWidth * 0.3333 + wander * 0.3,
+      ((next - 1) * uWidth) / 3 + wander * 0.3,
       1 - step(2.5, next),
     );
     // Offset in *this* segment's frame rather than the aim ring's. Rebuilding a
@@ -596,7 +592,7 @@ export const Physics = shader({
     // this correct by build instead of by testing which way the AI drove off.
     const want = normalize(aimPt.sub(pos));
     const lat = dot(want, cross(headingDir, upT));
-    const aiSteer = clamp(lat * 3.2, -1, 1);
+    const aiSteer = clamp(lat * 3, -1, 1);
     // Off the throttle when the nose is a long way from where it wants to be,
     // which is what a corner looks like from here. Without it they arrive at
     // hairpins at top speed, understeer into the rail and fall off the world —
@@ -659,7 +655,7 @@ export const Physics = shader({
     // Steering rotates the nose about the road's normal. Scaled by speed,
     // because a kart that pivots on the spot reads as a bug.
     const grip = min(speed / 7, 1);
-    const turn = steer * dt * 2.6 * grip;
+    const turn = steer * dt * 2.5 * grip;
     headingDir = normalize(
       headingDir.scale(cos(turn)).add(cross(headingDir, upT).scale(sin(turn))),
     );
@@ -683,7 +679,7 @@ export const Physics = shader({
     //
     // A wall on the *drawn* heading, not on the steering, so the input stays
     // exactly as responsive as it was up to the point it stops.
-    headingDir = normalize(headingDir.sub(fwdT.scale(min(dot(headingDir, fwdT) - 0.34, 0))));
+    headingDir = normalize(headingDir.sub(fwdT.scale(min(dot(headingDir, fwdT) - 0.3, 0))));
 
     // Momentum. The direction of travel swings toward the nose at a finite rate
     // rather than snapping to it, so turning the body does not turn the
@@ -865,7 +861,7 @@ export const Physics = shader({
       // see in a photograph.
       const nos = dot(away, courseDir);
       const sway = away.sub(courseDir.scale(nos));
-      const gap = sqrt((nos * nos) / 4.33 + dot(sway, sway) / 1.49);
+      const gap = sqrt((nos * nos) / 4 + dot(sway, sway) / 1.5);
       const hit = step(0.5, abs(j - me)) * step(0.001, raw) * (1 - step(1, gap));
       // Divided rather than normalised: at gap zero — self, or two bodies exactly
       // coincident — `hit` is already zero, so this contributes nothing, and the
@@ -964,7 +960,7 @@ export const Physics = shader({
     // 1.2 in from the half-width so the model rides inside the rail rather than
     // hanging over the drop, which at this scale is most of a hoof.
     const off = dot(pos.sub(centre.xyz), sideT);
-    const kerb = uWidth * 0.5 - 1.2;
+    const kerb = uWidth * 0.5 - 1;
     // **The shove rides in the rail's own clamp, because it is the same word.**
     // Both are answering "where across the road is this body allowed to be", so
     // a bulldozed racer is one whose answer has moved to the kerb — no lateral
@@ -1215,8 +1211,8 @@ export const Physics = shader({
       smoothstep(0, 0.35, starNow.z) * 0.18;
     const chaseEye = pos
       .sub(courseDir.scale(10))
-      .add(upT.scale(5.4 + sin(uTime * 61) * jolt))
-      .add(sideT.scale(sin(uTime * 84) * jolt));
+      .add(upT.scale(5 + sin(uTime * 60) * jolt))
+      .add(sideT.scale(sin(uTime * 60) * jolt));
     const chaseAt = pos.add(courseDir.scale(8)).add(upT.scale(3));
 
     // ── The title camera ───────────────────────────────────────────────────
@@ -1245,9 +1241,9 @@ export const Physics = shader({
     // The orbit runs off `uTime`, which keeps running before the flag even
     // though `dt` does not — the clock and the simulation step are different
     // things, and this is the one place that difference is load-bearing.
-    const ang = uTime * 0.32;
+    const ang = uTime * 0.3;
     const titleAt = pos.add(courseDir.scale(16));
-    const titleEye = titleAt.add(vec3(sin(ang) * 52, 21, cos(ang) * 52));
+    const titleEye = titleAt.add(vec3(sin(ang) * 52, 20, cos(ang) * 52));
 
     const wantEye = mix(chaseEye, titleEye, uTitle);
     const wantAt = mix(chaseAt, titleAt, uTitle);
@@ -1282,8 +1278,8 @@ export const Physics = shader({
 
     const f = 1 / tan(0.5);
     const fx = f / uAspect;
-    const za = (900 + 0.1) / (0.1 - 900);
-    const zb = (2 * 900 * 0.1) / (0.1 - 900);
+    const za = 0 - 1.0002;
+    const zb = 0 - 0.2;
     const zAxis = normalize(eye.sub(at));
     const xAxis = normalize(cross(camUp, zAxis));
     const yAxis = cross(zAxis, xAxis);
