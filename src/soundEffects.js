@@ -22,7 +22,18 @@ const WHOOSH = {
   fx_delay_amt: 0,
 };
 const BOOST = [WHOOSH, 0, 60];
+
 const MISTAKE = [RACE_SONG, 0, 47];
+
+// Picking one up — and it is a power-up, not a chime, because a star is a
+// quarter of a run rather than a thing you collected. Three notes climbing a
+// major triad is what that has sounded like since the arcade.
+//
+// One buffer, played three times at three `playbackRate`s, and not three
+// renders: resampling a note up a third and a fifth is a couple of dozen bytes
+// against a couple of hundred, and on a note this short the artefacts of doing
+// it that way are the arcade sound rather than a flaw in it.
+const GRAB = [RACE_SONG, 1, 89];
 
 
 const shot = ([song, track, note], loud) => {
@@ -31,10 +42,13 @@ const shot = ([song, track, note], loud) => {
     // Either a song to take a track from, or an instrument outright (WHOOSH).
     buf = renderNote(MUSIC, song.songData ? song.songData[track] : song, note);
   }
-  return (vol = loud) => {
+  return (vol = loud, rate) => {
     if (!buf) return;
     const s = MUSIC.createBufferSource();
     s.buffer = buf;
+    // Pitch by resampling. The power-up asks for it so one rendered note can be
+    // three.
+    if (rate) s.playbackRate.value = rate;
     if (vol) {
       const g = MUSIC.createGain();
       g.gain.value = vol;

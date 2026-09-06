@@ -13,7 +13,6 @@ import {
   mod,
   pow,
   smoothstep,
-  sqrt,
   cross,
   dot,
   step,
@@ -100,7 +99,7 @@ export const Track = shader({
      * road it stands on.
      */
     uStep: 'float',
-    /** Where the ring lane table starts in `uTrack`. See game.js. */
+    /** Where the pickup table starts in `uTrack`, one vec4 a slot. See game.js. */
     uBase: 'float',
   },
   // Read-only here. Physics writes it, and a read_write binding could not be
@@ -121,9 +120,52 @@ export const Track = shader({
     //
     // `slot` is zeroed for road vertices so both reads stay in range: this runs
     // for every vertex on the track, and there is no branch to hide it behind.
-    const isRing = step(2, aEdge.x);
-    const slot = aPos.x * isRing;
-    const ri = floor((slot * 64 + 32) * uStep) * 3;
+    //
+    // One marker, 9, and the road's own `aEdge.x` runs -1 to 1 so it cannot
+    // collide with it. It says only "this is a pickup" — that `aPos` is a slot
+    // and two angles rather than a position.
+    //
+    // There were three, and then two. 3 was a gumball in flight and then a beam
+    // hung off the horn, and both went with the shooting. 5 was a star against
+    // 9 for a ring, which put *which pickup this is* in the vertex attribute —
+    // and it is in the table, one read below, where the physics stage reads it
+    // from too. A fact in two places is a fact that can disagree.
+    const isSpec = step(4, aEdge.x);
+    const slot = aPos.x * isSpec;
+    // Sixteen rows to a slot and the pickup seated eight rows in, which is the
+    // number physics.shader.ts seats its hitbox on: a hitbox anywhere but where
+    // this hangs the thing is a pickup off a piece of empty road.
+    const ri = floor((slot * 16 + 8) * uStep) * 3;
+    // The slot, whole: `.x` the lane, `.y` the type — 0 a ring, 1 a star — and
+    // `.z` the time a star was collected, nought until it was. One read, and it
+    // is what decides which shape the sweep below turns into.
+    const rec = storageRead(uTrack, uBase + slot);
+    const lane = rec.x;
+    const isStar = rec.y;
+    // ── A star that has been taken ─────────────────────────────────────────
+    // **It goes, but not on the frame it is touched.** A pickup that simply
+    // stops being drawn gives the player nothing to confirm what happened — at
+    // ninety metres a second it is behind the camera before the eye gets to it,
+    // and all that is left is a gauge that went up for reasons you have to
+    // infer. A fifth of a second of collapsing to a point is the whole
+    // acknowledgement, and it is enough: it is gone by the time you are level
+    // with where it was, and the eye still catches that something happened.
+    //
+    // It lingered for three seconds once, spinning off and rising as it went,
+    // back when a star had points to spin. A sphere has nothing to show a spin
+    // with, and three seconds of a ball sitting on the road slowly getting
+    // smaller reads as a bug rather than as a pickup.
+    //
+    // Shrinking rather than dissolving, because this pass is opaque — there is
+    // no alpha to fade and no sorted transparent pass to put one in.
+    //
+    // Everything here is gated to nought for a star that has not been taken, and
+    // gated by the *stamp* rather than by a branch: `sGone` is nought when `.z`
+    // is, which makes `sAge` nought, which makes the fade one. An untouched star
+    // falls through unchanged and no `mix` is needed to protect it.
+    const sGone = step(0.001, rec.z);
+    const sAge = (uTime - rec.z) * sGone;
+    const sFade = 1 - smoothstep(0, 0.2, sAge);
     const arm = cross(storageRead(uTrack, ri + 1).xyz, storageRead(uTrack, ri + 2).xyz);
     const up = storageRead(uTrack, ri + 2).xyz;
     // Nine metres between lane centres — a third of the road — and the ring's
@@ -136,9 +178,28 @@ export const Track = shader({
     // always was, in physics.shader.ts, which never looks at height. A unicorn
     // cannot jump, so a ring it had to be under would be a ring it could miss
     // for reasons it could do nothing about.
+    //
+    // **A star hangs from this too.** Same lane centres, same bob on the same
+    // clock off the same slot — so a run of three sits in one lane and rides one
+    // wave, a radian of phase apart because the slot number is in the angle.
+    //
+    // **It rides lower, and that is the one thing about the placement that is
+    // not a ring's.** A ring is 4.5 across and centred at 4.5, so it stands on
+    // the road with its hole where a body goes through; a sphere of 1.5 hung at
+    // the same height floats at head level with clear air under it, which reads
+    // as scenery passing overhead rather than as something on the road to
+    // collect. Centred at 2.7 with a bob of 0.9 it comes down to 1.8 at the
+    // bottom of the wave — the sphere's underside 0.3 clear of the surface,
+    // close enough to skim it — and lifts to 3.6, still inside the body's own
+    // height. It is a thing on the road at every point in the cycle.
+    //
+    // Two numbers, the same way the shape is two numbers below: a height and an
+    // amplitude, mixed off the type. The lane and the clock stay shared.
+    const H = 4.5 - 1.8 * isStar;
+    const A = 1.2 - 0.3 * isStar;
     const hub = storageRead(uTrack, ri)
-      .xyz.add(arm.scale((storageRead(uTrack, uBase + slot).x - 1) * 9))
-      .add(up.scale(4.5 + sin(uTime * 1.2 + slot) * 1.2));
+      .xyz.add(arm.scale((lane - 1) * 9))
+      .add(up.scale(H + sin(uTime * 1.2 + slot) * A));
     // **A torus, swept here rather than stored.** `aPos.y` runs round the ring
     // and `aPos.z` round the tube, both 0 to 1, and the two angles they become
     // are all a torus is. `rad` is the outward direction in the ring's plane —
@@ -159,10 +220,32 @@ export const Track = shader({
     const sp = sin(ph);
     const tng = storageRead(uTrack, ri + 1).xyz;
     const rad = arm.scale(cos(th)).add(up.scale(sin(th)));
+    // **A star is this same torus with the hole closed up.** A torus is a circle
+    // of radius `r` swept round a circle of radius `R`, and at `R = 0` that is a
+    // sphere: `rad` is a unit vector in the road's upright plane and `tng` is
+    // perpendicular to it, so `rad * cos(ph) + tng * sin(ph)` is a unit vector,
+    // and sweeping `th` through it covers the whole ball.
+    //
+    // So there is no second shape here at all. Two numbers change — the major
+    // radius goes to nought, the minor opens out — and the three lines that draw
+    // a ring draw a sphere. **The normal does not even change:** a torus's is
+    // `rad * cos(ph) + tng * sin(ph)` whatever `R` is, and at `R = 0` that is
+    // the sphere's own outward direction, so `vV` below is untouched.
+    //
+    // It replaces a five-pointed star that was its own sweep, its own facet
+    // normal, its own facet coordinates riding on `vWorld`, its own seam
+    // highlight and its own rim-to-centre colour ramp — a whole parallel object
+    // for a thing on the road you drive at.
+    //
+    // Shrinking to nothing over the three seconds after it is taken, which is
+    // all that is left of the collect animation: a sphere does not read as
+    // spinning, so the spin went with the points that used to show it.
+    const R = 4.5 - 4.5 * isStar;
+    const r = mix(0.6, 1.5 * sFade, isStar);
     const world = mix(
       aPos,
-      hub.add(rad.scale(4.5 + 0.6 * cp)).add(tng.scale(0.6 * sp)),
-      isRing,
+      hub.add(rad.scale(R + r * cp)).add(tng.scale(r * sp)),
+      isSpec,
     );
 
     // The ring's corner rides out on the road's own two varyings rather than a
@@ -179,20 +262,32 @@ export const Track = shader({
     // the ring as the road rolls and banks under it — the one cue that says this
     // is an object sitting in the scene rather than a sprite turning with the
     // camera.
-    // The marker carries the ring's colour with it. 9 is still the flag — no
-    // road vertex reaches 2 — and the fraction on top is this ring's own hash,
-    // so `vU - 9` in the fragment is the seed. A varying that was going to be a
-    // constant is a varying wasted; this is the same trick the quad corner used
-    // to ride on.
-    v.vU = mix(aEdge.x, 9 + fract(sin(slot * 12.99) * 43758.5), isRing);
+    // The marker carries the pickup's colour with it. 9 is still the flag — no
+    // road vertex reaches 2 — and the fraction on top is this slot's own hash,
+    // so `fract(vU)` in the fragment is the seed. A varying that was going to be
+    // a constant is a varying wasted; this is the same trick the quad corner
+    // used to ride on.
+    //
+    // It carried the type as well while a star was shaded differently from a
+    // ring. It is not, any more — same palette, same brightness curve, same
+    // everything — so the fragment stage has nothing left to branch on and this
+    // is one number again.
+    v.vU = mix(aEdge.x, 9 + fract(sin(slot * 12.99) * 43758.5), isSpec);
     v.vV = mix(
       aEdge.y,
       0.22 + 0.78 * max(dot(rad.scale(cp).add(tng.scale(sp)), vec3(0.28, 0.86, 0.43)), 0),
-      isRing,
+      isSpec,
     );
     // The road point itself, unprojected. The shadow below is cast in world
     // space, so it needs where this fragment actually is — the position this
     // stage returns has already been through the camera and lost that.
+    // The road point itself, unprojected. The shadow below is cast in world
+    // space, so it needs where this fragment actually is — the position this
+    // stage returns has already been through the camera and lost that.
+    //
+    // It carried facet coordinates for a star for a while, because a faceted
+    // star needed to know where on a facet a pixel sat and there was no third
+    // varying free. A sphere has no facets and wants nothing here.
     v.vWorld = world;
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
@@ -258,7 +353,23 @@ export const Track = shader({
     // of a radian apart, so a panel only ever slides to a colour next door to
     // the one it had. What the rate decides is whether the road drifts or races,
     // not whether it strobes, which is why it takes being turned this far up.
-    const flow = row + uTime * 12;
+    //
+    // **And five times that under star power**, delivered as accumulated phase
+    // rather than as a raised rate — see `.w` of slot 6 in physics.shader.ts for
+    // why. 22 is racer zero's sixth word: the road is the player's road, so it
+    // is the player's run that speeds it up and not whichever rival happens to
+    // be in shot.
+    //
+    // **48, and it started at 12.** Twelve was arithmetically a doubling and
+    // visually nothing, because the player is doing 120 metres a second by then:
+    // the pattern's own 27 m/s going to 54 is a small addition on top of that,
+    // and the warp streaks and the camera rumble are covering the road at the
+    // same time. What the eye is comparing is not the flow against its old self,
+    // it is the flow against everything else moving — so the number has to clear
+    // that, not merely beat what it was. 48 on top of the base 12 is sixty
+    // panels a second, five times normal, about 135 m/s of pattern against 120
+    // of driving: the light finally outruns the unicorn.
+    const flow = row + uTime * 12 + storageRead(uState, 22).w * 48;
     const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + col * 0.5 + 1.3) * 1.6;
     // Pastel, not pigment. Glass lit from inside washes out towards white as it
     // brightens, and a saturated hue at full strength reads as paint instead.
@@ -414,10 +525,16 @@ export const Track = shader({
     // and it was not dark, it was undefined. On a ring this is already 0.22 to 1
     // and the clamp never bites.
     const gold = min(vV, 1);
-    // The rings take their colours from the stars, off the same palette and the
-    // same 0.45 toward white — the pastels overhead, on the road. `vU - 9` is
-    // the ring's hash, laid into the marker by the vertex stage.
-    const tint = mix(vec3(1, 1, 1), spectrum((vU - 9) * 40), 0.45);
+    // Both kinds take their colour from the sky, off the same cosine palette and
+    // the same 0.45 toward white — the pastels overhead, on the road.
+    // `fract(vU)` is the slot's hash, laid into the marker by the vertex stage.
+    //
+    // **One tint, because there is one shape.** A star had its own: the palette
+    // at the rim going white toward the middle, keyed off facet coordinates this
+    // stage no longer receives. It was there because a faceted star needed the
+    // facets to read, and a sphere has none — it is lit by its own normal like
+    // the ring's tube, out of `vV`, and wants nothing said about it here.
+    const tint = mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45);
     return vec4(
       mix(
         lit
@@ -437,7 +554,7 @@ export const Track = shader({
         // linear spreads the bright band over most of the tube and the whole
         // thing washes out to white.
         tint.scale(0.85 + 3.4 * gold * gold),
-        step(2, vU),
+        step(4, vU),
       ),
       1,
     );

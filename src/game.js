@@ -223,7 +223,7 @@ let SELECTED_CIRCUIT = 0;
 // block being reindented into the function: the values are built in one long
 // dependency order and breaking that order to group the exports would be the
 // only real way to get this wrong.
-let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, RING_ROWS, TI, RING_BASE, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
 TRACK = CIRCUITS[SELECTED_CIRCUIT];
 
@@ -505,7 +505,7 @@ for (let i = 0; i <= RINGS; i++) {
   TE.push(1, v);
 }
 
-// ── Where the boost rings are ──────────────────────────────────────────────
+// ── Where the pickups are ──────────────────────────────────────────────────
 // **Decided here rather than in a shader, because two places have to agree
 // about it and they cannot agree on a hash.** The pads this replaces were a
 // function evaluated identically in the track shader and the physics stage,
@@ -516,23 +516,84 @@ for (let i = 0; i <= RINGS; i++) {
 // by 43758 turns a last-bit difference into a different lane. So the table is
 // built once here and shipped to the physics on the end of the track buffer.
 //
-// One slot every 64 rows of the road's own tiling, three slots in four filled —
-// the fourth outcome is "no ring", which is what scatters them. Slot zero and
-// its neighbours are skipped whole: `START_CLEAR` keeps the grid and the run off
-// the line free, which used to fall out of seating the pad 30 rows into its slot
-// and is now said outright.
+// **One table, and rings and stars are both rows in it.** They were two grids
+// with two tables, two seat constants, two hitboxes and two mesh loops, and the
+// only thing that made them two was that they wanted different spacings. But a
+// slot is a piece of road with something on it, and what that something *is* is
+// a number in the row — so the row carries it, and every stage downstream reads
+// one table and branches on `.y`.
 //
-// Seeded from the circuit, so a track's rings are as fixed as its corners.
-RING_ROWS = 64;
-const START_CLEAR = 2;
-const RING_SLOTS = Math.ceil((LAP * PATTERN * 0.4456) / RING_ROWS);
-/** Which third each slot's ring sits in — 0 left, 1 middle, 2 right, 3 none. */
-const RING_LANE = new Float32Array(RING_SLOTS);
+// A row is: `.x` the lane, 0 left, 1 middle, 2 right and 3 for nothing here;
+// `.y` the type, 0 a ring and 1 a star; `.z` the time a star was collected,
+// nought until it is. `.w` is spare.
+//
+// Sixteen rows to a slot, and four slots is the 64 rows a ring has always had —
+// so rings sit on every fourth slot at exactly the spacing they used to, and the
+// three slots between two rings are where a run of stars goes. The grid got
+// finer; the rings did not move.
+//
+// Seeded from the circuit, so a track's pickups are as fixed as its corners.
+SLOT_ROWS = 16;
+/** Slots between one ring and the next — four, which is the 64 rows they had. */
+const RING_EVERY = 4;
+const START_CLEAR = 8;
+PICK_SLOTS = Math.ceil((LAP * PATTERN * 0.4456) / SLOT_ROWS);
+const PICK_LANE = new Float32Array(PICK_SLOTS);
+const PICK_TYPE = new Float32Array(PICK_SLOTS);
 {
   let n = (TRACK.b * 1e6) | 0;
   const rnd = () => ((n = (n * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  for (let i = 0; i < RING_SLOTS; i++) {
-    RING_LANE[i] = i < START_CLEAR || i > RING_SLOTS - 2 ? 3 : Math.floor(rnd() * 4);
+  // Nothing anywhere until something is put there. 3 is the empty lane, and it
+  // is what both ends of the lap keep: the grid stands behind the start line, so
+  // a pickup in the last slots sits among ten stationary unicorns before the
+  // flag has dropped.
+  PICK_LANE.fill(3);
+  // Rings, on every fourth slot, three slots in four filled — the fourth
+  // outcome of the roll is "no ring", which is what scatters them.
+  for (let i = START_CLEAR; i < PICK_SLOTS - START_CLEAR; i += RING_EVERY) {
+    PICK_LANE[i] = Math.floor(rnd() * 4);
+  }
+  // **Ten runs of three, and front-loaded.** A star is never on its own: each
+  // placement lays three of them in consecutive slots, all in the same lane, so
+  // what the player sees ahead is a *line* to be followed rather than a thing to
+  // be swerved at. Three arrive in a little over a second at racing speed, which
+  // is the point — the reward for committing to a lane and holding it is three
+  // tenths of the gauge in one move, and the cost of drifting off the line
+  // halfway is that you get one.
+  //
+  // The lane is drawn once for the whole run and not per star. A run that
+  // wandered across the road would be three separate pickups wearing a trail's
+  // clothing, and following it would mean weaving — which is the opposite of the
+  // line this is meant to be.
+  //
+  // Thirty stars against a gauge of ten: three clean runs arms it, and a lap has
+  // enough slack in it that missing one is not the end of the run.
+  //
+  // Raising the fraction along the lap to the power 2.2 is what bunches them:
+  // half sit in the opening quarter and the rest string out behind, so the
+  // player arms early and then has to make what they took last the circuit.
+  //
+  // **Snapped to the slot after a ring, which is what keeps a run whole.** Every
+  // fourth slot belongs to a ring, so a run of three starting anywhere else
+  // would have a ring in the middle of it — one star, a ring, two stars, which
+  // is not a line to follow. Landing on residue 1 puts the three of them in the
+  // three slots between two rings, every time, and `tail` starting at a residue
+  // 1 keeps the clamp on that residue too.
+  let tail = START_CLEAR + 1;
+  for (let k = 1; k <= 10; k++) {
+    const want = Math.min(
+      Math.floor((PICK_SLOTS - 24) * (k / 10) ** 2.2),
+      PICK_SLOTS - 12,
+    );
+    const at = Math.max(Math.floor(want / RING_EVERY) * RING_EVERY + 1, tail);
+    const lane = Math.floor(rnd() * 3);
+    for (let j = 0; j < 3; j++) {
+      PICK_LANE[at + j] = lane;
+      PICK_TYPE[at + j] = 1;
+    }
+    // The next run starts no earlier than the next group of four, which is both
+    // what stops two overlapping and what keeps the residue.
+    tail = at + RING_EVERY;
   }
 }
 
@@ -545,52 +606,46 @@ for (let i = 0; i < RINGS; i++) {
   TI.push(a, b, a + 1, a + 1, b, b + 1);
 }
 
-// **An actual torus apiece.** This was a flat quad with a ring painted on it by
-// the fragment stage, which is four vertices against this one's ninety-one — and
-// no amount of shading rescued it, because what was missing was not light. A
-// painted ring has no silhouette to catch the sky against, no near limb passing
-// in front of its far limb, and no parallax at all: drive at it and it stays a
-// decal, because it is one. The cost of a real one is vertices, and vertices are
-// the one thing here that is nearly free.
+// **An actual torus apiece, and an actual star.** Both are swept in the vertex
+// stage from two numbers that run 0 to 1 — `u / uN` round the thing and
+// `v / vN` across it — so what is emitted here is a grid of parameters and not
+// a shape. track.shader.ts decides what the shape is, off the type in the
+// table, and this only has to say how finely to divide it.
 //
-// **Being solid is what pays for it.** The old quad was mostly transparent, and
-// a zero-alpha fragment still writes depth — so each ring stamped a twelve-metre
-// hole in the depth buffer and every ring behind it vanished. That needed a
-// second program over the same vertices with depth write off, drawn separately.
-// A torus is opaque everywhere it exists and nowhere else, so it simply joins
-// the road's own index list, and the program, the buffers, the bind group, the
-// uniform upload and the draw call all went with the problem they solved.
+// **One loop, because a pickup is a pickup.** It was two, one per grid, with the
+// same eight lines of index arithmetic written out twice. What differs between a
+// ring and a star is two counts, and two counts is what `uN` and `vN` are.
 //
-// **Segments are free, so these are generous.** Nothing about this mesh is
-// stored — it is swept at load from the two numbers below, and 24 and 10 are the
-// same two bytes each that 12 and 5 were. The only thing more of them costs is
-// vertices in GPU memory, and at 60 rings this is 16500 of them against a uint16
-// index ceiling of 65536 and a road that uses 1500.
+// A ring is 24 round by 10 across: segments are free — nothing is stored, it is
+// swept from these two numbers — and 24 is a silhouette with no corners in it at
+// the size these are read at, while 10 across the tube makes the light sweep
+// rather than facet.
 //
-// So the limit is the ceiling, not the budget. 24 round the ring is a 24-gon
-// silhouette, which stops showing corners at the size these are read at; 10
-// round the tube is what makes the shading sweep rather than facet, since the
-// light is interpolated between vertices.
+// A star is 8 by 8, and it is a sphere: the shader draws it as this same torus
+// with the major radius at nought, which sweeps `rad * cos(ph) + tng * sin(ph)`
+// — a unit vector — right round twice. Double-covered, so 8 by 8 is really a
+// 16-gon of latitude, and coincident opaque triangles at identical depth cost a
+// few vertices and change nothing on screen.
 //
-// `aPos` still carries the slot rather than a position — where a ring actually
-// is depends on the road under it, and the road is in a storage buffer the
-// vertex stage can read — with the two grid coordinates where the corner used to
-// be. The trigonometry is the vertex stage's, once per vertex.
-const MAJ = 24;
-const MIN = 10;
-for (let i = 0; i < RING_SLOTS; i++) {
-  if (RING_LANE[i] > 2) continue;
+// The marker is 9 for both. It says "this is a pickup, so `aPos` is a slot and
+// two angles rather than a position" — nothing more, because which pickup it is
+// comes from the table now.
+for (let i = 0; i < PICK_SLOTS; i++) {
+  if (PICK_LANE[i] > 2) continue;
+  const star = PICK_TYPE[i];
+  const uN = star ? 8 : 24;
+  const vN = star ? 8 : 10;
   const base = TP.length / 3;
-  for (let u = 0; u <= MAJ; u++) {
-    for (let v = 0; v <= MIN; v++) {
-      TP.push(i, u / MAJ, v / MIN);
+  for (let u = 0; u <= uN; u++) {
+    for (let v = 0; v <= vN; v++) {
+      TP.push(i, u / uN, v / vN);
       TE.push(9, 0);
     }
   }
-  for (let u = 0; u < MAJ; u++) {
-    for (let v = 0; v < MIN; v++) {
-      const a = base + u * (MIN + 1) + v;
-      TI.push(a, a + MIN + 1, a + 1, a + 1, a + MIN + 1, a + MIN + 2);
+  for (let u = 0; u < uN; u++) {
+    for (let v = 0; v < vN; v++) {
+      const a = base + u * (vN + 1) + v;
+      TI.push(a, a + vN + 1, a + 1, a + 1, a + vN + 1, a + vN + 2);
     }
   }
 }
@@ -616,12 +671,18 @@ for (let i = 0; i < RING_SLOTS; i++) {
 // lap's distance instead of zero, so a body in the last segment interpolates
 // forwards rather than being told the road runs from LAP back to nothing.
 //
-// The ring lane table is appended after it, one vec4 a slot. A whole vec4 to
-// carry one number is wasteful of GPU memory and free in the zip — this array is
-// generated, not shipped — and it means both readers index it with a slot number
-// and nothing else.
-RING_BASE = (RINGS + 1) * 3;
-TRACK_DATA = new Float32Array((RING_BASE + RING_SLOTS) * 4);
+// The pickup table is appended after it, one vec4 a slot: lane, type, and the
+// time a star was collected. A whole vec4 to carry three numbers is wasteful of
+// GPU memory and free in the zip — this array is generated, not shipped — and it
+// means every reader indexes it with a slot number and nothing else.
+//
+// Four slots longer than there are, because the AI reads the ring ahead of the
+// one it is in and the last racer on the last slot reads past the end. Four
+// zeroed vec4s is cheaper than a clamp in the shader — though a zero row reads
+// as lane 0, which is a lane, so the placement above leaves the closing slots
+// empty and the read never lands on one that matters.
+PICK_BASE = (RINGS + 1) * 3;
+TRACK_DATA = new Float32Array((PICK_BASE + PICK_SLOTS + 4) * 4);
 for (let i = 0; i <= RINGS; i++) {
   const g = i % RINGS;
   TRACK_DATA.set(
@@ -629,7 +690,10 @@ for (let i = 0; i <= RINGS; i++) {
     i * 12,
   );
 }
-for (let i = 0; i < RING_SLOTS; i++) TRACK_DATA[(RING_BASE + i) * 4] = RING_LANE[i];
+for (let i = 0; i < PICK_SLOTS; i++) {
+  TRACK_DATA[(PICK_BASE + i) * 4] = PICK_LANE[i];
+  TRACK_DATA[(PICK_BASE + i) * 4 + 1] = PICK_TYPE[i];
+}
 
 // ── The grid ────────────────────────────────────────────────────────────────
 // Where the ten of them stand before the flag. Built here because this is where
@@ -665,9 +729,33 @@ RACER_BASE = 16;
 // holding vy, speed, gait, the lit-panel coordinate and the lap distance the
 // CPU reads back — and a timer is the one thing a boost pad needs that cannot be
 // recomputed from where a unicorn is.
-RACER_SLOTS = 6;
+// Seven. Six are the racer; the seventh is everything star-shaped, and it is
+// one word rather than two because all of it fits: `.x` is the slot last picked
+// up, so one star counts once rather than once a frame while the body is over
+// it, `.z` is the run's clock — seven seconds counting down, read by the physics
+// for the speed, by the unicorn shader for the flashing, by the sky for the warp
+// streaks and by the CPU for the HUD — and `.w` is the rainbow phase the run has
+// banked.
+//
+// It was eight for a while, with the slot memory in a word of its own next to a
+// blast that needed all four of its own. The blast went with the shooting and
+// the memory moved into the spare `.x` beside the clock.
+//
+// Written down again in physics.shader.ts as SLOTS and in unicorn.shader.ts,
+// neither of which can read this file. PALETTE below depends on it.
+RACER_SLOTS = 7;
 /** Where the liveries start, six vec4s per racer. */
-PALETTE = 80;
+// **86, and the racer stride is why.** The racers start at 16 and run
+// RACER_SLOTS each, so ten of them at seven apiece reach 86. Leave this below
+// that and the last racers write their state over the first liveries — which
+// shows up as the field coming out the wrong colours, not as a crash.
+//
+// It sat at 96 through the stride being eight and then being seven, which was
+// ten vec4s of buffer nothing addressed. Harmless, and exactly the kind of
+// harmless that survives until someone reads 96 as meaningful.
+//
+// Written down again in unicorn.shader.ts, which cannot read this file.
+PALETTE = 86;
 
 /** The ring nearest a given distance round the lap. */
 const ringAt = (d) => {
@@ -698,7 +786,13 @@ for (let i = 0; i < FIELD; i++) {
   // the diagonal read as one line rather than as scattered rows, and it is the
   // player's own lane that tells them which way the lattice leans.
   const lat = (1 - (slot % LANES)) * TRACK_WIDTH * 0.3;
-  GRID.push(CENTRE[g].map((c, k) => c + arm[k] * lat));
+  // Four floats, not three: the ring this slot stands on rides along as `.w` of
+  // the same word the position goes into. The physics searches for its segment
+  // in a window around the ring it was on last frame, and on the very first
+  // frame there is no last frame — the grid sits in the closing forty metres of
+  // the lap, which is twenty rings from the nought a cleared buffer would give
+  // it, so it would start the race hunting near the wrong end of the road.
+  GRID.push([...CENTRE[g].map((c, k) => c + arm[k] * lat), g]);
 }
 };
 lay();
@@ -708,8 +802,17 @@ lay();
 // of the simulation: which keys are down, and a latch for the one that is an
 // event rather than a state.
 const HELD = {};
-/** 1 when either key of a pair is down. */
-const held = (a, b) => (HELD[a] || HELD[b] ? 1 : 0);
+/**
+ * 1 when that key is down.
+ *
+ * **Four keys drive this game and there are no synonyms.** It took a pair —
+ * WASD beside the arrows — and each control cost two lookups and two string
+ * literals to ask the same question twice. The arrows are what a player reaches
+ * for on a game that is drawn like this one, the on-screen instructions have
+ * only ever named them, and nothing in the game was ever bound to a letter that
+ * the arrows did not already do.
+ */
+const held = (a) => (HELD[a] ? 1 : 0);
 
 addEventListener('keydown', (e) => {
   HELD[e.code] = 1;
@@ -819,6 +922,28 @@ const DONE = new Float32Array(FIELD);
 /** The player's place, 0 for first. */
 let place = 0;
 /**
+ * Every racer's finishing positions, added up over the circuits raced so far.
+ *
+ * **Low is good, and that is the whole scoring system.** A win is 1 and last is
+ * 10, so a series total is a golf score: three circuits give a best of 3 and a
+ * worst of 30, and coming second everywhere beats winning once and trailing
+ * twice. No points table, which is a table this game would have to bake into
+ * the atlas as its own captions to ever show.
+ *
+ * Indexed by *racer slot*, not by unicorn: slot 0 is always the player. The
+ * roster is `lineUp`'s rotation of UNICORNS by PICK, so the unicorn in slot `i`
+ * is `(PICK + i) % FIELD` — which is how the standings find a name row.
+ */
+const TALLY = new Float32Array(FIELD);
+/**
+ * Racer slots, best total first — the standings as they are drawn.
+ *
+ * Worked out once when the race ends rather than per frame: the win screen is
+ * static, and sorting ten things sixty times a second to get the same answer is
+ * work nobody asked for.
+ */
+let STANDINGS = [];
+/**
  * The draw the field takes for this race — see uRoll in physics.shader.ts.
  *
  * Rolled at the flag and held for the whole race, because it decides each AI's
@@ -842,6 +967,17 @@ let ROLL = 0;
  */
 let wasBoost = 0;
 let warpUntil = 0;
+/** Stars in racer zero's pocket, as of the last readback — the HUD's only source. */
+let starsHeld = 0;
+/**
+ * Seconds of star power left on racer zero's clock, as of the last readback.
+ *
+ * Read rather than counted here. The shader owns the clock — it is the thing
+ * that decided to start it, on the frame the fourth star was collected — and a
+ * second countdown on the CPU would drift against it and disagree about when
+ * the HUD should stop saying so.
+ */
+let starLeft = 0;
 /**
  * Earliest wall-clock time the next mistake may be heard.
  *
@@ -935,6 +1071,38 @@ function resetGrid() {
   }
 }
 
+/**
+ * End every racer's star power, now, whoever is holding it.
+ *
+ * **The clock is GPU state, and GPU state outlives the race.** It counts down
+ * inside the physics off `uDt`, and `uDt` is zero unless the game is racing —
+ * so crossing the line mid-run does not finish the run, it *freezes* it. The
+ * word sits there at whatever it held, and every shader that reads it goes on
+ * believing star power is up: the carousel on the select screen drew the whole
+ * roster flashing, because that is exactly what the state said.
+ *
+ * `resetGrid` already zeroes this along with everything else, but it runs on the
+ * way into the grid — which is one screen too late to stop the select screen in
+ * front of it being wrong.
+ *
+ * One word a racer rather than the whole block: this has to be able to run at
+ * the finish, where the bodies are mid-race and must not be teleported back onto
+ * the start line.
+ *
+ * **And one *component* of that word, not all four.** `.z` is the clock and is
+ * what has to stop; `.w` beside it is how much rainbow phase star power has
+ * banked, and that one only ever climbs — zeroing it would snap the road's
+ * gradient back by however far the run had pushed it, right as the player
+ * crosses the line. Hence the `+ 8`: `.z` is the third float of the vec4, two
+ * floats in.
+ */
+function clearStars() {
+  const z = new Float32Array(1);
+  for (let i = 0; i < FIELD; i++) {
+    bmDevice.queue.writeBuffer(STATE, (RACER_BASE + i * RACER_SLOTS + 6) * 16 + 8, z);
+  }
+}
+
 function go(next) {
   // A race always starts from nothing, however it was reached.
   //
@@ -947,6 +1115,34 @@ function go(next) {
   // a way into RACE_STATE, and a race resuming mid-corner should not announce
   // itself as if it were starting.
   if (next === RACE_STATE && SCREEN === FLAG_STATE) flash = 2;
+  // **Crossing the line ends a run, and this is the only place that can say so.**
+  // WIN_STATE is the one way out of a race — a pause goes back to it, and star
+  // power surviving a pause is right — so clearing here covers every exit
+  // without touching the one state that should hold. `starLeft` goes with it:
+  // the readback stops running the moment the racing does, so it would otherwise
+  // keep the CPU's copy of a clock that no longer exists.
+  if (next === WIN_STATE) {
+    clearStars();
+    starLeft = 0;
+    // **The order they were in when the player crossed is the finishing order.**
+    // The race ends on the player's last lap — the field is still driving — so
+    // there is no later moment to ask, and how far each of them has come is
+    // exactly what decides it: laps completed times the lap, plus the distance
+    // round this one.
+    //
+    // Positions are added to the running total, so the standings are over the
+    // series and not over this circuit. A racer's own total is all that is kept;
+    // where they came in each individual race is not something the game ever
+    // shows again.
+    STANDINGS = [...TALLY.keys()].sort(
+      (a, b) => DONE[b] * LAP + ROUND[b] - (DONE[a] * LAP + ROUND[a]),
+    );
+    STANDINGS.forEach((r, i) => (TALLY[r] += i + 1));
+    // And now, sorted by the totals, which is what the leaderboard lists. Ties
+    // fall to whoever finished this race higher, since sort is stable and the
+    // array is already in this circuit's finishing order.
+    STANDINGS.sort((a, b) => TALLY[a] - TALLY[b]);
+  }
   if (next === FLAG_STATE) {
     ROUND.fill(0);
     DONE.fill(0);
@@ -956,6 +1152,11 @@ function go(next) {
   // rewritten on the way into each.
   if (next === SELECT_STATE) showPick();
   if (next === FLAG_STATE) {
+    // Circuit one is a new series, however it was reached — off the title, or
+    // round again from the end of the last one. Cleared on the way *in* rather
+    // than on the way out of the final race, so the last leaderboard is still
+    // standing behind the player while they read it.
+    if (!SELECTED_CIRCUIT) TALLY.fill(0);
     ROLL = Math.random();
     lights = 0;
     rung = 0;
@@ -991,6 +1192,17 @@ const playSelectPrev = shot(UNICORN_SELECT_PREV);
 const playReady = shot(READY_SIGNAL, 2);
 const playBoost = shot(BOOST, 3);
 const playMistake = shot(MISTAKE, 2);
+const playGrab = shot(GRAB, 2);
+/**
+ * Root, major third, fifth, seventy milliseconds apart — the arcade's own
+ * "you got something" and cheaper than a second instrument, since all three are
+ * the one buffer resampled. See `shot`.
+ */
+const powerUp = () => {
+  playGrab();
+  setTimeout(() => playGrab(2, 1.26), 70);
+  setTimeout(() => playGrab(2, 1.5), 140);
+};
 
 // ── The start line ──────────────────────────────────────────────────────────
 // Seconds since the grid appeared, and how many signals have sounded. Three
@@ -1024,8 +1236,7 @@ addEventListener('keydown', (e) => {
   if (SCREEN === SELECT_STATE) {
     // Wrapped both ways, so the roster is a carousel rather than a list with
     // ends to bump into.
-    const step = (e.code === 'ArrowRight' || e.code === 'KeyD' ? 1 : 0) -
-      (e.code === 'ArrowLeft' || e.code === 'KeyA' ? 1 : 0);
+    const step = (e.code === 'ArrowRight' ? 1 : 0) - (e.code === 'ArrowLeft' ? 1 : 0);
     if (step) {
       // The winding moves by one whatever happens; the index wraps. That is what
       // makes the ring turn the short way round the ends.
@@ -1038,7 +1249,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   // Any key at all leaves a pause, not just the one that caused it. Escape to
-  // stop and W to go again is the natural thing to reach for, and it works
+  // stop and up to go again is the natural thing to reach for, and it works
   // because the throttle is read from the held-keys map rather than from this
   // handler — the key that unpauses is already down when the next frame asks.
   if (SCREEN === PAUSE_STATE) {
@@ -1100,6 +1311,7 @@ function syncMusic() {
   PLAYING.start();
   PLAYING_NAME = want;
 }
+
 
 /**
  * Render one song into a buffer that loops seamlessly.
@@ -1430,16 +1642,31 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
    */
   const SUFFIX = 0.64 * TYPE;
 
-  /** The row each unicorn's name landed on. */
-  const NAME_ROW = LINES.length - UNICORNS.length;
-  /** The row of the numeral "1"; the other nine follow it. */
-  const PLACE_ROW = NAME_ROW - 14;
+  // **Every row below is counted back from the names, and the counts are the
+  // block that sits in front of them.** src/text.js ends with, in order: ten
+  // place numerals, four suffixes, the standings' star, the ten centred names
+  // and the ten padded ones. So the names start twenty from the end, and each
+  // constant here is how many rows lie between its own block and them.
+  //
+  // Adding a row anywhere in that tail moves every offset in front of it, and
+  // nothing checks. The mark went in between the suffixes and the names and
+  // pushed the numerals and the suffixes each one row late — which draws as the
+  // place readout counting from two and the standings listing 2 to 10, with the
+  // ordinal off the bottom of its own block. Nothing errors; it just reads wrong.
+  /** The row each unicorn's name landed on, centred — the select screen's. */
+  const NAME_ROW = LINES.length - UNICORNS.length * 2;
+  /** And again, padded to hang off a left edge — the standings' column. */
+  const LIST_ROW = LINES.length - UNICORNS.length;
+  /** The star that marks the player's own row, immediately before the names. */
+  const MARK_ROW = NAME_ROW - 1;
+  /** The row of the numeral "1"; the other nine follow it. Ten, four and one. */
+  const PLACE_ROW = NAME_ROW - 15;
   /** "CIRCUIT 1 / 2" and its siblings, one a circuit, just above the numerals. */
   const CIRCUIT_ROW = PLACE_ROW - CIRCUITS.length;
   /** The countdown's own glyphs: 3, 2, 1, GO!. */
   const COUNT_ROW = 12;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
-  const SUFFIX_ROW = NAME_ROW - 4;
+  const SUFFIX_ROW = NAME_ROW - 5;
   const card = document.createElement('canvas');
   card.width = CARD_W;
   card.height = LINES.length * ROW_H;
@@ -1505,16 +1732,23 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     zwrite: 0,
   });
   bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
-  // Eight is the most any screen asks for, and it is the grid: a place, a
-  // suffix, a lap, a circuit title, a countdown glyph and two instructions —
-  // seven — with the title card still fading over the top of them if a player
-  // went from the title to the grid in under a third of a second. Allocated once and written into every frame rather than rebuilt —
+  // Twenty-seven is the most any screen asks for, and it is the finish: the
+  // standings are a position and a name apiece for ten racers — twenty — plus
+  // the mark on the player's own row, with a heading over them and the way on
+  // under them, and the HUD along the top still drawn behind all of it, which is
+  // four more. Twenty-seven, and the title card would make twenty-eight if a
+  // player could reach the finish inside a third of a second of leaving the
+  // title, which they cannot.
+  //
+  // It was eight when the charge readout was one row of digits, and eleven once
+  // that became a label over a gauge. Each time the symptom was the one below
+  // rather than anything that points at a caption. Allocated once and written into every frame rather than rebuilt —
   // bmAttr creates a fresh GPU buffer each call, which per frame is a leak
   // rather than an upload.
   //
   // Too small is not a slow frame, it is `Float32Array.set` throwing `offset is
   // out of bounds` from inside the render loop, and a black screen.
-  const CAPTIONS = 8;
+  const CAPTIONS = 28;
   const cells = new Float32Array(CAPTIONS * 4);
   bmAttr(text, 1, cells);
   const cellBuf = text.b[1];
@@ -1532,7 +1766,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // sixteen byte block overruns it — the write is rejected and the uniform simply
   // never updates. The symptom was the whole sky frozen at time zero:
   // no drift in the road's palette, and nothing in the console to say so.
-  const tu = new Float32Array(4);
+  // Three, and it has to be exactly three: the block is uTime, uStep and uBase,
+  // and bmUniforms writes this whole array into a buffer sized to the block.
+  // Written wider than the block, every frame's write is rejected outright as
+  // out of range and the shader keeps the zeros it started with — which put
+  // every ring and star on road ring nought, in a lane read out of the road's
+  // own coordinates. Silent, because a rejected write is not an exception.
+  const tu = new Float32Array(3);
   // Gallop, always, for as long as there is a track under the hooves. Written
   // once rather than per frame because nothing on this screen can change it; the
   // select screen will hold 0 the same way. See uRun in unicorn.shader.ts.
@@ -1616,7 +1856,52 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // renewed on every read that finds the clock still up cannot lapse while
       // there is anything left to draw. Past that the pass draws nothing anyway;
       // this only decides whether it is issued at all.
-      if (lit > 1.8) warpUntil = TIME + 0.34;
+      // **Star power's gauge and its clock, both racer zero's alone.** They used
+      // to be read inside the field loop under an `if (i === 0)`, which is a
+      // test run ten times to be true once and put two racer-zero readouts in
+      // among nine racers' lap distances. Out here they sit with the boost
+      // clock, which is the other thing only the player has.
+      //
+      // **On the rise only.** The gauge falls as well as climbs — the fourth
+      // star spends all four — and a chime on the way down would ring for the
+      // wrong thing. The poll is six a second against a pickup that cannot
+      // repeat inside a tenth, so no rise is missed.
+      const nowStars = seen[23];
+      if (nowStars > starsHeld) powerUp();
+      starsHeld = nowStars;
+      // The run's own clock, watched for the same edge, and what both the bang
+      // and the seven-second rush hang off. It cannot be inferred from the
+      // gauge: the gauge goes to ten and back to nought inside one frame of
+      // shader time, and this poll lands six times a second — so the full gauge
+      // that starts a run is very often never seen at all. The clock is up for
+      // seven seconds and cannot be missed.
+      const nowStar = seen[26];
+      // **The pad's whoosh, once, and not a seven-second version of it.** A
+      // sustained whoosh was tried: the same instrument with a held middle,
+      // running the length of the clock. It pulsed — the filter LFO sweeps on a
+      // two-second period, which is one arc across the pad's 1.77 seconds and
+      // three and a half across seven, and what reads as a rush over one arc
+      // reads as a wobble over three. Star power is announced, not narrated;
+      // the flashing and the warp carry the seven seconds.
+      //
+      // The pad's own sound and nothing layered under it. There was a `BLAST`
+      // here — a low detonation spread off the race song's noise track, fifteen
+      // overridden fields of instrument — and it was written for a beam that no
+      // longer exists. Against the whoosh it was doing the same job in the same
+      // half second, and the triad that has already played three notes on the
+      // way to arming is what tells the player they got there.
+      if (nowStar > starLeft) playBoost();
+      starLeft = nowStar;
+      // **The warp is issued for a boost or for a run, and a run is the long
+      // one.** Read straight out of `seen` rather than off `starLeft`, which is
+      // last poll's answer — a sixth of a second of no tunnel at the top of a
+      // run is exactly where it would be noticed, because that is the frame the
+      // player is looking for something to have happened.
+      //
+      // The third of a second of cover is the same on both: the pass only has to
+      // be *issued* while there is anything to draw, and both effects fade
+      // themselves out in the shader off clocks the CPU never has to track.
+      if (lit > 1.8 || nowStar > 0) warpUntil = TIME + 0.34;
       wasBoost = lit;
       let ahead = 0;
       for (let i = 0; i < FIELD; i++) {
@@ -1624,7 +1909,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
         const now = seen[p + 19];
         if (ROUND[i] > LAP * 0.75 && now < LAP * 0.25) DONE[i]++;
         ROUND[i] = now;
-
       }
       const mine = DONE[0] * LAP + ROUND[0];
       for (let i = 1; i < FIELD; i++) {
@@ -1701,11 +1985,18 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       }
       if (rung >= SIGNALS) go(RACE_STATE);
     }
-    step[1] = driving * (held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown'));
-    step[2] = driving * (held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft'));
+    // **Up is the whole of the throttle, and there is no other half.** Down was
+    // a brake, and a brake held past a standstill was a reverse gear nobody
+    // asked for — a lap counter running backwards and a player with no idea they
+    // had done it. There is nothing on this road that slowing down deliberately
+    // solves: lifting off already sheds speed, the rails hold you on the track,
+    // and the corners are taken flat. So the key is gone rather than clamped,
+    // which is one listener's worth of input the physics never has to consider.
+    step[1] = driving * held('ArrowUp');
+    step[2] = driving * (held('ArrowRight') - held('ArrowLeft'));
     step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
-    step[10] = RING_BASE;
+    step[10] = PICK_BASE;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
     step[7] = TIME;
@@ -1717,7 +2008,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // Constant for the whole race — rolled once at the flag. Sent every frame
     // because the block is written whole, not because it changes.
     step[11] = ROLL;
-    step[12] = RING_ROWS;
+    step[12] = SLOT_ROWS;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -1732,7 +2023,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // uniform still describing the previous track. Three assignments a frame is
     // cheaper than remembering to reissue them from the one place that swaps.
     tu[1] = 1 / (PATTERN * 0.4456 * 2);
-    tu[2] = RING_BASE;
+    tu[2] = PICK_BASE;
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
@@ -1845,11 +2136,63 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // tucked against its shoulder, the way karting games have drawn a
       // position since the arcade. It has to be two — a caption is one quad at
       // one half-width, and one quad cannot hold two sizes.
-      // The suffix's y is not the numeral's: they are set so the two *tops*
-      // line up, which takes a different centre for each because a caption's
-      // height follows its half-width.
-      say(PLACE_ROW + place, 0.86, EXTRA_LARGE, 1);
-      say(SUFFIX_ROW + Math.min(place, 3), 0.89, SUFFIX, 1);
+      // **Everything along the top of the screen hangs from one line.** A
+      // caption is placed by its *centre*, and its ink is `tall(half)` either
+      // side of that — so three readouts at three sizes given the same y have
+      // three different tops, which is what the corner used to look like: the
+      // star meter highest, the circuit title a little lower, the place numeral
+      // lower still, none of it deliberate and all of it visible against the
+      // straight edge of the screen just above.
+      //
+      // Hanging them from a top instead makes the size irrelevant to the
+      // placement: subtract each caption's own half-height and every one of them
+      // starts on the same scanline whatever type size it is set in. That is
+      // also why this cannot be four hand-tuned constants — `tall` depends on
+      // the aspect ratio, so the offsets change with the window and only the
+      // relationship survives.
+      //
+      // 0.96 rather than 1: the ink wants a margin off the edge, and this is the
+      // one the place numeral already had.
+      const HUD_TOP = 0.96;
+      // The suffix rides the numeral's shoulder — same top, its own smaller
+      // size — which is what puts the "ST" against the "1" rather than under it.
+      say(PLACE_ROW + place, HUD_TOP - tall(EXTRA_LARGE), EXTRA_LARGE, 1);
+      say(SUFFIX_ROW + Math.min(place, 3), HUD_TOP - tall(SUFFIX), SUFFIX, 1);
+      // Top left, where the lap used to be. Full-width rows for the same
+      // reason it was: only a full-width row's ink reaches the corner.
+      //
+      // **Both LARGE, and that is a position rather than a size.** A caption's
+      // ink starts at the left edge of its own quad, and the quad is as wide as
+      // the half-width — so the smaller of two sizes is also the one further in
+      // from the corner. MEDIUM put the label a third of the way across the
+      // screen, into the circuit title; LARGE puts it in the corner where it
+      // belongs, and thirteen characters still stop short of the title.
+      const starY = HUD_TOP - tall(LARGE);
+      say(18, starY, LARGE, 1);
+      // **The gap is set by the plate, not by the ink.** `tall` measures the
+      // five pixels of ink, but what is actually drawn is the whole seven-pixel
+      // row — the dark plate behind the letters — so two rows stacked by their
+      // ink heights overlap by the two pixels of plate they each carry. That is
+      // exactly what happened: the star cells' black backgrounds ran up into the
+      // bottom of STAR POWER.
+      //
+      // Seven fifths of the ink is the plate, so two of those is the closest the
+      // centres can be with the plates just touching; the extra tenth is the
+      // hairline that keeps them reading as two rows rather than one block.
+      const plate = tall(LARGE) * (7 / 5);
+      // Clamped to the gauge's own length — see CELLS in text.js, which is where
+      // the ten comes from and which generates exactly this many rows.
+      say(19 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
+      // **And while it is running, say so.** The gauge tells you how far along
+      // you are; it does not tell you that the rules have changed for the next
+      // seven seconds. Off the clock rather than off a full gauge, which is the
+      // only thing that works now that the fourth star spends all four in the
+      // same frame — the gauge is never seen full, so a message waiting for it
+      // to be full would never appear.
+      //
+      // Pulsed rather than steady, because it arrives in the middle of a race
+      // and a static line at the bottom of the screen is furniture.
+      if (starLeft > 0 && SCREEN === RACE_STATE) say(17, -0.86, MEDIUM, 0.55 + 0.45 * Math.sin(TIME * 7));
     }
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);
@@ -1875,13 +2218,27 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // Between the two corner readouts rather than over either: thirteen
       // characters at LARGE reach about a quarter of the way out from the
       // middle, and the lap and the place stop at 0.63 and 0.69.
-      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.88, LARGE, 1);
+      //
+      // Hung from the same top line as the star meter and the place numeral, by
+      // the same subtraction, so the three of them start on one scanline. It is
+      // LARGE like the star meter, so the offset is identical — written out
+      // rather than shared, because the two live in different branches and the
+      // constant is one line.
+      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.96 - tall(LARGE), LARGE, 1);
       // Three, two, one — one glyph a signal, and `rung` is already counting
       // them for the sound. Nothing on the first frame, when `rung` is zero:
       // there is a beat of quiet before the first tone, and a "3" hanging there
       // through it would be a countdown that starts early.
       if (rung) say(COUNT_ROW + rung - 1, 0.2, HUGE, 1);
-      say(10, -0.74, MEDIUM, 1);
+      // Two lines again, back on the pair of rows they sat on before a third was
+      // added under them. The star meter in the corner is the only instruction
+      // star power needs: it fills as you collect, which says what stars are for
+      // without a sentence, and the line that spelled it out was telling the
+      // player a rule they were already watching happen.
+      //
+      // -0.9 is the lowest a caption sits anywhere in the game, and the stack
+      // grows upward from it.
+      say(10, -0.76, MEDIUM, 1);
       say(11, -0.9, MEDIUM, 1);
     } else if (SCREEN === RACE_STATE && flash) {
       // Fading over the last second of the two, which is `min(flash, 1)` and
@@ -1890,7 +2247,48 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     } else if (SCREEN === PAUSE_STATE) {
       heading(5, 6);
     } else if (SCREEN === WIN_STATE) {
-      heading(7, SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 16 : 8);
+      // ── The standings ───────────────────────────────────────────────────
+      // Ten rows, one a racer, best total at the top: the position out at the
+      // right where the place readout has always sat, and the name centred.
+      // Two captions a row rather than one, because a row's *text* is baked
+      // into the atlas and a name paired with a number is a pairing that
+      // changes every race — ten names against ten positions is a hundred rows
+      // of atlas to say what two captions say for nothing.
+      //
+      // The numerals are the HUD's own, already padded to end 24 rows' worth
+      // right of centre; the names are a second, padded copy of the roster that
+      // starts the same distance to the left of it. Both edges are set by the
+      // same number, so the block stays square as the window changes.
+      //
+      // **Spaced off `tall` and not off a constant.** A caption's height is its
+      // half-width times the atlas proportions times the aspect ratio, so the
+      // gap that stacks ten rows cleanly at one window size is wrong at the
+      // next.
+      //
+      // `tall` is a *half*-height — every other caller subtracts it from a top
+      // to find a centre — so a row's full plate is twice it, and seven fifths
+      // of that again for the dark bar the letters sit on. The extra tenth is
+      // the hairline that keeps ten of them reading as rows rather than as one
+      // block. Written the same way the star gauge stacks its two rows, and it
+      // is the same 2.1.
+      const pitch = tall(LARGE) * (7 / 5) * 2.1;
+      // Centred as a block: five rows above the middle and five below, with the
+      // heading over them and the way on underneath.
+      for (let i = 0; i < FIELD; i++) {
+        const y = pitch * 4.5 - i * pitch;
+        say(PLACE_ROW + i, y, LARGE, 1);
+        say(LIST_ROW + ((PICK + STANDINGS[i]) % FIELD), y, LARGE, 1);
+        // Slot zero is the player, always — `lineUp` rotates the roster so that
+        // it is, which is why the arrow needs no other bookkeeping than this.
+        if (!STANDINGS[i]) say(MARK_ROW, y, LARGE, 1);
+      }
+      say(7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE, 1);
+      say(
+        SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 16 : 8,
+        0 - pitch * 5.5 - tall(MEDIUM) * 2,
+        MEDIUM,
+        1,
+      );
     }
 
     if (n) {

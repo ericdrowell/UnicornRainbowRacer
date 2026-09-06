@@ -26,7 +26,7 @@
 // The order matters and is the lookup: a character's glyph is at
 // `FONT_SET.indexOf(ch) * 5`. Space is first and blank, so anything unknown
 // landing at -1 is caught by the caller rather than reading off the end.
-const FONT_SET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!:-<>&/';
+const FONT_SET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!:-<>&/*';
 
 const FONT =
   // ␣      A      B      C      D      E      F      G
@@ -65,7 +65,29 @@ const FONT =
   // round once, and the lap counter drew an ampersand while M&M drew a slash.
   // Nothing checks the two strings agree; the glyph is just whatever five digits
   // land at five times the character's index.
-  '11244';
+  '11244' +
+  // *
+  //
+  // Not an asterisk: a star, in the one slot left.
+  //
+  //     .#.
+  //     ###
+  //     .#.
+  //     #.#
+  //
+  // A point on top, arms out across the middle, a waist, and two legs under it.
+  // The waist is what makes it a star rather than a blob: filling that row gives
+  // a solid lump with a notch cut out of the bottom, and the eye reads it as a
+  // brick. Pinching it to one pixel is the whole shape.
+  //
+  // **Four rows in a five-row cell, and the blank is at the bottom.** Every
+  // letter in this font fills all five, so a star centred in the cell would sit
+  // a pixel low against the text beside it and read as having slipped. Aligned
+  // to the top instead, its arms land on the letters' own midline.
+  //
+  // It is a cell of the star meter in the corner, which is the only place it is
+  // used, and it is the same thing that is picked up off the road.
+  '27250';
 
 // ── The captions ────────────────────────────────────────────────────────────
 // Every line the game ever shows, in the order the atlas bakes them.
@@ -127,6 +149,11 @@ const SAYS = [
   // referenced by index: putting it next to the line it replaces would have
   // renumbered the arrows and the countdown under it.
   'PRESS ENTER FOR NEXT RACE',              // 16
+  // Shown while star power is actually running, not as an instruction to press
+  // anything: it engages itself on the fourth star. What the player needs from
+  // the middle of the screen is confirmation that the rules have changed and a
+  // sense of the clock running down, which the pulse it is drawn with gives.
+  'STAR POWER!',                            // 17
 ];
 
 /**
@@ -147,8 +174,56 @@ const SAYS = [
  */
 const WIDE = 43;
 
+/**
+ * How many stars fill the gauge, and therefore how many it takes to set star
+ * power off.
+ *
+ * **Written down once, here, because three places have to agree on it** — this
+ * file draws the cells, game.js clamps the row index it looks up, and
+ * physics.shader.ts both caps the count and tests it. The shader cannot read
+ * this (it compiles on its own), so that end is a literal with a comment
+ * pointing back here; the two on this side are derived.
+ */
+const CELLS = 10;
+/** Nought through full, one row each: stars for what is held, dashes for what is not. */
+const GAUGE = [...Array(CELLS + 1)].map(
+  (_, k) => '*'.repeat(k) + '-'.repeat(CELLS - k),
+);
+
 const LINES = [
   ...SAYS,
+  // The star meter, top left: a label and a CELLS-wide gauge under it. A star is
+  // a tenth of the power rather than a use of its own, so what the corner has to
+  // answer is *how close am I*, and a number answers that worse than a bar does
+  // — you read a bar filling without reading it at all.
+  //
+  // The cells are the star glyph over a dash, not a block in a bracket: what
+  // fills the gauge is what you picked up off the road, so the meter says what
+  // to go and look for. Brackets were tried and the font's angles are the
+  // select screen's arrows — a gauge with two arrowheads on it reads as
+  // something you can press.
+  //
+  // **It empties itself.** The tenth star spends all ten immediately, so this is
+  // only ever seen filling and then snapping back to nothing — there is no
+  // held-at-full state any more, because there is nothing left to hold it for.
+  // One row per state, nought through full, indexed straight off the count — no
+  // digits, and so no ten-row block of them.
+  //
+  // **Here and not in SAYS, for one reason: WIDE.** SAYS is declared above it and
+  // a `const` read before its declaration line has run is a ReferenceError, not
+  // a hoist. Sitting immediately after `...SAYS` these still land at 18 to 29,
+  // which is what game.js indexes them by.
+  //
+  // Padded to the full width for the corner, the same reason the lap caption
+  // that used to live here was: a full-width row's ink starts at the quad's own
+  // left edge, so the leftmost a caption can reach is minus its half-width.
+  'STAR POWER'.padEnd(WIDE),                                                        // 18
+  // Eleven rows for eleven states, nought through full, indexed straight off the
+  // count. Generated rather than written out, so the gauge's length is the one
+  // number `CELLS` and nothing here has to be counted by hand — it was four
+  // cells and the change touched this line and the two thresholds and nothing
+  // else.
+  ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 19-29
   // Which circuit this is, one row each. Built from the roster of seeds rather
   // than written out, so adding a track adds its own caption — and the "/ 2"
   // on every one of them corrects itself, which a hand-written list would not.
@@ -182,5 +257,37 @@ const LINES = [
   ...['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].map((n) => n.padStart(24)),
   // Four suffixes, not ten: first, second, third, and then everything else.
   ...['ST', 'ND', 'RD', 'TH'].map((x) => x.padStart(WIDE)),
+  // **"You are here", for the standings.** Drawn on the player's row and no
+  // other, because ten unicorns down a list are ten names a player has no reason
+  // to have memorised — they picked one off a carousel three races ago and what
+  // they want to know now is which line is theirs.
+  //
+  // A star, and the same star that fills the gauge and sits on the road. It was
+  // an arrow, and an arrow is a direction: this font's `<` and `>` are the
+  // select screen's own controls, so a caret against a name reads as something
+  // to press. A star reads as a mark, and it is already the glyph this game uses
+  // to mean the player's business.
+  //
+  // A caption of its own rather than a second copy of the roster with the mark
+  // baked on: that would be ten more rows to say one thing, and the one thing
+  // does not depend on which unicorn it points at.
+  //
+  // 27 against the names' 24. A padEnd puts a row's left edge `N * half / 43`
+  // from the middle, so three more cells of padding sets it three cells further
+  // out — one for the mark itself and two of gap, which is what keeps its plate
+  // from merging into the name's and reading as one word.
+  '*'.padEnd(27),
   ...UNICORNS.map((u) => u.name.toUpperCase()),
+  // The same names again, padded, and the padding is the alignment: a row is
+  // centred in the atlas, so a name on its own comes out centred — which is what
+  // the select screen wants and what a column of ten does not. A column wants an
+  // edge to hang from.
+  //
+  // **24, which is the position numerals' own padding read the other way.** A
+  // row padded to N lands its near edge at `N * half / 43` from the middle —
+  // left for a padEnd, right for a padStart — so padding both to the same number
+  // puts the names' left edge and the rankings' right edge the same distance
+  // either side of centre, and the standings sit as one balanced block whatever
+  // the window.
+  ...UNICORNS.map((u) => u.name.toUpperCase().padEnd(24)),
 ];

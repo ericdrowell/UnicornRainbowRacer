@@ -185,7 +185,7 @@ export const Physics = shader({
      * every one below it.
      */
     uRoll: 'float',
-    /** Tile rows to a ring slot — see RING_ROWS in game.js. */
+    /** Tile rows to a pickup slot — see SLOT_ROWS in game.js. */
     uRows: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
@@ -215,7 +215,7 @@ export const Physics = shader({
     // fills.
     const FIELD = 10;
     const RACER = 16;
-    const SLOTS = 6;
+    const SLOTS = 7;
 
     /**
      * **Top speed on the throttle, before any handicap.** Metres a second.
@@ -264,7 +264,7 @@ export const Physics = shader({
     let pos = s0.xyz;
     let speed = s1.w;
     let gait = s2.w;
-    let vy = s0.w;
+    const wasRing = s0.w;
     // Where it is going and where it is pointing, as world directions. Two
     // whole slots because they are vectors now rather than angles off the
     // track — see the steering below for why that had to change.
@@ -277,9 +277,28 @@ export const Physics = shader({
     // state is wrong, after a fall or a respawn has moved the body somewhere
     // the previous ring says nothing about. A couple of hundred distance tests
     // in a single invocation is not the expensive part of this frame.
+    // **Near where it was last frame, and nowhere else.** This used to scan
+    // every ring on the track and take the closest in three dimensions, which is
+    // right only while the road never passes near itself. Circuit two crosses
+    // over — and on the deck above, a ring on the deck below can be the nearer
+    // one. The moment it was, the body's idea of "the road" moved to the lower
+    // segment, the floor came with it, and the unicorn dropped onto the road
+    // underneath. Nothing was broken by it; the search was simply answering a
+    // question that has two right answers and picking by distance.
+    //
+    // Continuity is the missing constraint: a body sixty metres up cannot have
+    // arrived on a segment it was not on last frame. So the ring it found last
+    // time rides in `.w` of the word its position goes into, and the search
+    // starts there and looks eight either way. Sixteen rings is 32 metres of
+    // road against the six a frame can cover at twice top speed with `dt`
+    // clamped — five times the worst case, and the overpass is hundreds of rings
+    // away in lap distance however close it is in space.
+    //
+    // It is also seventeen reads a racer instead of one per ring.
     let nearest = 0;
     let nearestD = 1000000;
-    for (let i = 0; i < uRings; i += 1) {
+    for (let k = 0; k < 17; k += 1) {
+      const i = mod(wasRing + k + uRings - 8, uRings);
       const c = storageRead(uTrack, i * 3);
       const d = length(c.xyz.sub(pos));
       if (d < nearestD) {
@@ -288,23 +307,6 @@ export const Physics = shader({
       }
     }
 
-    // The surface, interpolated along the segment the body is actually in
-    // rather than taken from the nearest ring.
-    //
-    // **This is what stops the ride juddering.** Snapped to a ring, the floor is
-    // a plane that changes every time the nearest ring does — twelve times a
-    // second at speed — and consecutive planes differ by up to 2.6 degrees of
-    // camber. Camber pivots about the centreline, so the height that step moves
-    // you by grows with your distance from it: out by half a road width it is a
-    // pop of a quarter of a metre, at frame rate, and the camera is bolted to
-    // the body that is popping. Interpolating makes the floor continuous, so
-    // there is no boundary left to cross.
-    //
-    // Which segment: `nearest` is the closest ring, and the body is on one side
-    // of it or the other. Projecting onto the chord ahead says which, and picks
-    // the pair either side of it. Chosen with mix rather than a branch, and
-    // `b = a + 1` is always in range because the CPU repeats ring zero at the
-    // end of the buffer.
     const here = storageRead(uTrack, nearest * 3);
     const ahead = storageRead(uTrack, nearest * 3 + 3);
     const forward = step(0, dot(pos.sub(here.xyz), ahead.xyz.sub(here.xyz)));
@@ -383,23 +385,141 @@ export const Physics = shader({
     // Rows before the first ring fall into slot -1 and are clamped to 0, whose
     // lane the table always sets to "none" — so the clamp cannot invent a ring
     // at the start line.
-    const bSeat = bRow - 31;
+    //
+    // The same clamp protects the stars below, for the same reason: ORB_LANE is
+    // filled with "none" and the first run is placed four slots in, so a row
+    // before the first star clamps to a slot that has none.
+    const bSeat = bRow - 7;
     const bSlot = max(floor(bSeat / uRows), 0);
-    const bPick = storageRead(uTrack, uBase + bSlot).x;
+    // **The whole of what this slot holds, in one read.** `.x` is the lane, 3
+    // for nothing; `.y` is the type, 0 a ring and 1 a star; `.z` is when the
+    // star in it was collected, nought until it was. Rings and stars were two
+    // tables with two seats and two hitboxes, and everything below this line was
+    // written twice — for two objects that are both "a thing on a piece of road
+    // in one of three lanes". They are one thing now, and this is the read.
+    const rec = storageRead(uTrack, uBase + bSlot);
     // Three rows long, about seven metres — a bit over two body lengths, which
-    // is short enough to be missed and long enough to be aimed at.
-    // Three rows of road, and which third of it you are in. A ring is a box and
-    // missing one is the box either side of it — both are answered by where the
-    // body is, this frame, and neither needs to remember anything.
+    // is short enough to be missed and long enough to be aimed at. A pickup is a
+    // box and missing one is the box either side of it — both are answered by
+    // where the body is, this frame, and neither needs to remember anything.
     const band = 1 - step(3, bSeat - bSlot * uRows);
-    const onLane = step(
-      abs(floor((dot(pos.sub(centre.xyz), sideT) / uWidth + 0.5) * 3) - bPick),
-      0.5,
-    );
-    const bOn = onLane * band;
-    // A slot with no ring reads 3, which no lane ever equals — so `onLane` is
-    // already 0 there and this is the only term that needs to say so.
-    const bMiss = (1 - onLane) * (1 - step(2.5, bPick)) * band;
+    // Which third of the road the body is in, against which third the pickup is
+    // in. One question, asked once, for both kinds.
+    const mySide = floor((dot(pos.sub(centre.xyz), sideT) / uWidth + 0.5) * 3);
+    const onLane = step(abs(mySide - rec.x), 0.5);
+    // Touched *something*. What it was is one multiply away.
+    const got = onLane * band;
+    const isStar = rec.y;
+    const bOn = got * (1 - isStar);
+    // A slot with nothing in it reads lane 3, which no lane ever equals — so
+    // `onLane` is already 0 there. The type gate is what stops driving past a
+    // star ringing the bell for a ring you never missed.
+    const bMiss = (1 - onLane) * (1 - step(2.5, rec.x)) * band * (1 - isStar);
+
+    // ── Stars ──────────────────────────────────────────────────────────────
+    // **Slot 6 holds everything star-shaped, and it is read once here.** `.x` is
+    // the slot last collected, `.z` the run's clock, `.w` the rainbow phase it
+    // has banked.
+    const prev = storageRead(uState, mine + 6);
+    // The boost word, read here rather than at the pad below because `.w` of it
+    // is the gauge and the gauge is needed now. One read serves both.
+    const was = storageRead(uState, mine + 5);
+    const onStar =
+      got *
+      isStar *
+      // **A pickup counts once, and twice over.** `prev.x` is the slot last
+      // collected, so the three frames a body spends inside the band bank one;
+      // `.z` of the slot's own row is the time it was taken, so a star driven
+      // over, left, and come back to on the next lap stays taken. The first
+      // alone was not enough once a collected star started vanishing — it would
+      // have been a pickup off a piece of empty road.
+      step(0.5, abs(bSlot - prev.x)) *
+      (1 - step(0.001, rec.z)) *
+      // **The player's alone.** The field went on collecting after star power
+      // became the player's, which made nine unicorns who each wanted four
+      // compete for stars they could never spend — they stripped the road ahead
+      // and the player arrived at empty slots. Collecting something you cannot
+      // use is not a strategy, it is a denial, and it was invisible: the star
+      // simply was not there.
+      player *
+      uGo;
+    // **Ten, and ten is a full gauge.** `was.w` is a charge meter rather than a
+    // count: a star is a tenth of it, and an eleventh star on a full gauge is
+    // simply nothing. `min` rather than a wrap, so running over one at 100% does
+    // not empty you.
+    //
+    // The ten is `CELLS` in src/text.js, which is where it is written down and
+    // which generates the gauge's rows from it. It is a literal here because a
+    // shader compiles on its own and cannot read that file — so if it moves,
+    // this and the test below move with it.
+    const stars = min(was.w + onStar, 10);
+
+    // ── Star power ─────────────────────────────────────────────────────────
+    // **Seven seconds of being the hazard instead of avoiding it.** The clock
+    // is one word — .z of slot 6, counting down — and everything the state does
+    // is read off it: twice the speed here, the flashing in unicorn.shader.ts,
+    // the warp streaks in sky.shader.ts, and the free contact in the collision
+    // loop below. Dead is .z at zero, which is also how it starts, so nothing
+    // needs initialising.
+    //
+    // **It arms itself, and that is the whole of the interaction.** There was a
+    // button once — a full gauge lit a prompt and the player pressed space to
+    // let a beam off — and a power-up you have to remember to spend is a power-
+    // up that sits unspent while the player drives. Collecting the fourth star
+    // *is* using it, so the gauge is a countdown to something happening rather
+    // than a resource to manage, and the road ahead is the only thing to think
+    // about.
+    //
+    // `1 - alive` is not redundant even though the gauge empties on the same
+    // frame: `stars` here is this frame's count, and without the gate a star
+    // collected on the last frame of a run would re-arm it from a gauge that is
+    // about to be zeroed anyway.
+    //
+    // 9.5 rather than 10 for the same reason every threshold in this file is
+    // half a step short of the integer it means: `stars` is a float that has been
+    // through a `min` and an add, and testing it against its own exact value is
+    // asking whether two floats are equal.
+    const alive = step(0.001, prev.z);
+    const engage = step(9.5, stars) * (1 - alive) * player * uGo;
+    const starClock = mix(max(prev.z - dt, 0), 7, engage);
+    const starGo = step(0.001, starClock);
+    // **`.w` is how long this racer has spent starred, ever, and it only goes
+    // up.** The road's rainbow flows at a phase of `uTime * 12` and star power
+    // doubles that — but a *rate* cannot be doubled in a shader that computes
+    // phase as rate times time, because the phase jumps the instant the rate
+    // does, and a rainbow that jumps reads as a dropped frame rather than as a
+    // surge. So the extra speed is delivered as extra *phase*: this word is the
+    // integral of the second twelve panels a second, added on in the track and
+    // unicorn shaders.
+    //
+    // Accumulated rather than derived from the clock. `7 - clock` would have
+    // done the same job for one run and then snapped back by seven seconds'
+    // worth of phase at the start of the next one, and there are three runs in a
+    // gauge-and-a-half of stars. This only ever increases, so there is no
+    // moment anywhere that it steps.
+    const starNow = vec4(mix(prev.x, bSlot, onStar), 0, starClock, prev.w + dt * starGo);
+    storageWrite(uState, mine + 6, starNow);
+    // **The moment of collection, written back onto the star itself.** A taken
+    // star spins up and vanishes rather than simply being gone on the next
+    // frame, and the only thing that can drive that is the star knowing when it
+    // was touched — so the time goes into the spare `.z` of its own row in the
+    // pickup table, which the track shader is already reading `.x` and `.y` out
+    // of. Nought means never taken, and `uTime` is never nought once a race is
+    // running, so the sentinel costs nothing.
+    //
+    // **Guarded, and it has to be.** This is the one write in this shader that
+    // is not to a word the invocation owns: ten racers share the lane table.
+    // `onStar` already carries `player`, so exactly one invocation on exactly
+    // one frame reaches this — without the guard, the other nine would read the
+    // row and write it straight back every frame, and the player's timestamp
+    // would last until whichever invocation happened to run last that frame
+    // undid it.
+    //
+    // The row is already in hand from the hitbox above, so this is a write and
+    // not a read and a write.
+    if (onStar > 0.5) {
+      storageWrite(uTrack, uBase + bSlot, vec4(rec.x, rec.y, uTime, rec.w));
+    }
 
     // ── The driver ─────────────────────────────────────────────────────────
     // For racer zero this is the keyboard. For the other nine it is this, and it
@@ -436,19 +556,26 @@ export const Physics = shader({
     // about is something only the player is playing. Steering for them is what
     // makes the ring in front of you a thing worth reaching first.
     //
-    // The *next* one, in the slot after this racer's: a ring sits at the front
-    // of its slot, so the one in the current slot is already behind. There is a
-    // long way to line up — better than two hundred metres between rings — which
-    // is why nothing here needs to be clever about when to start moving. The
-    // steering below is a proportional chase on an aim point; handing it a lane
-    // is the whole of it.
+    // The next *ring*, which on a grid this fine is not the next slot. Rings
+    // sit on every fourth one — see RING_EVERY in game.js — so rounding this
+    // slot down to a multiple of four and stepping on by four lands on the ring
+    // ahead however far into the group of four the racer happens to be. The
+    // three slots it skips are where a run of stars goes, and the field cannot
+    // collect those: steering nine racers toward a pickup they cannot take is a
+    // swerve with nothing on the end of it.
+    //
+    // There is a long way to line up — better than two hundred metres between
+    // rings — which is why nothing here needs to be clever about when to start
+    // moving. The steering below is a proportional chase on an aim point;
+    // handing it a lane is the whole of it.
     //
     // Their own wander survives at a third of its width, kept rather than
     // dropped so nine racers converging on the same nine-metre ring arrive
     // spread across it instead of stacked on its centre line, shunting each
     // other out of a boost they all earned.
     const wander = (fract(roll * 7.7) - 0.5) * uWidth * 0.55;
-    const next = storageRead(uTrack, uBase + bSlot + 1).x;
+    const next = storageRead(uTrack, uBase + (floor(bSlot * 0.25) + 1) * 4).x;
+    // The ring, or the wander.
     const lane = mix(
       wander,
       (next - 1) * uWidth * 0.3333 + wander * 0.3,
@@ -490,7 +617,6 @@ export const Physics = shader({
     // the grid on its own. `uGo` on the arming rather than on the pin, so a
     // countdown spent standing on one does not bank three seconds of boost to
     // spend the moment it drops.
-    const was = storageRead(uState, mine + 5);
     const boost = max(was.x - dt, bOn * 3 * uGo);
     const bGo = step(0.001, boost);
 
@@ -569,11 +695,32 @@ export const Physics = shader({
 
     // Steering rotates the nose about the road's normal. Scaled by speed,
     // because a kart that pivots on the spot reads as a bug.
-    const grip = min(abs(speed) / 7, 1);
+    const grip = min(speed / 7, 1);
     const turn = steer * dt * 2.6 * grip;
     headingDir = normalize(
       headingDir.scale(cos(turn)).add(cross(headingDir, upT).scale(sin(turn))),
     );
+    // **And it can never come round past the road.** The rotation above is free
+    // — a held steer integrates without limit — so a player who leant on one
+    // arrow for two seconds turned all the way round and set off the wrong way
+    // down the track, with the lap counter, the AI's aim and the camera all
+    // still believing in the direction they were built for. Nothing caught it,
+    // because nothing was watching for it.
+    //
+    // The fix is a wall rather than a correction: the heading's component along
+    // the road's own forward is held at or above 0.34, so a turn that would take
+    // it past about seventy degrees slides along the limit instead of through
+    // it. `min(·, 0)` makes the whole term vanish for any heading already inside
+    // the wall, which is every heading anybody drives with — you have to be
+    // trying to feel this at all.
+    //
+    // Seventy and not ninety: at ninety the unicorn is broadside with the road
+    // going past its flank and the nose is a coin toss away from the wrong side.
+    // Seventy is far more than a corner ever asks for and still plainly forward.
+    //
+    // A wall on the *drawn* heading, not on the steering, so the input stays
+    // exactly as responsive as it was up to the point it stops.
+    headingDir = normalize(headingDir.sub(fwdT.scale(min(dot(headingDir, fwdT) - 0.34, 0))));
 
     // Momentum. The direction of travel swings toward the nose at a finite rate
     // rather than snapping to it, so turning the body does not turn the
@@ -596,9 +743,9 @@ export const Physics = shader({
     // is raised to match, so the handling moved and the look did not.
     courseDir = normalize(mix(courseDir, headingDir, 1 - exp(0 - 5 * dt)));
 
-    // Braking bites harder than the throttle pushes, and lifting off is neither
-    // — coasting is its own, gentler decay. Quadratic drag on top is what sets
-    // the top speed, so there is no separate clamp pretending to be physics.
+    // Lifting off is not braking, it is its own gentler decay. Quadratic drag on
+    // top is what sets the top speed, so there is no separate clamp pretending
+    // to be physics.
     //
     // Top speed is where the throttle and the drag cancel, at sqrt(accel/drag),
     // so these two are not independent knobs — 7.5 against 0.0025 settles at
@@ -611,19 +758,15 @@ export const Physics = shader({
     // to reach it, which is exactly the split asked for. About sixteen seconds
     // now, against eight.
     //
-    // Braking is left at 30 and so is now four times the throttle rather than
-    // twice it. That is deliberate — an arcade racer wants to be able to stop —
-    // but it is a ratio worth knowing has changed.
-    //
-    // The clamp is a backstop well clear of top speed, not the thing setting
-    // it. The reverse end is doing real work though: backing up is drag-free at
-    // these speeds, so -7 is the only reason it stops.
-    // The same for everyone, and it has to be: thrust is what a racer feels off
-    // the line, and an AI given more of it than the player leaves the grid like
-    // a different class of vehicle.
-    const rate = mix(30, 7.5, step(0, throttle));
+    // **One rate, where there were two.** It was `mix(30, 7.5, step(0, throttle))`
+    // — thirty for a brake and seven and a half for the throttle — and with the
+    // brake key gone there is nothing on this road that can make `throttle`
+    // negative: the player's is `held('ArrowUp')`, nought or one, and the AI's
+    // is a smoothstep between 0.1 and 1. The test could only ever answer one
+    // way.
+    const rate = 7.5;
     speed = speed + throttle * rate * dt;
-    speed = speed - speed * (1 - step(0.5, abs(throttle))) * dt * 0.9;
+    speed = speed - speed * (1 - step(0.5, throttle)) * dt * 0.9;
     // **One drag term for the whole field, so acceleration and deceleration are
     // the same for everyone and only the cap differs.**
     //
@@ -639,7 +782,7 @@ export const Physics = shader({
     // where a rival's throttle eases off. Read backwards out of the balance — a
     // racer settles at `sqrt(rate / c)` — so `c` is the number that puts the
     // player exactly at `TOP_SPEED`, with no cap of their own to do it.
-    speed = speed - speed * abs(speed) * dt * (7.5 / (TOP_SPEED * TOP_SPEED));
+    speed = speed - speed * speed * dt * (7.5 / (TOP_SPEED * TOP_SPEED));
     // A backstop well clear of anything the throttle can reach, not the thing
     // setting the top speed — see the ease above.
     // Ninety rather than sixty, and it is still a backstop rather than the thing
@@ -647,7 +790,18 @@ export const Physics = shader({
     // instead of the driven one. It matters most in the seconds *after* a boost:
     // a ceiling of 60 would snap a racer coming off a pad straight down to it,
     // and the whole point of the pad is that it lets go gradually.
-    speed = clamp(speed, -7, TOP_SPEED * 1.5);
+    // Twice `TOP_SPEED` now rather than half again: star power pins higher than
+    // a boost pad does, and a backstop below the thing it is backstopping is
+    // not a backstop, it is a governor that silently caps the power-up.
+    //
+    // **Nought at the bottom, where it used to be -7.** The brake is a brake and
+    // not a reverse gear: held past a standstill it used to carry a racer
+    // backwards at seven metres a second, which is a lap counter running the
+    // wrong way and a player who has no idea they asked for it. There is nothing
+    // on this road that reversing solves — the rails hold you on it and a spin
+    // has been impossible since the heading gained its wall — so the gear can
+    // go. Braking now decelerates to a stop and holds there.
+    speed = clamp(speed, 0, TOP_SPEED * 2);
 
     // ── The boost, as a held speed ─────────────────────────────────────────
     // **A pad sets the speed rather than adding to it, and then holds it there.**
@@ -664,7 +818,13 @@ export const Physics = shader({
     // It overrides the throttle, braking included. That is what a boost pad is:
     // you drove onto it, and for three seconds the road is deciding.
     speed = mix(speed, TOP_SPEED * 1.5, bGo);
-
+    // **And star power pins higher still, after the pad rather than before it.**
+    // Both are held speeds and both override the throttle, so whichever is
+    // written last is the one that counts — and taking a boost pad while starred
+    // should not slow you down to 90. Twice the sixty this road tops out at, for
+    // the whole seven seconds, which is the "twice as fast" half of the power-up
+    // and the reason the ceiling above had to move.
+    speed = mix(speed, TOP_SPEED * 2, starGo);
     // Both flattened back into the road's surface. This is the one thing the
     // track is still allowed to do to the unicorn's direction, and it is not
     // steering: it tips the direction up and down to follow a climb or a
@@ -751,11 +911,16 @@ export const Physics = shader({
       pos = pos.add(line.scale(hit * (1 - gap) * 0.9));
       const nose = abs(dot(line, courseDir));
       const theirs = storageRead(uState, RACER + j * SLOTS + 1).w;
+      // **Star power costs nothing to spend.** A starred unicorn ploughs
+      // through the field rather than bouncing off it: the bodies still
+      // separate, but the speed trade and the mistake bell are both called off.
+      // Being billed for the power-up is not the power-up.
+      const free = starGo;
       // Not the whole way to the average in one frame: contact lasts while the
       // two are still overlapping, so a firm shunt applies this several times
       // over and arrives at the average anyway. Going all the way immediately
       // makes a light touch feel like hitting a wall.
-      speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5);
+      speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5 * (1 - free));
       // **On `nose`, not on `hit` — the cue follows the speed loss, not the
       // contact.** The line above already says a side swipe costs nothing: at
       // nose 0 the mix weight is 0 and the two racers part with the speeds they
@@ -768,7 +933,7 @@ export const Physics = shader({
       // is a scrape down the flank. A hard step rather than scaling the cue's
       // volume, because this drives a clock the CPU only samples six times a
       // second — it either happened or it did not by the time anyone reads it.
-      knock = max(knock, hit * step(0.5, nose));
+      knock = max(knock, hit * step(0.5, nose) * (1 - free));
     }
 
     // What gets *drawn*, and deliberately past even the nose. The gap between
@@ -788,33 +953,6 @@ export const Physics = shader({
     // nose and course agree, where it is exactly one unit long.
     const dir = normalize(courseDir.add(headingDir.sub(courseDir).scale(2.7)));
 
-    // ── Gravity ────────────────────────────────────────────────────────────
-    // Into the road, always, and harder where the road is steep.
-    //
-    // Down-the-normal rather than world-down is not new and was never about
-    // loops: a body resting on a camber under world gravity slides, which then
-    // needs friction invented to stop it, and into-the-surface costs one vector
-    // and no friction at all. What it means on a loop is that it already holds a
-    // unicorn to a road that has gone past vertical — the pull follows the
-    // surface round, so there is no orientation at which it stops pressing.
-    //
-    // **What is new is the second term, and it is there because holding on is
-    // not the same as holding on hard enough.** A real loop is survived on
-    // speed: too slow at the crown and you leave the track. There is no speed
-    // term here and there should not be one — falling out of a loop because you
-    // lifted off is a simulation answer to an arcade question — so instead the
-    // pull ramps up where the road is steep enough for it to matter.
-    //
-    // `tilt` is the road's own up against the world's, so it is 1 on the flat,
-    // 0 on a wall and -1 upside down. Nothing changes until 45 degrees off
-    // level, which is past every camber the circuit builds — the ceiling is 0.55
-    // radians, about 31 — so ordinary corners feel exactly as they did. Past 45
-    // it climbs to two and a half times, and by the time the road is properly
-    // inverted a unicorn is stuck to it whatever it is doing.
-    const tilt = dot(upT, vec3(0, 1, 0));
-    const steep = 1 - smoothstep(0.35, 0.707, tilt);
-    vy = vy - 30 * (1 + 1.5 * steep) * dt;
-    pos = pos.add(upT.scale(vy * dt));
 
     // ── The rails hold ────────────────────────────────────────────────────
     // **You cannot leave the road sideways, and touching the edge costs you
@@ -883,32 +1021,31 @@ export const Physics = shader({
 
     // Height above the surface. There is no "is there surface here" test any
     // more: the clamp above guarantees there is.
-    const high = dot(pos.sub(centre.xyz), upT);
-    const landed = step(high, 0);
-    pos = pos.add(upT.scale((0 - high) * landed));
-    // Landing zeroes the fall; not landed leaves vy alone, so gravity keeps
-    // accumulating. This is where jump used to live — the whole move was this one
-    // line launching instead of clamping when the key went down on the same frame.
+    // ── On the road, and only on the road ──────────────────────────────────
+    // **The body is placed on the surface rather than pulled towards it.** There
+    // was a whole vertical simulation here: a fall speed integrated against
+    // gravity down the road's own normal, a landing test that caught the body
+    // when it reached the surface and zeroed the fall, and a fifty-metre
+    // backstop that teleported anything plainly lost back to the start line.
     //
-    // Gravity and the clamp stay. They are not jump machinery: they are what
-    // holds the unicorn against a road that climbs, banks and drops away.
-    vy = vy * (1 - landed);
-
-    // Far enough under the road to have plainly lost it: back to the start.
-    // Unreachable by the sideways route now that the rails hold, and kept as
-    // what it always also was — a backstop for a body that ends up somewhere the
-    // nearest-ring search cannot explain.
-    const lost = step(high, -50);
-    const home = storageRead(uTrack, 0);
-    pos = mix(pos, home.xyz, lost);
-    speed = speed * (1 - lost);
-    vy = vy * (1 - lost);
-    // Pointed back down the start straight, using ring zero's own tangent
-    // rather than the one under the body — which is wherever it fell off, and
-    // no longer has anything to do with where it is being put back.
-    const homeDir = normalize(storageRead(uTrack, 1).xyz);
-    courseDir = normalize(mix(courseDir, homeDir, lost));
-    headingDir = normalize(mix(headingDir, homeDir, lost));
+    // All of it existed to serve a state the game does not have. Nothing jumps,
+    // nothing is launched, there is no ramp and no lip — the road is a ribbon
+    // and a unicorn runs along it. The airborne case was only ever reached
+    // transiently, cresting a rise where the surface dropped away faster than
+    // gravity brought the body down, and what it bought for those few frames was
+    // a hover of a few centimetres nobody could see. What it cost was a float of
+    // state, an integration, two thresholds, a recovery path, and a way for a
+    // body to be somewhere the road is not.
+    //
+    // One projection instead: take the body's height above its segment's plane
+    // and subtract it. The lateral offset is untouched, because it is along
+    // `sideT` and this only moves along `upT` — the rails above have already
+    // said which lane it is in, and this says nothing about that.
+    //
+    // It works on a banked road and through a loop for the same reason gravity
+    // did: `upT` is the road's own up, carried round with the surface, so there
+    // is no orientation at which this stops meaning "stand on it".
+    pos = pos.sub(upT.scale(dot(pos.sub(centre.xyz), upT)));
 
     // Legs driven by distance covered rather than by the clock, at 0.6 rad per
     // unit travelled, so the gait keeps pace with the unicorn — but only once it
@@ -948,14 +1085,13 @@ export const Physics = shader({
     // rad/s afterwards: the 20 is the number that gets tuned by watching the
     // legs, so it is worth being the number that is written down.
     //
-    // Doubled in reverse — the animation, not the travel. At 0.6 per unit a
-    // backward amble tops out around 4.2 rad/s, which against the speed the road
-    // is actually going past reads as a unicorn gliding rearwards with its legs
-    // barely bothering. Twice that is a proper backwards scurry, and it costs the
-    // physics nothing because `speed` is untouched: the body still backs off at
-    // the same rate, the legs just work harder at it.
-    const churn = max(abs(speed) * 0.6, 20 * smoothstep(0, 2, speed)) * (1 + step(speed, -0.001));
-    gait = gait + sign(speed) * churn * dt;
+    // It doubled below nought once, so a unicorn backing up scurried rather than
+    // gliding rearwards with its legs barely bothering. `speed` cannot go below
+    // nought any more — the brake is gone and the clamp floors it — so the
+    // doubling, the `abs` and the `sign` were all asking about a direction the
+    // body no longer has.
+    const churn = max(speed * 0.6, 20 * smoothstep(0, 2, speed));
+    gait = gait + churn * dt;
 
     // Behind and above the body, along the direction it is *travelling* —
     // `courseDir`, not the nose and not the tangent.
@@ -1042,7 +1178,44 @@ export const Physics = shader({
     //
     // Eased out rather than switched off, because a rattle that stops on a frame
     // reads as a dropped frame.
-    const jolt = smoothstep(2.5, 2.7, boost) * 0.3;
+    // Two things rattle the camera and they share the one term: the first half
+    // second of a boost, and star power coming on. `star.z` starts at 7 and
+    // counts down, so this is the first quarter second of a run — long enough to
+    // land as a kick, short enough not to blur the road you are about to drive
+    // down at twice the speed. The other six and three quarter seconds are
+    // steady, which is what makes the moment it arrives read as an event rather
+    // than as the camera having come loose.
+    //
+    // **The two no longer share an amplitude, and star power's is much the
+    // bigger.** They did share one, at the 0.3 metres a boost pad has always
+    // been worth, and at that size the kick was there but nobody found it: a pad
+    // is a thing that happens *to* you every lap and wants a nudge, while star
+    // power is the rules changing and wants to be felt. 0.75 metres over 0.43
+    // seconds against 0.3 over 0.2 — two and a half times the throw for twice as
+    // long, which reads as a thump rather than a rattle and still settles well
+    // before the first corner arrives at twice the speed.
+    //
+    // **Star power's is two terms, because it has to last and cannot last at
+    // full strength.** A pad is an event and gets one shape: a kick that decays.
+    // A run is a seven-second state, and the shake has to be up for all of it —
+    // but 0.75 metres of throw held for seven seconds while the road goes past
+    // at twice speed is not exciting, it is unreadable, and it is the kind of
+    // thing that makes people put the controller down.
+    //
+    // So: a low rumble held for the whole run, and the big kick laid on top of
+    // it for the first half second. Together they still reach the same 0.75 at
+    // the moment of engaging, and the body of the run sits at 0.18 — enough that
+    // the camera never settles and the player can feel the state continuing,
+    // little enough that the road stays sharp enough to drive.
+    //
+    // The rumble eases out over the last third of a second rather than stopping,
+    // for the same reason the boost's does: a shake that ends on a frame reads as
+    // a dropped frame. And it is nought at a clock of nought, so a racer with no
+    // star power gets nothing from either term.
+    const jolt =
+      smoothstep(2.5, 2.7, boost) * 0.3 +
+      smoothstep(6.55, 6.98, starNow.z) * 0.57 +
+      smoothstep(0, 0.35, starNow.z) * 0.18;
     const chaseEye = pos
       .sub(courseDir.scale(10))
       .add(upT.scale(5.4 + sin(uTime * 61) * jolt))
@@ -1103,7 +1276,7 @@ export const Physics = shader({
     // exactly where it was: the orbit was being computed correctly and then
     // thrown away. There is nothing to smooth here anyway — the flight path is
     // an analytic circle rather than a body being simulated.
-    const settle = mix(1 - exp(0 - 14 * dt), 1, max(max(1 - prevEye.w, lost), uTitle));
+    const settle = mix(1 - exp(0 - 14 * dt), 1, max(1 - prevEye.w, uTitle));
     const eye = mix(prevEye.xyz, wantEye, settle);
     const at = mix(prevAt.xyz, wantAt, settle);
     // The roll is smoothed too, or the camera would still step through the
@@ -1127,7 +1300,9 @@ export const Physics = shader({
     // the ratio of far to near, and this widens it from five thousand to one
     // to nine thousand — but the near plane is the expensive end of that
     // fraction and it has not moved.
-    storageWrite(uState, mine, vec4(pos, vy));
+    // `.w` was the fall speed; it is the ring this racer was found on, which is
+    // where next frame's search starts. See the window at the top.
+    storageWrite(uState, mine, vec4(pos, nearest));
     storageWrite(uState, mine + 1, vec4(dir, speed));
     storageWrite(uState, mine + 2, vec4(upT, gait));
     storageWrite(uState, mine + 3, vec4(courseDir, trackAlong));
@@ -1167,7 +1342,7 @@ export const Physics = shader({
       //
       // .z is last frame's contact, for the edge test above. It costs nothing:
       // the word was being written as a zero either way.
-      vec4(boost * (1 - bang), max(was.y - dt, max(knock, bMiss) * 0.2), knock, 0),
+      vec4(boost * (1 - bang), max(was.y - dt, max(knock, bMiss) * 0.2), knock, stars * (1 - engage)),
     );
 
     // ── And what only the player leaves behind ─────────────────────────────
@@ -1180,7 +1355,7 @@ export const Physics = shader({
       storageWrite(uState, 0, vec4(pos, 0));
       storageWrite(uState, 1, vec4(dir, speed));
       storageWrite(uState, 2, vec4(upT, gait));
-      storageWrite(uState, 3, vec4(sideT, vy));
+      storageWrite(uState, 3, vec4(sideT, 0));
       storageWrite(uState, 4, project(vec4(xAxis.x, yAxis.x, zAxis.x, 0), fx, f, za, zb));
       storageWrite(uState, 5, project(vec4(xAxis.y, yAxis.y, zAxis.y, 0), fx, f, za, zb));
       storageWrite(uState, 6, project(vec4(xAxis.z, yAxis.z, zAxis.z, 0), fx, f, za, zb));

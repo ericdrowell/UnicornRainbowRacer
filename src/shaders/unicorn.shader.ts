@@ -109,17 +109,37 @@ export const Unicorn = shader({
      * would cost a storage fetch on every fragment of every unicorn instead.
      */
     vEye: 'vec3',
+    /**
+     * What is left of this racer's star power, in seconds, straight off the
+     * physics stage's clock — 7 down to 0, and 0 for everyone not holding it.
+     *
+     * A varying rather than a second storage read in the fragment stage, for the
+     * same reason `vEye` is one: the racer index is an instance attribute the
+     * fragment stage cannot see, so the choice is one interpolator or a fetch
+     * per pixel of every unicorn on screen.
+     */
+    vStar: 'float',
   },
 
   vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uScale, uSelect }, v) {
     // This racer's block. The layout mirrors the player's old fixed slots —
     // position, drawn facing with speed, surface normal with gait — so
     // everything below reads exactly as it did when there was only one.
-    const mine = 16 + aRacer * 6;
+    // Seven a racer, and the palette still six — the two strides are different
+    // and always have been. The seventh word is the star one, and this file does
+    // read it: `.z` of it is the clock handed down to the fragment stage as
+    // `vStar`. Written down in game.js as RACER_SLOTS and in physics.shader.ts
+    // as SLOTS, because neither file can read this one.
+    const mine = 16 + aRacer * 7;
     // This racer's colours, written once at start-up and never touched again:
     // hide with the mane's spectrum flag, the three stops the mane runs through,
     // the horn, and the eye.
-    const pal = 80 + aRacer * 6;
+    // 86, and six a racer: the liveries sit clear of the racer blocks, which run
+    // seven each from 16 and end at 86. game.js calls this PALETTE, and the two
+    // numbers have to move together — too low and the last racers' state lands
+    // on the first liveries, which comes out as the wrong colours rather than as
+    // a crash.
+    const pal = 86 + aRacer * 6;
     const aHide = storageRead(uState, pal).xyz;
     const aRainbow = storageRead(uState, pal).w;
     const aManeA = storageRead(uState, pal + 1).xyz;
@@ -316,6 +336,18 @@ export const Unicorn = shader({
     // Multiplied into `grow`, which is the same factor the select screen uses to
     // bring one unicorn up close, so the two compose: the turntable shows a
     // small unicorn as small, which is the point of varying them at all.
+    // **Star power does not change the size, and that is a decision rather than
+    // an omission.** It was drawn at twice and then at one and a half, and both
+    // were wrong for the same reason: the model grows about its own hooves, so a
+    // bigger unicorn is a unicorn whose head has moved — and the chase camera
+    // frames the head. The road appeared to drop away and come back at each end
+    // of a run, which reads as the camera lurching rather than as the player
+    // becoming powerful. The flashing carries it instead.
+    //
+    // The clock still comes through here: the fragment stage does the flashing
+    // and cannot see `aRacer`, so this is the only place that can hand it down.
+    const star = storageRead(uState, mine + 6).z;
+    v.vStar = star;
     const grow = uScale * aHorn.w;
     const world = body.xyz
       .add(facing.xyz.scale(local.x * grow))
@@ -416,7 +448,7 @@ export const Unicorn = shader({
     return c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
   },
 
-  fragment({ uState, uTime, uSelect }, { vNormal, vColor, vFace, vHair, vAlong, vEye }) {
+  fragment({ uState, uTime, uSelect }, { vNormal, vColor, vFace, vHair, vAlong, vEye, vStar }) {
     // ── What used to be here: the pile ────────────────────────────────────
     // A fur texture, and it was the best-value cut in the game at 233 zipped
     // bytes. Two value-noise samples tilted the normal per fragment so the
@@ -467,7 +499,17 @@ export const Unicorn = shader({
     // light flows along the road rather than the palette shifting under it, and a
     // bounce that shifted while the road flowed would drift out of agreement
     // within a second or two of standing still.
-    const flow = floor(vAlong * 0.4456) + uTime * 12;
+    // The star-power term goes here too, and it has to: this is the road's own
+    // flow recomputed to light the model off the panel underneath it, and the
+    // two agreeing is the whole point of repeating the constants. Speeding the
+    // road up without speeding this up would light every unicorn the colour of a
+    // panel some way up the track — the exact failure the note above warns
+    // about, and one that only shows while a run is up.
+    // 48 here too, and the two have to be the same number. The note above is not
+    // decoration: this is the road's field recomputed to light the model, and a
+    // star term that differed between the two would light every unicorn the
+    // colour of a panel some way up the track for seven seconds at a time.
+    const flow = floor(vAlong * 0.4456) + uTime * 12 + storageRead(uState, 22).w * 48;
     const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + 4.3) * 1.6;
     // Over halfway to white, which is much further than the road's own panels go.
     // Bounced light is weak light: at the road's saturation the model came out
@@ -528,9 +570,59 @@ export const Unicorn = shader({
     // a circle drawn on a curved surface does, and is what makes it read as an
     // eye rather than as a sticker facing the camera.
     const pupil = 1 - smoothstep(0.07, 0.078, length(vFace.sub(vec2(0.44, 1.78))));
+    const lit = mix(vColor.mul(bounce.add(key)), vEye, pupil);
+
+    // ── Star power ─────────────────────────────────────────────────────────
+    // **The whole body flashing, which is the one cue that says invulnerable.**
+    // Everything else about the power-up is felt rather than seen — twice the
+    // speed is a thing the road does, twice the size is only obvious next to
+    // somebody — so this is what has to carry it, and it has to be unmistakable
+    // from the chase camera at ninety a second.
+    //
+    // A hue cycling fast enough to strobe rather than to read as a colour: 18
+    // radians a second is a little under three full turns of the palette per
+    // second, which is past the rate the eye tracks as a gradient and lands as
+    // flashing. Slower looked like a rainbow gradient sliding over the coat,
+    // which is what half this game already looks like and therefore says
+    // nothing.
+    //
+    // **It replaces the livery rather than tinting it, and that is deliberate.**
+    // Tinting keeps each unicorn recognisable, which sounds like the right thing
+    // and is not: the point of the flash is that this unicorn is temporarily not
+    // itself. Mixing most of the way over — not all — leaves just enough of the
+    // hide and the mane under it that a player can still tell which one they are
+    // driving, on the select screen and in a crowd.
+    //
+    // Driven past 1 and *added to* the lit colour rather than multiplied into
+    // it, because everything that glows on this road glows by being brighter
+    // than the display can hold. A multiply would darken the coat wherever the
+    // palette is dark, which reads as the unicorn going patchy; adding lifts the
+    // dark phases toward white instead, so the body pulses between hot colour
+    // and blown-out white and never toward black.
+    //
+    // The phase carries `vAlong` so the flash runs *along* the body rather than
+    // strobing it as one flat slab — a slab reads as the screen flickering, a
+    // gradient travelling down the barrel reads as something crawling with
+    // light.
+    const sPhase = uTime * 18 + vAlong * 0.35;
+    const sHue = vec3(
+      0.5 + 0.5 * cos(sPhase),
+      0.5 + 0.5 * cos(sPhase + 2.09),
+      0.5 + 0.5 * cos(sPhase + 4.19),
+    );
+    // Same ramp shape as the size, so the flash arrives and leaves with the body
+    // rather than snapping on around a unicorn that is still growing.
+    const sOn = smoothstep(0, 0.2, vStar) * (1 - smoothstep(6.8, 7, vStar));
+    // **The last second blinks, which is the warning.** A power-up that simply
+    // stops is a power-up the player drives off the end of; the blink is how
+    // every game since the arcade has said *this is about to run out*, and it
+    // costs one term. 9 hertz over the final second, gated so it does nothing
+    // for the first six.
+    const sWarn = 1 - 0.55 * (1 - smoothstep(1, 1.15, vStar)) * (0.5 + 0.5 * sin(vStar * 56));
+    const star = sOn * sWarn;
     // Alpha 1 either way. In the reflection pass this is coverage rather than
     // opacity — the target clears transparent, so solid alpha is what tells the
     // road which pixels the unicorn actually reaches.
-    return vec4(mix(vColor.mul(bounce.add(key)), vEye, pupil), 1);
+    return vec4(mix(lit, sHue.scale(1.35).add(vec3(0.25, 0.25, 0.25)), star * 0.82), 1);
   },
 });

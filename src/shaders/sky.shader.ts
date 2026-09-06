@@ -262,7 +262,23 @@ export const Sky = shader({
     //
     // Taking a second ring re-arms the clock to 3 and this fires again, which is
     // what a chain of rings should look like.
-    const hyper = smoothstep(1.8, 2.5, storageRead(uState, 21).x);
+    //
+    // **Star power drives the same streaks, off its own clock.** Slot 22 is
+    // racer zero's sixth word and `.z` is the seven seconds counting down —
+    // whereas 21 is the boost clock in the slot before it. The two are held
+    // apart by a `max` rather than added: they overlap whenever a starred player
+    // takes a pad, and two full-strength warps summed is one clipped white
+    // screen rather than a brighter tunnel.
+    //
+    // Full for the whole run and eased out over the last six tenths, against the
+    // boost's ease-in from the top of its clock. The difference is deliberate:
+    // a boost is an event that decays, and star power is a state that ends, so
+    // this one wants to be *on* for the duration and to stop rather than to fade
+    // from the moment it starts.
+    const hyper = max(
+      smoothstep(1.8, 2.5, storageRead(uState, 21).x),
+      smoothstep(0, 0.6, storageRead(uState, 22).z),
+    );
     // **The direction is quantised into spokes before it is hashed, and it has
     // to be.** Every pixel along one ray normalises to the same vector, so a
     // hash of that vector is constant down a whole streak — which is what makes

@@ -71,7 +71,7 @@ for (const required of ['dist/brometal.js', 'dist/shaders.js']) {
 // game.js, which is what forced this order.
 //
 // **The synthesiser is ours now.** It used to be the sonantx package, inlined
-// here with its two `export` keywords stripped; src/sonantx-custom.js replaced it
+// here with its two `export` keywords stripped; lib/sonantx-custom.js replaced it
 // and took 473 zipped bytes with it. Same instrument format, same songs, same
 // arithmetic — see the header of that file for what it does differently and for
 // the measured difference in the samples that come out.
@@ -122,15 +122,22 @@ const song = (name) => `const ${name[0]} = ${read('src', 'songs', name[1])};`;
 //   - both songs before soundEffects: an effect names the song it borrows its
 //     instrument from, and that is a const initialiser, not a call.
 //   - everything before game.js, obviously, but nothing else here evaluates
-//     anything — sonantx-custom.js and brometal only declare, so they are free
-//     to sit anywhere the packer likes them.
+//     anything — the synthesiser and brometal only declare, so they are free to
+//     sit anywhere the packer likes them.
+//
+// **src/ is this game; lib/ is the synthesiser.** It is concatenated into the
+// entry and it is not a package — sonantx-custom.js is a rewrite of one — so the
+// split is not src-versus-dependency in the npm sense. It is about what a change
+// to a file means: what is in lib/ implements a format that exists outside this
+// repo, and is the one place where the right move is usually to leave the
+// arithmetic alone.
 const parts = [
   song(['MENU_SONG', 'dizzy-land-beginning.json']),
   song(['RACE_SONG', 'dizzy-beats.json']),
   read('src', 'unicorns.js'),
   // Before game.js, which reads its arrays at module scope to build the mesh.
   read('src', 'unicorn.js'),
-  read('src', 'sonantx-custom.js'),
+  read('lib', 'sonantx-custom.js'),
   read('src', 'circuits.js'),
   read('src', 'text.js'),
   read('dist', 'brometal.js'),
@@ -259,7 +266,8 @@ writeFileSync(join(dist, OUT), page);
 //
 // The source lives in tools/, with the decimator and the mesh converter, because
 // that is what it is: a thing for making the game rather than a part of it.
-// Everything in src/ ends up concatenated into the entry; this never does.
+// Everything in src/ and lib/ ends up concatenated into the entry; this never
+// does.
 //
 // It is a build output all the same, and has to be. The bench needs the
 // synthesiser and both songs, and `import` and `fetch` are both blocked on
@@ -339,7 +347,7 @@ if (!process.env.DEBUG) {
 
 if (!process.env.DEBUG) {
   const deps = [
-    read('src', 'sonantx-custom.js'),
+    read('lib', 'sonantx-custom.js'),
     song(['RACE_SONG', 'dizzy-beats.json']),
     song(['MENU_SONG', 'dizzy-land-beginning.json']),
     read('src', 'soundEffects.js'),
