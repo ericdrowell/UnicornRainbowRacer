@@ -126,7 +126,14 @@ const SYNTH = [
 ];
 const song = (name) => {
   const s = JSON.parse(read('src', 'songs', name[1]));
-  s.songData = s.songData.map((ch) => [...SYNTH.map((k) => ch[k]), ch.p, ch.c]);
+  // Playback computes its duration; patterns need only note arrays. Missing
+  // trailing notes decode as rests, keeping all 32 row positions unchanged.
+  delete s.songLen;
+  s.songData = s.songData.map((ch) => [...SYNTH.map((k) => ch[k]), ch.p, ch.c.map(({ n }) => {
+    n = [...n];
+    while (n.length && !n[n.length - 1]) n.pop();
+    return n;
+  })]);
   return `const ${name[0]} = ${JSON.stringify(s)};`;
 };
 
@@ -228,6 +235,7 @@ const outPath = join(dist, 'g.js');
 run('npx', [
   'terser', rawPath,
   '--compress', 'passes=3', '--mangle', '--toplevel',
+  '--mangle-props', 'regex=/^(rowLen|endPattern|songData|mane|horn|eye)$/',
   '--format', 'comments=false',
   '-o', outPath,
 ]);
@@ -262,11 +270,11 @@ run('npx', [
 // never packs.
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
-  numAbbreviations: 27,
-  recipLearningRate: 1918,
-  modelMaxCount: 3,
-  modelRecipBaseCount: 179,
-  sparseSelectors: [0, 1, 2, 3, 7, 13, 27, 49, 95, 172, 338, 409],
+  numAbbreviations: 10,
+  recipLearningRate: 1632,
+  modelMaxCount: 4,
+  modelRecipBaseCount: 61,
+  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 197, 278, 362, 423],
 };
 
 let script = readFileSync(outPath, 'utf8');

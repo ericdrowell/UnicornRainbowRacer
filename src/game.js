@@ -1467,7 +1467,6 @@ function renderLoop(song, into) {
   );
   song.endPattern = slots - 1;
   const loop = (slots * 32 * 60) / (Math.round(661500 / song.rowLen) * 4);
-  song.songLen = loop * 2;
   const rate = MUSIC.sampleRate;
   const len = Math.round(loop * rate);
   return renderSong(MUSIC, song, len * 2).then((raw) => {
@@ -1549,6 +1548,9 @@ let STATE = null;
 // The four the swap between circuits has to re-point at a new road. Out here
 // rather than inside the setup closure for that reason alone.
 let sim, track, films, rings;
+const programFor = (shader, options = {}) => bmProgram(shader[0], {
+  a: shader[1], i: shader[2], u: shader[3], t: shader[4], s: shader[5], ...options
+});
 
 function uploadTrack() {
   for (const program of [track, films]) {
@@ -1634,14 +1636,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   /** The one instance buffer sits after the five per-vertex ones. */
   const herd = (p) => bmAttr(p, 5, IX);
 
-  const prog = bmProgram(Unicorn[0], {
-    a: Unicorn[1],
-    i: Unicorn[2],
-    u: Unicorn[3],
-    t: Unicorn[4],
-    s: Unicorn[5],
-    cull: 1,
-  });
+  const prog = programFor(Unicorn, { cull: 1 });
   bmAttr(prog, 0, new Float32Array(P));
   bmAttr(prog, 1, new Float32Array(NR));
   bmAttr(prog, 2, new Float32Array(RT));
@@ -1655,15 +1650,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // half a lap of it is above the camera on the climb, so the underside is on
   // screen as often as the top.
   // Opaque geometry draws first; the two-sided films blend over it separately.
-  const trackOptions = {
-    a: Track[1],
-    i: Track[2],
-    u: Track[3],
-    t: Track[4],
-    s: Track[5],
-  };
-  track = bmProgram(Track[0], trackOptions);
-  films = bmProgram(Track[0], { ...trackOptions, blend: 1, zwrite: 0 });
+  track = programFor(Track);
+  films = programFor(Track, { blend: 1, zwrite: 0 });
   uploadTrack();
 
   // The sky. One triangle big enough to cover the screen — the corners run to 3
@@ -1675,19 +1663,18 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // leaves the depth buffer as it found it, and the road and the unicorn then
   // paint over it wherever they are.
   const su = new Float32Array(2);
-  const sky = bmProgram(Sky[0], { a: Sky[1], u: Sky[3], s: Sky[5], zwrite: 0 });
-  bmAttr(sky, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
-  bmIndex(sky, new Uint16Array([0, 1, 2]));
-  bmStorages(sky, STATE);
+  const sky = programFor(Sky, { zwrite: 0 });
 
   // The warp, from the same shader over the same triangle — the pipeline differs
   // in a blend and nothing else does. Drawn last so it lands over the road, and
   // gated on a clock so this second full-screen pass only runs in the second
   // after a ring rather than every frame of every race.
-  const warp = bmProgram(Sky[0], { a: Sky[1], u: Sky[3], s: Sky[5], zwrite: 0, blend: 1 });
-  bmAttr(warp, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
-  bmIndex(warp, new Uint16Array([0, 1, 2]));
-  bmStorages(warp, STATE);
+  const warp = programFor(Sky, { zwrite: 0, blend: 1 });
+  for (const p of [sky, warp]) {
+    bmAttr(p, 0, new Float32Array([-1, -1, 3, -1, -1, 3]));
+    bmIndex(p, new Uint16Array([0, 1, 2]));
+    bmStorages(p, STATE);
+  }
 
   // The captions, baked. Every line the game shows lives in src/text.js; this
   // paints them into the rows of one texture.
@@ -1858,12 +1845,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // The title card. Its own program because it blends — the letters have to sit
   // over the sky rather than punch a hole in it — and because a blend state is
   // baked into a pipeline at creation and cannot be switched on for one draw.
-  const text = bmProgram(Text[0], {
-    a: Text[1], i: Text[2], u: Text[3], t: Text[4], s: Text[5],
-    blend: 1,
-    // No depth: it is an overlay, drawn last, over a finished frame.
-    zwrite: 0,
-  });
+  const text = programFor(Text, { blend: 1, zwrite: 0 });
   bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
   // Twenty-seven is the most any screen asks for, and it is the finish: the
   // standings are a position and a name apiece for ten racers — twenty — plus

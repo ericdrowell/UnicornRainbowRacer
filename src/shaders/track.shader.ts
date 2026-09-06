@@ -112,7 +112,7 @@ export const Track = shader({
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
   storage: { uState: "vec4", uTrack: "vec4" },
-  varyings: { vU: "float", vV: "float", vWorld: "vec3", vClip: "vec4" },
+  varyings: { vU: "float", vV: "float", vWorld: "vec3" },
 
   vertex({ aPos, aEdge }, { uState, uTrack, uTime, uStep, uBase }, v) {
     // ── Boost rings ────────────────────────────────────────────────────────
@@ -470,8 +470,8 @@ export const Track = shader({
     // star needed to know where on a facet a pixel sat and there was no third
     // varying free. A sphere has no facets and wants nothing here.
     // Film coordinates stay attached to the gate and have the same scale on
-    // boost rings and the finish gate. Other surfaces retain world coordinates.
-    v.vWorld = mix(world, vec3(cos(th) * aPos.z, sin(th) * aPos.z, 0), isFilm);
+    // boost rings and the finish gate. Other surfaces do not use these coordinates.
+    v.vWorld = vec3(cos(th) * aPos.z, sin(th) * aPos.z, 0);
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
@@ -488,11 +488,10 @@ export const Track = shader({
       .add(c1.scale(world.y))
       .add(c2.scale(world.z))
       .add(c3);
-    v.vClip = clip;
     return clip;
   },
 
-  fragment({ uTime, uState }, { vU, vV, vWorld, vClip }) {
+  fragment({ uTime, uState }, { vU, vV, vWorld }) {
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
