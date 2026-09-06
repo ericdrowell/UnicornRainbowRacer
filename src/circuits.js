@@ -215,7 +215,26 @@ const circuit = (seed) => {
  * and these three were the spread that came out of it. The generator's two
  * guarantees mean the ones not chosen were boring rather than broken.
  */
-const CIRCUITS = [circuit(20260830), circuit(20261225), circuit(20260902)];
+// **Four seeds, and two of them were chosen by measurement rather than by eye.**
+//
+// A ring hangs 4.5 metres over the middle of its lane, and nothing in the
+// generator knows that the road it is hanging over might pass under another part
+// of itself. Seed 20260902 put four rings inside 25 metres of a distant stretch
+// of track — one of them 14 metres away, close enough to sit half inside the
+// road below it — so it was replaced rather than patched. There is no "that
+// ring" to delete: the placement falls out of the seed, so the seed is the thing
+// to change.
+//
+// 20260522 is the same kind of circuit at the same sort of length, and its
+// closest ring-to-distant-road gap is 35 metres. 20260512 is the finale: two
+// thirds of it is banked past vertical against the third circuit's third, and
+// its own worst gap is 46 metres.
+const CIRCUITS = [
+  circuit(20260830),
+  circuit(20261225),
+  circuit(20260522),
+  circuit(20260512),
+];
 
 /**
  * What the field's top speed is multiplied by, one number a circuit.
@@ -249,4 +268,4 @@ const CIRCUITS = [circuit(20260830), circuit(20261225), circuit(20260902)];
  * the corner lift were not already doing. One number a track, tuned by playing
  * the track.
  */
-const HANDICAPS = [1.06, 1.06, 1.055];
+const HANDICAPS = [1.06, 1.06, 1.055, 1.055];
