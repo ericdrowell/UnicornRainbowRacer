@@ -167,10 +167,6 @@ const song = (name) => {
 const parts = [
   song(['MENU_SONG', 'menu.json']),
   song(['RACE_SONG', 'race.json']),
-  // The heartbeat under star power. It is the menu song's third channel and
-  // nothing else — same instrument, same single note struck in pairs — lifted
-  // into a song of its own so the bench can open it and so nothing has to
-  // reach into another song's channels at runtime to find it.
   song(['STAR_SONG', 'star.json']),
   read('src', 'unicorns.js'),
   // Before game.js, which reads its arrays at module scope to build the mesh.

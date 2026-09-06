@@ -508,7 +508,7 @@ export const Unicorn = shader({
     // 48 here too, and the two have to be the same number. The note above is not
     // decoration: this is the road's field recomputed to light the model, and a
     // star term that differed between the two would light every unicorn the
-    // colour of a panel some way up the track for seven seconds at a time.
+    // colour of a panel some way up the track for a whole run at a time.
     const flow = floor(vAlong * 0.4456) + uTime * 12 + storageRead(uState, 22).w * 48;
     const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + 4.3) * 1.6;
     // Over halfway to white, which is much further than the road's own panels go.
@@ -612,12 +612,18 @@ export const Unicorn = shader({
     );
     // Same ramp shape as the size, so the flash arrives and leaves with the body
     // rather than snapping on around a unicorn that is still growing.
-    const sOn = smoothstep(0, 0.2, vStar) * (1 - smoothstep(6.8, 7, vStar));
+    // The upper pair is the run's *full* clock and a fifth of a second under it,
+    // so the flash ramps in as the clock starts falling. It tracks the duration
+    // in physics.shader.ts and is not free to sit anywhere: set it above the
+    // clock's starting value and this term reads 1 for the opening of every run,
+    // which switches the flash off until the clock falls past it and then pops
+    // it on.
+    const sOn = smoothstep(0, 0.2, vStar) * (1 - smoothstep(6.2, 6.4, vStar));
     // **The last second blinks, which is the warning.** A power-up that simply
     // stops is a power-up the player drives off the end of; the blink is how
     // every game since the arcade has said *this is about to run out*, and it
     // costs one term. 9 hertz over the final second, gated so it does nothing
-    // for the first six.
+    // for all but the last, whatever the run's length happens to be.
     const sWarn = 1 - 0.55 * (1 - smoothstep(1, 1.15, vStar)) * (0.5 + 0.5 * sin(vStar * 56));
     const star = sOn * sWarn;
     // Alpha 1 either way. In the reflection pass this is coverage rather than

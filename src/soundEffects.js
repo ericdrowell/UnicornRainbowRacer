@@ -35,6 +35,7 @@ const MISTAKE = [RACE_SONG, 0, 47];
 const GRAB = [RACE_SONG, 1, 89];
 
 
+
 const shot = ([song, track, note], loud) => {
   let buf = null;
   if (MUSIC_ENABLED) {
@@ -42,24 +43,14 @@ const shot = ([song, track, note], loud) => {
     buf = renderNote(MUSIC, song.songData ? song.songData[track] : song, note);
   }
   return (vol = loud, rate) => {
-    // **Nothing sounds while star power is up.** Every effect in the game comes
-    // through here — the pad, the pickup triad, the mistake, the countdown — so
-    // one test is the whole of it, and the seven seconds are the heartbeat and
-    // nothing else. The silence is the point: it is what makes a run feel like
-    // a different mode rather than a faster one, and a boost pad chirping
-    // through it would put the ordinary race back in the player's ear.
-    //
-    // The whoosh that *announces* a run still sounds, and that is not an
-    // exception to this — it fires on the frame the clock goes up, from the edge
-    // test in game.js, which reads `starLeft` before it is assigned. The gate
-    // closes immediately behind it. That is the order the effect wants: one
-    // sound, and then the floor drops out.
-    //
-    // `starLeft` lives in game.js, which is concatenated after this file. Safe
-    // because nothing here runs at load — a `let` is only in its dead zone until
-    // its own line has run, and by the time a player can make a noise happen
-    // every line in the bundle has.
-    if (!buf || starLeft) return;
+    // **Star power used to silence this, and it does not any more.** Every
+    // effect in the game comes through here, so one test against `starLeft` was
+    // the whole of a mode where the run was a heartbeat and nothing
+    // else. That was built around a song of its own; the run plays the race
+    // music now, with a pulse beaten over it, and against that a floor that
+    // drops out of everything else is not a different mode — it is a bug that
+    // eats the pickup you just took.
+    if (!buf) return;
     const s = MUSIC.createBufferSource();
     s.buffer = buf;
     // Pitch by resampling. The power-up asks for it so one rendered note can be

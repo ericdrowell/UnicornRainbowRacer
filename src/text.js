@@ -106,9 +106,9 @@ const SAYS = [
   'PRESS ANY KEY TO CONTINUE',   // 6
   // Not "YOU WIN" — this screen shows up whenever racer zero crosses the line
   // for the last time, in whatever place it managed, so a win is exactly the
-  // one case it cannot claim. "FINISH!" is the flag, and the position readout
-  // in the corner is left to say how it went.
-  'FINISH!',                     // 7
+  // one case it cannot claim. It heads the table of totals below it, and the
+  // position readout in the corner is left to say how it went.
+  'FINAL',                       // 7
   'PRESS ENTER KEY FOR TITLE',   // 8
   // The selector's arrows, and they are a caption because that is far the
   // cheapest thing they can be.
@@ -290,16 +290,8 @@ const LINES = [
   // puts the names' left edge and the rankings' right edge the same distance
   // either side of centre, and the standings sit as one balanced block whatever
   // the window.
-  // **Dot leaders, and the 21 is where they have to stop.** Both this row and
-  // the position numerals opposite are padded to 24, so both span the same
-  // cells — 9.5 to 33.5 of the atlas's 43 — with the name at the left of that
-  // span and the number at the right. Filling the gap with dots all the way to
-  // 24 would run them under the number; stopping at 21 leaves three cells, and
-  // the widest number is the two of "10", so there is a clear cell between the
-  // last dot and the first digit whatever the place.
-  //
-  // The plate behind each glyph is five pixels in a four-pixel cell, so the dots
-  // merge into one continuous bar rather than reading as separate boxes — which
-  // is exactly what a leader wants to look like.
-  ...UNICORNS.map((u) => u.name.toUpperCase().padEnd(21, '.').padEnd(24)),
+  // Padded to 24 — the same width the position numerals opposite are padded to,
+  // so both rows span the same cells (9.5 to 33.5 of the atlas's 43) with the
+  // name at the left of that span and the number at the right.
+  ...UNICORNS.map((u) => u.name.toUpperCase().padEnd(24)),
 ];

@@ -334,6 +334,19 @@ export const Physics = shader({
     // and the buffer write at the bottom of the stage reports it. Nothing between
     // here and there moves the body along the ribbon it was measured on.
     const onLap = mix(ca.w, cb.w, along);
+    // **Through the gate is a boost, and the gate is the lap line.** `onLap` only
+    // ever climbs — the heading wall below means nobody drives backwards — so the
+    // one frame it comes out *smaller* than last frame's is the frame the line
+    // was crossed. No band, no lane test and no slot: the gate spans the whole
+    // road, so passing under it is the same event as starting a new lap.
+    //
+    // Last frame's rides in `.w` of the same word this stage stores the heading
+    // in, which is written at the very bottom of this file — so the read here is
+    // genuinely the previous frame's and not this one's.
+    //
+    // It cannot misfire on the first frame, when both are nought and `step`
+    // answers 1, nor before the flag, when `dt` is nought and `onLap` cannot move.
+    const crossed = 1 - step(storageRead(uState, mine + 4).w, onLap);
     const trackAlong = onLap * uPattern;
 
     // ── Boost pads ─────────────────────────────────────────────────────────
@@ -409,10 +422,6 @@ export const Physics = shader({
     const got = onLane * band;
     const isStar = rec.y;
     const bOn = got * (1 - isStar);
-    // A slot with nothing in it reads lane 3, which no lane ever equals — so
-    // `onLane` is already 0 there. The type gate is what stops driving past a
-    // star ringing the bell for a ring you never missed.
-    const bMiss = (1 - onLane) * (1 - step(2.5, rec.x)) * band * (1 - isStar);
 
     // ── Stars ──────────────────────────────────────────────────────────────
     // **Slot 6 holds everything star-shaped, and it is read once here.** `.x` is
@@ -479,7 +488,17 @@ export const Physics = shader({
     // asking whether two floats are equal.
     const alive = step(0.001, prev.z);
     const engage = step(9.5, stars) * (1 - alive) * player * uGo;
-    const starClock = mix(max(prev.z - dt, 0), 7, engage);
+    // **6.4 is not a feel number, it is the song's length.** The star track is
+    // one 32-row pattern at 150bpm — 8 beats, 3.2 seconds — and the run is two
+    // turns of it, so the music ends exactly where the power does rather than
+    // being cut mid-phrase. Anything that does not divide the loop reads as the
+    // sound breaking rather than as a power-up ending.
+    //
+    // Change the song's tempo, its length or the number of turns and this has to
+    // move with it — and so does the ramp in unicorn.shader.ts, which fades the
+    // flash in from this value and is silent for the whole opening of a run if
+    // it is left behind.
+    const starClock = mix(max(prev.z - dt, 0), 6.4, engage);
     const starGo = step(0.001, starClock);
     // **`.w` is how long this racer has spent starred, ever, and it only goes
     // up.** The road's rainbow flows at a phase of `uTime * 12` and star power
@@ -491,7 +510,7 @@ export const Physics = shader({
     // unicorn shaders.
     //
     // Accumulated rather than derived from the clock. `7 - clock` would have
-    // done the same job for one run and then snapped back by seven seconds'
+    // done the same job for one run and then snapped back by a whole run's
     // worth of phase at the start of the next one, and there are three runs in a
     // gauge-and-a-half of stars. This only ever increases, so there is no
     // moment anywhere that it steps.
@@ -611,7 +630,7 @@ export const Physics = shader({
     // the grid on its own. `uGo` on the arming rather than on the pin, so a
     // countdown spent standing on one does not bank three seconds of boost to
     // spend the moment it drops.
-    const boost = max(was.x - dt, bOn * 3 * uGo);
+    const boost = max(was.x - dt, max(bOn, crossed) * 3 * uGo);
     const bGo = step(0.001, boost);
 
     // **The field has no speed handicap.** Every rival used to race under a
@@ -781,7 +800,7 @@ export const Physics = shader({
     // Both are held speeds and both override the throttle, so whichever is
     // written last is the one that counts — and taking a boost pad while starred
     // should not slow you down to 90. Twice the sixty this road tops out at, for
-    // the whole seven seconds, which is the "twice as fast" half of the power-up
+    // the whole run, which is the "twice as fast" half of the power-up
     // and the reason the ceiling above had to move.
     speed = mix(speed, top * 2, starGo);
     // Both flattened back into the road's surface. This is the one thing the
@@ -1190,8 +1209,8 @@ export const Physics = shader({
     //
     // **Star power's is two terms, because it has to last and cannot last at
     // full strength.** A pad is an event and gets one shape: a kick that decays.
-    // A run is a seven-second state, and the shake has to be up for all of it —
-    // but 0.75 metres of throw held for seven seconds while the road goes past
+    // A run is a six-second state, and the shake has to be up for all of it —
+    // but 0.75 metres of throw held for that long while the road goes past
     // at twice speed is not exciting, it is unreadable, and it is the kind of
     // thing that makes people put the controller down.
     //
@@ -1335,7 +1354,7 @@ export const Physics = shader({
       //
       // .z is last frame's contact, for the edge test above. It costs nothing:
       // the word was being written as a zero either way.
-      vec4(boost * (1 - bang), max(was.y - dt, max(knock, bMiss) * 0.2), knock, stars * (1 - engage)),
+      vec4(boost * (1 - bang), max(was.y - dt, knock * 0.2), knock, stars * (1 - engage)),
     );
 
     // ── And what only the player leaves behind ─────────────────────────────

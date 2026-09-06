@@ -11,6 +11,8 @@ import {
   min,
   mix,
   mod,
+  normalize,
+  sign,
   pow,
   smoothstep,
   cross,
@@ -18,7 +20,7 @@ import {
   step,
   storageRead,
   type Vec3,
-} from 'brometal';
+} from "brometal";
 
 /**
  * The palette, as a cosine rather than a table.
@@ -28,7 +30,11 @@ import {
  * few characters, and the DSL has no arrays to hold a table in anyway.
  */
 function spectrum(k: number): Vec3 {
-  return vec3(0.5 + 0.5 * cos(k), 0.5 + 0.5 * cos(k + 2.09), 0.5 + 0.5 * cos(k + 4.19));
+  return vec3(
+    0.5 + 0.5 * cos(k),
+    0.5 + 0.5 * cos(k + 2.09),
+    0.5 + 0.5 * cos(k + 4.19),
+  );
 }
 
 /**
@@ -83,30 +89,30 @@ function spectrum(k: number): Vec3 {
  */
 export const Track = shader({
   attributes: {
-    aPos: 'vec3',
+    aPos: "vec3",
     /** Across the road in -1..1, and distance travelled along it. */
-    aEdge: 'vec2',
+    aEdge: "vec2",
   },
   // The unicorn, mirrored through the road plane and drawn to its own target.
   // Sampled here rather than blended into the frame directly, so the road can lay
   // down one resolved image instead of every overlapping triangle of the model in
   // turn.
   uniforms: {
-    uTime: 'float',
+    uTime: "float",
     /**
      * Tile rows to road-ring index — `1 / (PATTERN * 0.4456 * 2)`. A boost ring
      * knows which slot it is and nothing else; this is how it finds the piece of
      * road it stands on.
      */
-    uStep: 'float',
+    uStep: "float",
     /** Where the pickup table starts in `uTrack`, one vec4 a slot. See game.js. */
-    uBase: 'float',
+    uBase: "float",
   },
   // Read-only here. Physics writes it, and a read_write binding could not be
   // visible to a vertex stage at all — the camera would have to come back
   // through the CPU, a frame late, to arrive as a uniform instead.
-  storage: { uState: 'vec4', uTrack: 'vec4' },
-  varyings: { vU: 'float', vV: 'float', vWorld: 'vec3', vClip: 'vec4' },
+  storage: { uState: "vec4", uTrack: "vec4" },
+  varyings: { vU: "float", vV: "float", vWorld: "vec3", vClip: "vec4" },
 
   vertex({ aPos, aEdge }, { uState, uTrack, uTime, uStep, uBase }, v) {
     // ── Boost rings ────────────────────────────────────────────────────────
@@ -131,17 +137,29 @@ export const Track = shader({
     // and it is in the table, one read below, where the physics stage reads it
     // from too. A fact in two places is a fact that can disagree.
     const isSpec = step(4, aEdge.x);
+    // **8 is the finish gate, 9 is a pickup**, and both are past the 4 that tells
+    // a swept vertex from a road one — so everything below is shared and only
+    // three numbers differ. It costs a marker value rather than a program, a
+    // vertex format or a second copy of the centreline in JavaScript.
+    const isFin = isSpec * (1 - step(8.5, aEdge.x));
+    // The skin over the hole, marked in the other component so `aEdge.x` keeps
+    // meaning one thing. It rides every stage of the sweep below and changes
+    // three of them: the radius, the normal and the alpha.
+    const isFilm = isSpec * aEdge.y;
     const slot = aPos.x * isSpec;
     // Sixteen rows to a slot and the pickup seated eight rows in, which is the
     // number physics.shader.ts seats its hitbox on: a hitbox anywhere but where
     // this hangs the thing is a pickup off a piece of empty road.
-    const ri = floor((slot * 16 + 8) * uStep) * 3;
+    // Zeroed for the gate, which is what stands it on the start line: the slot
+    // arithmetic is a pickup's, and the gate belongs to the lap rather than to a
+    // piece of road some way along it.
+    const ri = floor((slot * 16 + 8) * uStep) * 3 * (1 - isFin);
     // The slot, whole: `.x` the lane, `.y` the type — 0 a ring, 1 a star — and
     // `.z` the time a star was collected, nought until it was. One read, and it
     // is what decides which shape the sweep below turns into.
     const rec = storageRead(uTrack, uBase + slot);
     const lane = rec.x;
-    const isStar = rec.y;
+    const isStar = rec.y * (1 - isFin);
     // ── A star that has been taken ─────────────────────────────────────────
     // **It goes, but not on the frame it is touched.** A pickup that simply
     // stops being drawn gives the player nothing to confirm what happened — at
@@ -166,7 +184,10 @@ export const Track = shader({
     const sGone = step(0.001, rec.z);
     const sAge = (uTime - rec.z) * sGone;
     const sFade = 1 - smoothstep(0, 0.2, sAge);
-    const arm = cross(storageRead(uTrack, ri + 1).xyz, storageRead(uTrack, ri + 2).xyz);
+    const arm = cross(
+      storageRead(uTrack, ri + 1).xyz,
+      storageRead(uTrack, ri + 2).xyz,
+    );
     const up = storageRead(uTrack, ri + 2).xyz;
     // Nine metres between lane centres — a third of the road — and the ring's
     // own radius is 4.5, so it sits with its bottom on the surface and bobs a
@@ -197,9 +218,24 @@ export const Track = shader({
     // amplitude, mixed off the type. The lane and the clock stay shared.
     const H = 4.5 - 1.8 * isStar;
     const A = 1.2 - 0.3 * isStar;
+    // The gate takes neither the lane offset nor the bob: it is centred on the
+    // centreline and centred on the road *surface*, so the ribbon runs through
+    // the middle of it and the arch stands over the whole width. A gate that
+    // bobbed would be a gate the lap line moved under.
+    // **The gate sits high, not centred.** Hung on the centreline with its middle
+    // on the road surface it is half buried, and the half you see is a hoop with
+    // its widest point at knee height — which reads as a ring lying *on* the road
+    // rather than an arch over it. Lifting the centre by 0.32 of the radius puts
+    // two thirds of the ring above the surface (5.44 of 17): the road still runs through it,
+    // the sides still come down past the edges, and the shape overhead is the
+    // one the eye picks up from a long way back.
     const hub = storageRead(uTrack, ri)
-      .xyz.add(arm.scale((lane - 1) * 9))
-      .add(up.scale(H + sin(uTime * 1.2 + slot) * A));
+      .xyz.add(arm.scale((lane - 1) * 9 * (1 - isFin)))
+      .add(
+        up.scale(
+          (H + sin(uTime * 1.2 + slot) * A) * (1 - isFin) + 5.44 * isFin,
+        ),
+      );
     // **A torus, swept here rather than stored.** `aPos.y` runs round the ring
     // and `aPos.z` round the tube, both 0 to 1, and the two angles they become
     // are all a torus is. `rad` is the outward direction in the ring's plane —
@@ -214,8 +250,34 @@ export const Track = shader({
     // 4.5 is the radius the ring has always had, a third of the road. 0.6 is the
     // tube — thick enough to catch a highlight across it, thin enough that the
     // hole is still the thing you aim at.
-    const th = aPos.y * 6.2832;
-    const ph = aPos.z * 6.2832;
+    // **They turn, because everything out here is drifting.** A quarter of a
+    // radian a second is a corner every three seconds or so at ten sides — slow
+    // enough to read as float rather than as spin.
+    //
+    // **Off for a star, and that is a constraint rather than a taste.** A ring is
+    // a circle sampled at ten angles, so turning the angles turns the polygon and
+    // nothing else moves. A star is not: its points come from `sin(5 * th)`, and
+    // they are *sharp* only because game.js lands its ten vertices exactly on
+    // that swing's peaks and troughs. Rotate the angle continuously and the
+    // vertices slide off the peaks — the radii sampled stop being the extremes,
+    // and the star does not spin, it melts into a decagon and back twice a turn.
+    // Rings and the gate have no such alignment to lose.
+    const th = aPos.y * 6.2832 + uTime * 0.25 * (1 - isStar);
+    // **Half a turn for the star, a whole one for the ring**, and that is not a
+    // tidy-up — it is the difference between a clean surface and a flickering
+    // one. The ring is a tube and needs the full circle to close it. The star's
+    // profile depends on `cos(ph)` and nothing else, so `ph` and `2pi - ph` land
+    // on exactly the same point: sweep a whole turn and every facet is drawn
+    // twice, coincident, at identical depth.
+    //
+    // Two coincident sheets would be harmless if they agreed. They do not: the
+    // rim rings sit at `cos(pi/2)` and `cos(3pi/2)`, which come out as plus and
+    // minus a hundred-millionth rather than nought, so `sign(cp)` below hands
+    // one of them the front face's normal and the other the back's. Two sheets,
+    // same depth, different shading — which reads as the colour tearing across
+    // the star as it turns. Sweeping half a turn covers the surface once and
+    // there is nothing left to disagree with.
+    const ph = aPos.z * mix(6.2832, 3.1416, isStar);
     const cp = cos(ph);
     const sp = sin(ph);
     const tng = storageRead(uTrack, ri + 1).xyz;
@@ -240,11 +302,99 @@ export const Track = shader({
     // Shrinking to nothing over the three seconds after it is taken, which is
     // all that is left of the collect animation: a sphere does not read as
     // spinning, so the spin went with the points that used to show it.
-    const R = 4.5 - 4.5 * isStar;
-    const r = mix(0.6, 1.5 * sFade, isStar);
+    // **The ring is a circle; the pickup is a star**, and they are the same two
+    // lines with different numbers in them. Everything a shape needs here is how
+    // far out from the axis it sits and how far along it — `radial` and `axial` —
+    // so that is what the type picks between.
+    //
+    // The ring holds 4.5 the whole way round and comes out as a ten-sided ring —
+    // ten because that is how finely game.js divides the sweep, and at the size a
+    // ring is read at, ten sides is a circle. It was a star for a while, and a
+    // star is the wrong thing for the shape you aim *through*: the hole stops
+    // being a hole you can judge, because how much room is left depends on which
+    // way round the points happen to sit.
+    //
+    // **The pickup is a bipyramid over a star polygon**, which is what a 3D star
+    // is: a flat five-pointed star with its centre pulled out to a point on both
+    // faces, so every arm carries a ridge down its spine and each side of that
+    // ridge catches the light differently. the swung radius is the polygon — the radius swung
+    // five times round the sweep, `sin(5 * th)`, ten corners alternating point
+    // and valley — and the two lines under it turn that outline into a solid.
+    //
+    // `sin` rather than `cos` is what stands it upright: `th` is measured from
+    // `arm`, across the road, so `up` is a quarter turn along at `th = pi/2`,
+    // where `sin(5 * pi/2)` is 1 and the swing is at its widest. A point sits
+    // directly over the centre and it reads as a star rather than a pinwheel.
+    // game.js offsets its divisions half a step so the ten corners land on
+    // vertices; between them the sweep would cut every one of them flat.
+    //
+    // **`1 - abs(cp)` against `cp` is the whole bipyramid.** As `cp` runs 1 to
+    // -1 the radius goes nought, full, nought while the height goes `+T`, 0,
+    // `-T` — apex, rim, apex. Both are *linear* in `cp`, and that is the point:
+    // a linear profile means every intermediate ring lands on the same plane as
+    // its neighbours, so the faces come out genuinely flat and the silhouette
+    // stays the polygon rather than bulging off it. The apex is a single point
+    // because the radius is nought there for every `th` at once.
+    //
+    // This replaced a spindle torus — the same star outline with a round
+    // cross-section — which read as a jewel with a star painted on it rather
+    // than as a star, because a curved face has no ridge and no facets to shade.
+    //
+    // 0.35 is the half-thickness against the polygon, so the arms are about a
+    // fifth as deep as they are long: enough of a ridge to split every arm into
+    // two shades, flat enough to still read as a star seen face-on.
+    //
+    // 1.2 against the ring's 4.5 is what makes it the small one: the pickup
+    // measures 1.7 across at its widest against the ring's 9, so the two never
+    // read as the same object even when they sit in the same lane.
+    const sf = 1.2 * sFade;
+    // 17 is about 1.26 track widths across against the ring's 4.5 — wide enough that
+    // the road passes through the middle of it with room at the edges, and tall
+    // enough to read as an arch from the far side of the circuit.
+    // The gate's tube is four times a boost ring's. It is drawn at three and a
+    // half times the radius and read from much further off, and 0.6 at that size
+    // is a wire — thin enough that the arch breaks up against the star field
+    // instead of reading as one solid loop.
+    const tube = mix(0.6, 2.4, isFin);
+    // The film is a flat fan, so its radius is simply the fraction of the way
+    // out — from nought at the middle to the tube's *inner* edge, where it meets
+    // the ring without poking through it.
+    const ringR = mix(4.5, 17, isFin);
+    const radial = mix(
+      mix(ringR + tube * cp, (ringR - tube) * aPos.z, isFilm),
+      sf * (1 + 0.4 * sin(th * 5)) * (1 - abs(cp)),
+      isStar,
+    );
+    const axial = mix(tube * sp, sf * 0.35 * cp, isStar);
+    // **The normal, and the star's is not the torus's.** A cone's points away
+    // from the axis by the slope of its own slant, so it is `rad` leaned against
+    // `tng` — and `sign(cp)` is which of the two faces this vertex is on, the
+    // front one or the back. On the rim, where `cp` is nought and the two faces
+    // meet in a crease, it falls back to `rad` alone, which is the correct
+    // normal for an edge and lights it like one.
+    //
+    // 0.3 is the lean, and it is the shape's own aspect: the faces run about
+    // three tenths of their length out for every one along. It is written as a
+    // constant rather than derived from that radius because the derivation is a
+    // normalize either way and the arms only differ by a few degrees.
+    // One expression for both, with the type picking the two weights rather than
+    // picking between two finished vectors. The ring's is already unit, so
+    // running it through the normalize the star needs costs it nothing.
+    // The film faces down the road, flat on, which is what makes it catch the
+    // light evenly instead of going dark at the edges the way a tube's normal
+    // would carry it.
+    const nrm = mix(
+      normalize(
+        rad
+          .scale(mix(cp, 0.3, isStar))
+          .add(tng.scale(mix(sp, sign(cp), isStar))),
+      ),
+      tng,
+      isFilm,
+    );
     const world = mix(
       aPos,
-      hub.add(rad.scale(R + r * cp)).add(tng.scale(r * sp)),
+      hub.add(rad.scale(radial)).add(tng.scale(axial)),
       isSpec,
     );
 
@@ -272,10 +422,40 @@ export const Track = shader({
     // ring. It is not, any more — same palette, same brightness curve, same
     // everything — so the fragment stage has nothing left to branch on and this
     // is one number again.
-    v.vU = mix(aEdge.x, 9 + fract(sin(slot * 12.99) * 43758.5), isSpec);
+    // 20 and up is the film, 9 and up is everything else swept, and the slot's
+    // hash still rides in the fraction either way — so the fragment stage gets a
+    // third case for one `step` and no new varying.
+    // **A star is always gold; a ring keeps the slot's own hue.** The fragment
+    // builds its tint from `fract(vU)` through the same cosine palette the sky
+    // uses, so pinning that fraction pins the colour — no branch down there, no
+    // extra varying, and one expression still serves all three shapes.
+    //
+    // 0.131 is not a guess. The fragment reads it as `fract(vU) * 40`, so this is
+    // 5.24 radians into the palette, which is where its red and green curves
+    // cross at 0.751 with blue at nought — the one pure yellow the wheel has.
+    // Everything else lands on a pastel, which is right for a ring you drive
+    // through and wrong for a thing called a star.
+    // **Three bands, one number.** 9 and up is a ring or the gate, 20 and up a
+    // star, 31 and up a film — and the slot's hash still rides in the fraction
+    // of all three. The fragment tells them apart with two `step`s and needs no
+    // varying of its own for either.
+    //
+    // A star and a film are mutually exclusive — only a ring has a hole to skin
+    // — so the two offsets can simply add.
+    v.vU = mix(
+      aEdge.x,
+      9 + 11 * isStar + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5),
+      isSpec,
+    );
+    // A film sends the radius out where a ring sends its light, which is what
+    // gives the fragment something to build a rim out of.
     v.vV = mix(
       aEdge.y,
-      0.22 + 0.78 * max(dot(rad.scale(cp).add(tng.scale(sp)), vec3(0.28, 0.86, 0.43)), 0),
+      mix(
+        0.22 + 0.78 * max(dot(nrm, vec3(0.28, 0.86, 0.43)), 0),
+        aPos.z,
+        isFilm,
+      ),
       isSpec,
     );
     // The road point itself, unprojected. The shadow below is cast in world
@@ -300,7 +480,11 @@ export const Track = shader({
     // Kept so the fragment can find itself on screen: the reflection target is in
     // screen space, and the divide by w has to happen per fragment rather than
     // per vertex or the lookup skews across a triangle.
-    const clip = c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
+    const clip = c0
+      .scale(world.x)
+      .add(c1.scale(world.y))
+      .add(c2.scale(world.z))
+      .add(c3);
     v.vClip = clip;
     return clip;
   },
@@ -370,7 +554,8 @@ export const Track = shader({
     // panels a second, five times normal, about 135 m/s of pattern against 120
     // of driving: the light finally outruns the unicorn.
     const flow = row + uTime * 12 + storageRead(uState, 22).w * 48;
-    const wash = sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + col * 0.5 + 1.3) * 1.6;
+    const wash =
+      sin(flow * 0.05) * 2.6 + sin(flow * 0.017 + col * 0.5 + 1.3) * 1.6;
     // Pastel, not pigment. Glass lit from inside washes out towards white as it
     // brightens, and a saturated hue at full strength reads as paint instead.
     // Only a fifth of the way there, though: mixing much white in here as well
@@ -525,6 +710,30 @@ export const Track = shader({
     // and it was not dark, it was undefined. On a ring this is already 0.22 to 1
     // and the clamp never bites.
     const gold = min(vV, 1);
+    const film = step(31, vU);
+    const star = step(20, vU) * (1 - film);
+    // **A bubble's colour comes from how thick its skin is, and that thickness
+    // wanders.** It is not a set of rings around the middle — that reads as a
+    // target, which is exactly what keying the hue on the radius alone gave.
+    //
+    // Two sines whose arguments are themselves sines is the cheapest thing that
+    // looks like wandering rather than like a pattern: the inner one bends the
+    // outer one's phase, so the bands fold back on themselves, pinch, and never
+    // close into a circle. It is a poor noise function and a good *skin* — the
+    // eye is looking for something organic here, not for randomness.
+    //
+    // Taken off `vWorld` rather than the radius, so the pattern belongs to the
+    // film in space: it swims as the ring turns under it, and two rings never
+    // wear the same one.
+    const swirl =
+      sin(vWorld.x * 0.27 + sin(vWorld.z * 0.19 + uTime * 0.5) * 2.4) +
+      sin(vWorld.z * 0.31 + sin(vWorld.y * 0.23 - uTime * 0.4) * 2.1);
+    const thick = 5.5 + swirl * 2.4 + gold * gold * 4;
+    const iris = vec3(
+      0.5 + 0.5 * cos(thick),
+      0.5 + 0.5 * cos(thick * 1.18),
+      0.5 + 0.5 * cos(thick * 1.44),
+    );
     // Both kinds take their colour from the sky, off the same cosine palette and
     // the same 0.45 toward white — the pastels overhead, on the road.
     // `fract(vU)` is the slot's hash, laid into the marker by the vertex stage.
@@ -534,29 +743,70 @@ export const Track = shader({
     // stage no longer receives. It was there because a faceted star needed the
     // facets to read, and a sphere has none — it is lit by its own normal like
     // the ring's tube, out of `vV`, and wants nothing said about it here.
-    const tint = mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45);
+    // A ring takes the slot's own pastel off the sky's palette. **A star is
+    // always gold**, and not a pastel gold: the palette run through `mix` toward
+    // white lands on cream, which is what a star looked like before. This is the
+    // colour named outright, saturated, and it is the one pickup on the road
+    // that should read the same every time you see it.
+    const tint = mix(mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45), vec3(1, 0.82, 0.16), star);
     return vec4(
       mix(
-        lit
-          .add(glass.scale(halo * 0.8))
-          .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
-          .add(vec3(1, 0.97, 1).scale(core * 3.4)),
-        // **Driven past 1, which is the only bloom on this road.** There is no
-        // post-process anywhere here: everything that glows does it by being
-        // brighter than the display can hold, so the core clips to white and the
-        // colour survives in the falloff either side. 2.2 on a squared lambert
-        // takes the lit crown of the tube well past the clip while the shaded
-        // underside stays at 0.55 — lifted, so a ring reads as something
-        // emitting rather than something lit, and is still legible from the far
-        // side of a corner where nothing is shining on it.
+        mix(
+          lit
+            .add(glass.scale(halo * 0.8))
+            .add(vec3(0.55, 0.95, 1).scale(lip * 0.9))
+            .add(vec3(1, 0.97, 1).scale(core * 3.4)),
+          // **Driven past 1, which is the only bloom on this road.** There is no
+          // post-process anywhere here: everything that glows does it by being
+          // brighter than the display can hold, so the core clips to white and the
+          // colour survives in the falloff either side. 2.2 on a squared lambert
+          // takes the lit crown of the tube well past the clip while the shaded
+          // underside stays at 0.55 — lifted, so a ring reads as something
+          // emitting rather than something lit, and is still legible from the far
+          // side of a corner where nothing is shining on it.
+          //
+          // Squared rather than linear so the falloff from the crown is quick;
+          // linear spreads the bright band over most of the tube and the whole
+          // thing washes out to white.
+          // **The star carries a floor of its own light**, which is what makes it
+        // glow rather than simply be lit. A ring runs 0.85 to 4.25 across its
+        // tube and goes dark where the light does not reach; adding a constant
+        // for a star lifts even its unlit facets past the clip, so it reads as
+        // something *emitting* from every angle — which is what a thing you are
+        // meant to spot from down the road has to do.
+        tint.scale(0.85 + 3.4 * gold * gold + 2.6 * star),
+          step(4, vU),
+        ),
+        // **The film, and it is nearly all rim.** `gold` is the fraction of the
+        // way out here rather than a light, and raising it to the fourth keeps the
+        // middle almost clear while the last tenth of the radius lifts into a
+        // bright edge — which is what a soap film does, and what stops this
+        // reading as a coloured pane set into the ring.
+        // **This is thin-film interference, not a rainbow**, and the difference
+        // is one line. Light bouncing off the front of a film and off the back
+        // travels an extra `2 * n * t * cos(theta)`, so a wavelength survives
+        // where that is a whole number of its own cycles and cancels where it is
+        // a half — which is why a bubble bands.
         //
-        // Squared rather than linear so the falloff from the crown is quick;
-        // linear spreads the bright band over most of the tube and the whole
-        // thing washes out to white.
-        tint.scale(0.85 + 3.4 * gold * gold),
-        step(4, vU),
+        // The whole of it is that *each channel has its own frequency*, set by
+        // its own wavelength: red 650nm, green 550, blue 450, so 1, 1.18 and
+        // 1.44 against red. `spectrum` — one frequency, three phase offsets — is
+        // a colour wheel, and a colour wheel is what made this look like a
+        // target. Three frequencies beat against each other instead, and the
+        // sweep runs cyan, gold, magenta and back: the sequence an actual bubble
+        // walks through as its skin thins.
+        //
+        // `thick` is the film's thickness, which is what a bubble's colour is
+        // really a picture of. It wanders on the swirl and thickens toward the
+        // rim, the way a real one drains.
+        iris.scale(0.8 + 2.2 * gold * gold * gold * gold),
+        film,
       ),
-      1,
+      // Transparent, and the road pass already blends. It draws after the
+      // unicorns and before the warp, so it lays over a body that has gone
+      // through the gate and nothing that matters is drawn after it to be
+      // hidden by the depth it writes.
+      1 - 0.42 * film,
     );
   },
 });

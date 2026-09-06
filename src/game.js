@@ -343,6 +343,7 @@ const ALONG = [0];
 for (let i = 1; i < RINGS; i++) ALONG.push(ALONG[i - 1] + dist(ring(i), ring(i - 1)));
 LAP = ALONG[RINGS - 1] + dist(ring(0), ring(RINGS - 1));
 
+
 // ── Which way is up ─────────────────────────────────────────────────────────
 // Carried along the road, not derived from the world.
 //
@@ -553,32 +554,41 @@ const PICK_TYPE = new Float32Array(PICK_SLOTS);
   for (let i = START_CLEAR; i < PICK_SLOTS - START_CLEAR; i += RING_EVERY) {
     PICK_LANE[i] = Math.floor(rnd() * 4);
   }
-  // **Ten runs of three, and front-loaded.** A star is never on its own: each
-  // placement lays three of them in consecutive slots, all in the same lane, so
+  // **Ten runs of four, and front-loaded.** A star is never on its own: each
+  // placement lays four of them in consecutive slots, all in the same lane, so
   // what the player sees ahead is a *line* to be followed rather than a thing to
-  // be swerved at. Three arrive in a little over a second at racing speed, which
-  // is the point — the reward for committing to a lane and holding it is three
+  // be swerved at. Four arrive in a little over a second at racing speed, which
+  // is the point — the reward for committing to a lane and holding it is four
   // tenths of the gauge in one move, and the cost of drifting off the line
-  // halfway is that you get one.
+  // halfway is that you get two.
   //
   // The lane is drawn once for the whole run and not per star. A run that
   // wandered across the road would be three separate pickups wearing a trail's
   // clothing, and following it would mean weaving — which is the opposite of the
   // line this is meant to be.
   //
-  // Thirty stars against a gauge of ten: three clean runs arms it, and a lap has
-  // enough slack in it that missing one is not the end of the run.
+  // Forty stars against a gauge of ten: two and a half clean runs arms it, so a
+  // third run is already slack, and a lap has enough left over that missing one
+  // is not the end of it.
   //
   // Raising the fraction along the lap to the power 2.2 is what bunches them:
   // half sit in the opening quarter and the rest string out behind, so the
   // player arms early and then has to make what they took last the circuit.
   //
   // **Snapped to the slot after a ring, which is what keeps a run whole.** Every
-  // fourth slot belongs to a ring, so a run of three starting anywhere else
-  // would have a ring in the middle of it — one star, a ring, two stars, which
-  // is not a line to follow. Landing on residue 1 puts the three of them in the
-  // three slots between two rings, every time, and `tail` starting at a residue
-  // 1 keeps the clamp on that residue too.
+  // fourth slot belongs to a ring, so a run starting anywhere else would have a
+  // ring in the middle of it — one star, a ring, two stars, which is not a line
+  // to follow. Landing on residue 1 puts the run in the three slots between two
+  // rings and then one more, and `tail` starting at a residue 1 keeps the clamp
+  // on that residue too.
+  //
+  // **A run of four reaches one slot past the gap, and takes that ring's place.**
+  // Three fitted exactly; the fourth lands on residue 0, so it overwrites the
+  // ring that would have sat there rather than sitting beside it. That keeps the
+  // line unbroken, which is the invariant that matters — a run is still four
+  // stars with nothing between them — and it costs the lap up to ten ring slots,
+  // nearer seven or eight in practice since a quarter of them roll empty anyway.
+  // `tail` still advances by RING_EVERY, so the next run cannot overlap it.
   let tail = START_CLEAR + 1;
   for (let k = 1; k <= 10; k++) {
     const want = Math.min(
@@ -587,7 +597,7 @@ const PICK_TYPE = new Float32Array(PICK_SLOTS);
     );
     const at = Math.max(Math.floor(want / RING_EVERY) * RING_EVERY + 1, tail);
     const lane = Math.floor(rnd() * 3);
-    for (let j = 0; j < 3; j++) {
+    for (let j = 0; j < 4; j++) {
       PICK_LANE[at + j] = lane;
       PICK_TYPE[at + j] = 1;
     }
@@ -633,12 +643,26 @@ for (let i = 0; i < RINGS; i++) {
 for (let i = 0; i < PICK_SLOTS; i++) {
   if (PICK_LANE[i] > 2) continue;
   const star = PICK_TYPE[i];
-  const uN = star ? 8 : 24;
-  const vN = star ? 8 : 10;
+  // **Ten round, for both, and offset half a step.** The pickup is a
+  // five-pointed star — track.shader.ts swings its radius in and out five times
+  // round the sweep — so it has ten corners and needs ten divisions. But a
+  // corner has to *land* on a vertex or the sweep cuts it off, and at `u / uN`
+  // every vertex sits exactly between two: the swing is `sin(5 * th)`, and at
+  // `th = 2piu / 10` that is `sin(pi u)`, which is nought every time. Half a
+  // step over and every vertex is a corner instead, alternating point and
+  // valley. The seam still closes — `u` runs to `uN`, so the last angle is the
+  // first plus a full turn.
+  //
+  // The ring is the same sweep with the swing switched off, which makes it a
+  // ten-sided ring, which at the size a ring is read at is a circle. Ten and not
+  // the twenty-four it used to be: the divisions are shared with the pickup, and
+  // nothing here is stored, so the count is a single number for both.
+  const uN = 10;
+  const vN = star ? 4 : 10;
   const base = TP.length / 3;
   for (let u = 0; u <= uN; u++) {
     for (let v = 0; v <= vN; v++) {
-      TP.push(i, u / uN, v / vN);
+      TP.push(i, (u + 0.5) / uN, v / vN);
       TE.push(9, 0);
     }
   }
@@ -649,6 +673,91 @@ for (let i = 0; i < PICK_SLOTS; i++) {
     }
   }
 }
+
+// A film: a fan from the middle out to the tube's inner edge, filling a ring's
+// hole. `aEdge.y` carries it rather than a third marker value, because it is the
+// one component of that attribute a swept vertex was not already using — and it
+// leaves `aEdge.x` meaning exactly one thing, which pickup or gate this is.
+//
+// `aPos.z` stops being an angle here and becomes the fraction of the way out
+// from the middle. That is free: it only ever reaches the sweep as `cos` and
+// `sin` of a whole turn, so at 0 and 1 both come back the same and the film's
+// own radius is what the shader reads instead.
+const filmAt = (slot, mark) => {
+  const fb = TP.length / 3;
+  for (let u = 0; u <= 10; u++) {
+    TP.push(slot, (u + 0.5) / 10, 0);
+    TE.push(mark, 1);
+    TP.push(slot, (u + 0.5) / 10, 1);
+    TE.push(mark, 1);
+  }
+  for (let u = 0; u < 10; u++) TI.push(fb + u * 2, fb + u * 2 + 1, fb + u * 2 + 3);
+};
+
+// **The finish gate: one ring the size of the road, at ring zero.** A lap ends
+// on a line painted across the ribbon, which is a thing you are on top of before
+// you can see it. An arch is visible from the far side of the circuit, so the
+// end of a lap becomes something to drive *at* rather than something you are
+// told about afterwards.
+//
+// It rides the pickup sweep rather than a shape of its own — same vertex format,
+// same program, same torus in track.shader.ts — and the only thing that marks it
+// out is an 8 in the edge attribute where a pickup carries 9. Both are past the
+// 4 that separates road vertices from swept ones, so the whole path down to the
+// fragment stage is shared; the shader reads the 8 and swaps three numbers.
+//
+// `aPos.x` is 0 rather than a slot: the shader zeroes the ring index for the
+// gate, so it stands at the start line whatever the table's first row happens to
+// say, and it never consults the lane or the type.
+//
+// **Ten round, the same as a boost ring**, so the gate is recognisably the same
+// object at a different size rather than a smoother thing that happens to sit at
+// the start line. The flats are long at sixteen metres of radius, and that is
+// the point: a decagon has corners, and corners are what make the rotation below
+// visible. A thirty-two-sided gate was tried first and is a circle — and a
+// circle turning about its own axis is a circle, however fast it spins.
+{
+  const uN = 10;
+  const vN = 8;
+  const base = TP.length / 3;
+  for (let u = 0; u <= uN; u++) {
+    for (let v = 0; v <= vN; v++) {
+      TP.push(0, u / uN, v / vN);
+      TE.push(8, 0);
+    }
+  }
+  for (let u = 0; u < uN; u++) {
+    for (let v = 0; v < vN; v++) {
+      const a = base + u * (vN + 1) + v;
+      TI.push(a, a + vN + 1, a + 1, a + 1, a + vN + 1, a + vN + 2);
+    }
+  }
+}
+
+// **Every film, last, and that ordering is the whole of a rendering bug.**
+//
+// A film is transparent but it still *writes depth*, because it shares the
+// road's program and a depth-write flag is a pipeline state, not a per-vertex
+// one. Inside one draw call the order that matters is the index buffer's — so a
+// film emitted next to its own ring wrote depth in front of every ring and star
+// emitted after it, and those failed the depth test and vanished. Looking down
+// the road through a near gate, the rings beyond it were simply not there.
+//
+// Emitting the films after all of the solid geometry fixes it: nothing opaque is
+// ever drawn after a film, so nothing opaque can be culled by one. The road, the
+// rings, the stars and the gate all land in the depth buffer first and the films
+// lay over the top of them.
+//
+// **What this does not fix is a film in front of another film**, which is the
+// same ordering problem one level down and cannot be solved by a static order at
+// all — which of two gates is nearer depends on where the camera is. It needs
+// either a depth-write-off pass of its own or a back-to-front sort every frame,
+// and neither is worth it for a handful of nearly-clear discs.
+for (let i = 0; i < PICK_SLOTS; i++) {
+  if (PICK_LANE[i] > 2 || PICK_TYPE[i]) continue;
+  filmAt(i, 9);
+}
+filmAt(0, 8);
 
 // The ribbon, in the form the physics stage reads it: two vec4s a ring, centre
 // with distance travelled, then tangent with camber. Everything the simulation
@@ -732,7 +841,7 @@ RACER_BASE = 16;
 // Seven. Six are the racer; the seventh is everything star-shaped, and it is
 // one word rather than two because all of it fits: `.x` is the slot last picked
 // up, so one star counts once rather than once a frame while the body is over
-// it, `.z` is the run's clock — seven seconds counting down, read by the physics
+// it, `.z` is the run's clock — 6.4 seconds counting down, read by the physics
 // for the speed, by the unicorn shader for the flashing, by the sky for the warp
 // streaks and by the CPU for the HUD — and `.w` is the rainbow phase the run has
 // banked.
@@ -988,6 +1097,7 @@ let starLeft = 0;
  * information.
  */
 let mistakeAt = 0;
+
 
 /**
  * One unicorn's colours, in the layout the palette region expects.
@@ -1248,10 +1358,12 @@ addEventListener('keydown', (e) => {
     if (e.code === 'Enter' || e.code === 'Space') go(FLAG_STATE);
     return;
   }
-  // Any key at all leaves a pause, not just the one that caused it. Escape to
-  // stop and up to go again is the natural thing to reach for, and it works
-  // because the throttle is read from the held-keys map rather than from this
-  // handler — the key that unpauses is already down when the next frame asks.
+  // **Any key leaves a pause, and this is the one screen where that is right.**
+  // Everywhere else the game insists on Enter, because everywhere else the key
+  // press is a choice being made. A pause is not a choice — it is a player
+  // coming back to a race that is sitting still waiting for them — and the
+  // worst thing this screen can do is stay up. Escape included: whatever put
+  // the pause there takes it away again.
   if (SCREEN === PAUSE_STATE) {
     go(RACE_STATE);
     return;
@@ -1273,10 +1385,6 @@ addEventListener('keydown', (e) => {
     go(more ? FLAG_STATE : TITLE_STATE);
   }
 });
-// A click does whatever a key would at the one place a player might try it.
-addEventListener('pointerdown', () => {
-  if (SCREEN === TITLE_STATE) go(SELECT_STATE);
-});
 
 // The source that is currently playing, and which song it is playing, so a
 // state change that asks for the same music does not restart it. Not TRACK: that
@@ -1287,15 +1395,15 @@ let PLAYING_NAME = null;
 
 function syncMusic() {
   if (!MUSIC_ENABLED) return;
-  // **Star power silences the race and leaves the pulse.** Seven seconds where
-  // the road is going past at twice the speed and the only thing you can hear is
-  // a heartbeat: the noise stopping is a louder event than any noise starting,
-  // and it says *the rules are different right now* without adding a sound to a
-  // screen that already has plenty going on.
+  // **A star run has its own track, and it is the one state the screen alone
+  // does not decide.** Everywhere else the music follows the screen; here it
+  // follows a clock as well, so the length of a run swaps the race song
+  // out for the star song and swap it back when the clock runs down.
   //
   // Gated on RACE_STATE rather than on the clock alone. Pausing mid-run leaves
-  // the clock exactly where it was — the physics is what counts it down and the
-  // physics is stopped — so without this a paused game would sit there beating.
+  // the clock exactly where it was — the physics counts it down and the physics
+  // is stopped — so without the gate a paused game would sit there playing the
+  // star track with nothing happening.
   const want = SCREEN === RACE_STATE && starLeft ? 'star' : SCORE[SCREEN];
   // Already playing the right thing. **This test is the whole reason pausing
   // does not restart the menu music**: PAUSE_STATE and SELECT_STATE and WIN_STATE all ask for the
@@ -1378,8 +1486,34 @@ function renderLoop(song, into) {
   const len = Math.round(loop * rate);
   return renderSong(MUSIC, song, len * 2).then((raw) => {
     const buffer = MUSIC.createBuffer(2, len, rate);
+    // **Scaled to fit, because nothing downstream does it.** renderSong sums the
+    // tracks raw — each folds to plus or minus one of its own and five of them
+    // land on top of each other — so a busy song comes back well past full
+    // scale. The star track peaks near 2.9 and spends six per cent of itself
+    // outside the range. Web Audio does not wrap that the way the synth's own
+    // 16-bit fold does; it hard-clips at the device, and that is the tearing.
+    //
+    // **SoundBox's own player never shows this**, which is what makes it look
+    // like a bug in the song rather than in the playback: that player puts a
+    // gain of its own between the mix and the speakers. This is that gain,
+    // measured per song rather than guessed.
+    //
+    // `peak` starts at 1, so a song that already fits is divided by one and
+    // keeps exactly the level it was written at — only the ones that overflow
+    // are touched, and they are turned down by just enough.
+    //
+    // One factor across both channels: scaling them apart would swing the stereo
+    // image, and it is the mix that is too loud, not one side of it.
+    let peak = 1;
     for (let ch = 0; ch < 2; ch++) {
-      buffer.getChannelData(ch).set(raw.getChannelData(ch).subarray(len, len * 2));
+      for (const v of raw.getChannelData(ch).subarray(len, len * 2)) {
+        peak = Math.max(peak, Math.abs(v));
+      }
+    }
+    for (let ch = 0; ch < 2; ch++) {
+      const src = raw.getChannelData(ch).subarray(len, len * 2);
+      const dst = buffer.getChannelData(ch);
+      for (let i = 0; i < len; i++) dst[i] = src[i] / peak;
     }
     SONGS[into] = buffer;
     // Whichever state is up may have been waiting for exactly this one.
@@ -1394,10 +1528,6 @@ if (MUSIC_ENABLED) {
   // loads is already busy compiling shaders and building a circuit.
   renderLoop(MENU_SONG, 'menu')
     .then(() => renderLoop(RACE_SONG, 'race'))
-    // Last of the three, because it is the one nothing can be waiting on: a
-    // player has to reach a race and collect ten stars before it can be asked
-    // for, and both other mixes are long done by then. One channel and a quarter
-    // of the menu's length, so it costs almost nothing to sit at the back.
     .then(() => renderLoop(STAR_SONG, 'star'));
 
 
@@ -1430,7 +1560,7 @@ let STATE = null;
 // render targets clear with this same colour, and the reflection target uses
 // alpha as its coverage mask. Cleared to 1 the mask reads "unicorn everywhere"
 // and the road mixes toward black across its whole surface.
-// The three the swap between circuits has to re-point at a new road. Out here
+// The four the swap between circuits has to re-point at a new road. Out here
 // rather than inside the setup closure for that reason alone.
 let sim, track, rings;
 
@@ -1885,19 +2015,19 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       if (nowStars > starsHeld) powerUp();
       starsHeld = nowStars;
       // The run's own clock, watched for the same edge, and what both the bang
-      // and the seven-second rush hang off. It cannot be inferred from the
+      // and the rush hang off. It cannot be inferred from the
       // gauge: the gauge goes to ten and back to nought inside one frame of
       // shader time, and this poll lands six times a second — so the full gauge
       // that starts a run is very often never seen at all. The clock is up for
-      // seven seconds and cannot be missed.
+      // six seconds and cannot be missed.
       const nowStar = seen[26];
-      // **The pad's whoosh, once, and not a seven-second version of it.** A
+      // **The pad's whoosh, once, and not a run-length version of it.** A
       // sustained whoosh was tried: the same instrument with a held middle,
       // running the length of the clock. It pulsed — the filter LFO sweeps on a
       // two-second period, which is one arc across the pad's 1.77 seconds and
       // three and a half across seven, and what reads as a rush over one arc
       // reads as a wobble over three. Star power is announced, not narrated;
-      // the flashing and the warp carry the seven seconds.
+      // the flashing and the warp carry the run.
       //
       // The pad's own sound and nothing layered under it. There was a `BLAST`
       // here — a low detonation spread off the race song's noise track, fifteen
@@ -2096,6 +2226,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       bmDraw(warp);
     }
 
+
     // ── The overlay ─────────────────────────────────────────────────────────
     // Whatever this screen has to say, gathered into the instance buffer and
     // drawn in one go. One draw because a uniform cannot change between two of
@@ -2205,7 +2336,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(18 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
       // **And while it is running, say so.** The gauge tells you how far along
       // you are; it does not tell you that the rules have changed for the next
-      // seven seconds. Off the clock rather than off a full gauge, which is the
+      // the run. Off the clock rather than off a full gauge, which is the
       // only thing that works now that the fourth star spends all four in the
       // same frame — the gauge is never seen full, so a message waiting for it
       // to be full would never appear.
