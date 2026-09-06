@@ -216,3 +216,37 @@ const circuit = (seed) => {
  * guarantees mean the ones not chosen were boring rather than broken.
  */
 const CIRCUITS = [circuit(20260830), circuit(20261225), circuit(20260902)];
+
+/**
+ * What the field's top speed is multiplied by, one number a circuit.
+ *
+ * **The player is 1 and is not written down**; these are relative to that. 1.06
+ * means every rival tops out six per cent over the player's own ceiling, both on
+ * the throttle and off a boost pad — so a clean lap is not enough on its own, and
+ * the race has to be won on the line, on the rings, and on star power rather
+ * than on holding the accelerator down.
+ *
+ * It was 1.4 first, and that was too much twice over: it also put a rival on a
+ * boost pad past a player holding star power, which turned the power-up into a
+ * way of keeping up rather than a way of getting past. The crossover for that
+ * is 1.333, so anything under it leaves star power the fastest thing on the
+ * road.
+ *
+ * Then it was played down: 1.1 was too hard, 1.05 too easy, and the window
+ * between them is narrow because the corner lift already gives the field back
+ * most of whatever this hands them. Six per cent sits in that window — near
+ * enough to parity that a clean lap wins and a scrappy one does not.
+ *
+ * **The third is a shade softer than the other two**, and that is the array
+ * earning its keep rather than an oversight. The circuits are not equally hard
+ * to drive, so the number that makes a race of one does not make a race of
+ * another: the corner lift hands the field back more speed on a twisty layout
+ * than a fast one, and the handicap has to move the other way to compensate.
+ *
+ * Per circuit rather than per racer, because that is the knob that turns out to
+ * matter: the field being uniformly quicker is a difficulty, whereas nine
+ * different ceilings is a spread, and the spread was doing nothing the lanes and
+ * the corner lift were not already doing. One number a track, tuned by playing
+ * the track.
+ */
+const HANDICAPS = [1.06, 1.06, 1.055];

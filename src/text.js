@@ -131,29 +131,30 @@ const SAYS = [
   // nothing in particular.
   '<              >',                       // 9
   // What to do with the keys, shown on the grid and gone the moment the flag
-  // drops.
-  'PRESS UP TO GO',                         // 10
-  'PRESS LEFT AND RIGHT TO STEER',          // 11
+  // drops. **Steering is the whole of it.** There was a "PRESS UP TO GO" over
+  // this one, back when the throttle was a key: it is held down for the player
+  // now, so the line was an instruction to press something that does nothing.
+  'PRESS LEFT AND RIGHT TO STEER',          // 10
   // The countdown, and then the flag. One glyph a beat, drawn huge in the middle
   // of the screen — see the note on sizing where game.js draws them.
   //
   // Separate rows from the place numerals further down, which are the same three
   // characters. Those are padded to sit against the right-hand edge, and ink at
   // the edge of its quad is exactly what a centred caption must not have.
-  '3',                                      // 12
-  '2',                                      // 13
-  '1',                                      // 14
-  'GO!',                                    // 15
+  '3',                                      // 11
+  '2',                                      // 12
+  '1',                                      // 13
+  'GO!',                                    // 14
   // The way on from the finish, when the finish is not the end of the series.
   // Appended rather than slotted in beside its sibling at 8, because these are
   // referenced by index: putting it next to the line it replaces would have
   // renumbered the arrows and the countdown under it.
-  'PRESS ENTER FOR NEXT RACE',              // 16
+  'PRESS ENTER FOR NEXT RACE',              // 15
   // Shown while star power is actually running, not as an instruction to press
   // anything: it engages itself on the fourth star. What the player needs from
   // the middle of the screen is confirmation that the rules have changed and a
   // sense of the clock running down, which the pulse it is drawn with gives.
-  'STAR POWER!',                            // 17
+  'STAR POWER!',                            // 16
 ];
 
 /**
@@ -211,19 +212,19 @@ const LINES = [
   //
   // **Here and not in SAYS, for one reason: WIDE.** SAYS is declared above it and
   // a `const` read before its declaration line has run is a ReferenceError, not
-  // a hoist. Sitting immediately after `...SAYS` these still land at 18 to 29,
+  // a hoist. Sitting immediately after `...SAYS` these still land at 17 to 28,
   // which is what game.js indexes them by.
   //
   // Padded to the full width for the corner, the same reason the lap caption
   // that used to live here was: a full-width row's ink starts at the quad's own
   // left edge, so the leftmost a caption can reach is minus its half-width.
-  'STAR POWER'.padEnd(WIDE),                                                        // 18
+  'STAR POWER'.padEnd(WIDE),                                                        // 17
   // Eleven rows for eleven states, nought through full, indexed straight off the
   // count. Generated rather than written out, so the gauge's length is the one
   // number `CELLS` and nothing here has to be counted by hand — it was four
   // cells and the change touched this line and the two thresholds and nothing
   // else.
-  ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 19-29
+  ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 18-28
   // Which circuit this is, one row each. Built from the roster of seeds rather
   // than written out, so adding a track adds its own caption — and the "/ 2"
   // on every one of them corrects itself, which a hand-written list would not.
@@ -289,5 +290,16 @@ const LINES = [
   // puts the names' left edge and the rankings' right edge the same distance
   // either side of centre, and the standings sit as one balanced block whatever
   // the window.
-  ...UNICORNS.map((u) => u.name.toUpperCase().padEnd(24)),
+  // **Dot leaders, and the 21 is where they have to stop.** Both this row and
+  // the position numerals opposite are padded to 24, so both span the same
+  // cells — 9.5 to 33.5 of the atlas's 43 — with the name at the left of that
+  // span and the number at the right. Filling the gap with dots all the way to
+  // 24 would run them under the number; stopping at 21 leaves three cells, and
+  // the widest number is the two of "10", so there is a clear cell between the
+  // last dot and the first digit whatever the place.
+  //
+  // The plate behind each glyph is five pixels in a four-pixel cell, so the dots
+  // merge into one continuous bar rather than reading as separate boxes — which
+  // is exactly what a leader wants to look like.
+  ...UNICORNS.map((u) => u.name.toUpperCase().padEnd(21, '.').padEnd(24)),
 ];

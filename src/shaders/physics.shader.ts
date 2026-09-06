@@ -187,12 +187,21 @@ export const Physics = shader({
     uRoll: 'float',
     /** Tile rows to a pickup slot — see SLOT_ROWS in game.js. */
     uRows: 'float',
+    /**
+     * The field's top-speed multiplier for this circuit — HANDICAPS in
+     * src/circuits.js. 1 would be parity with the player.
+     *
+     * **Last in the block**, like everything added here: the uniforms are
+     * positional and game.js fills them by index, so anything inserted above
+     * silently repoints every write below it.
+     */
+    uHand: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
   compute(
-    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uTime, uTitle, uGo },
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uHand, uTime, uTitle, uGo },
     id,
   ) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -226,26 +235,6 @@ export const Physics = shader({
      * top of it, so turning this scales the whole race.
      */
     const TOP_SPEED = 60;
-    /**
-     * The handicap every rival races under, as a low and a high bound — each
-     * draws its own between them at the flag. **The player's handicap is 1 and
-     * is not written down**; that is what these are relative to.
-     *
-     * A `vec2` rather than a two-element array, because the shader DSL has no
-     * array literals at all — this is the only way to say "one constant with two
-     * bounds" and have it compile.
-     *
-     * So 0.95 does not mean 57 metres a second, it means *a shade slower than
-     * you*: the quickest unicorn on the road is always one you can out-run on
-     * the throttle, and the margin it leaves is the room you have to miss a ring
-     * in. Move `TOP_SPEED` and that relationship holds without touching either.
-     *
-     * Drawn fresh each race — see `roll` — so the field is a spread rather than
-     * a ladder, and a different spread every time. Every unicorn shares the
-     * player's physics exactly: the same thrust, the same drag, the same brakes.
-     * Only the ceiling differs, and only the player has none.
-     */
-    const HANDICAP = vec2(0.7, 0.95);
     const me = id.x;
     const mine = RACER + me * SLOTS;
     // This racer's draw for the race: the pace it settles at and the line it
@@ -256,6 +245,19 @@ export const Physics = shader({
     const roll = fract(sin(me * 12.99 + uRoll) * 43758.5);
     /** 1 for the player, 0 for the AI. Used as a mix factor, never as a branch. */
     const player = 1 - step(0.5, me);
+    /**
+     * This racer's own ceiling.
+     *
+     * **One number, and it moves everything that is a speed.** The drag term is
+     * written as `7.5 / top²` so that terminal velocity *is* `top` — throttle
+     * and drag cancel at exactly that — and the boost pin and the backstop are
+     * both multiples of it. So raising this raises the whole speed range
+     * together rather than lifting one number into another's ceiling.
+     *
+     * The player is always 1: `mix(uHand, 1, player)`. That is what makes
+     * TOP_SPEED the player's number and this the field's.
+     */
+    const top = TOP_SPEED * mix(uHand, 1, player);
 
     const s0 = storageRead(uState, mine);
     const s1 = storageRead(uState, mine + 1);
@@ -601,10 +603,6 @@ export const Physics = shader({
     // and the rails do not stop them, because nothing here knows about rails.
     const aiThrottle = 1 - 0.9 * smoothstep(0.18, 0.62, abs(lat));
 
-    // Each AI is a little slower than the player and a little different from its
-    // neighbours, so the field spreads out over a lap instead of staying a lump,
-    // and so winning is possible without being trivial. The player is capped at
-    // 60 as before — the drag settles it near 55 long before that.
     // Three seconds, counting down, in the sixth slot. `max` rather than a
     // branch: standing on a pad sets the clock to 3 and stepping off it leaves
     // the countdown alone, so a pad taken at an angle across its corner gives
@@ -620,58 +618,23 @@ export const Physics = shader({
     const boost = max(was.x - dt, bOn * 3 * uGo);
     const bGo = step(0.001, boost);
 
-    // Untouched by the boost. A pad does not persuade a racer to go faster, it
-    // *sets* how fast it is going — see the pin below — so there is nothing here
-    // for a raised cap to do. What the cap still does is decide how the AI comes
-    // back down afterwards: at 90 it is well over its own limit, so the throttle
-    // eases off and the racer coasts rather than fighting the drag.
-    // Each AI is a little different from its neighbours so the field spreads out
-    // over a lap instead of staying a lump.
+    // **The field has no speed handicap.** Every rival used to race under a
+    // ceiling drawn between 0.7 and 0.95 of TOP_SPEED, with two of the nine
+    // pinned to the bounds so both ends of the range were always actually raced.
+    // The ceiling eased the throttle off as a racer approached it rather than
+    // clamping the speed, so a shunt from behind was not erased on the next
+    // frame.
     //
-    // **Raised, because the field was not fast enough to be a race.** It used to
-    // top out at 55, which is also where drag alone settles a racer — so the
-    // fastest AI was driving at the same speed as a player who never touched a
-    // pad, and every pad the player did take was gained against a field that
-    // could not answer.
-    // **One racer is pinned to each bound, so the bounds are always raced.**
-    // Nine independent draws leave the ends of the range mostly empty — the
-    // chance any of them lands within a hundredth of 0.95 is small, so the
-    // "fastest rival there can be" would almost never turn up and the field
-    // would quietly live in the middle. Naming one of each makes the two numbers
-    // describe the race rather than a distribution it is sampled from.
+    // All of it is gone. Every unicorn now runs the player's physics with
+    // nothing taken off — the same thrust, the same drag, the same ceiling — and
+    // drag alone settles the whole field at the same speed. What separates them
+    // is what they do with it: the line they take, when they lift for a corner,
+    // and which rings they reach.
     //
-    // Both drawn from `uRoll`, so they move every race like everything else. The
-    // second is an *offset* from the first rather than its own draw: one to
-    // eight, modulo nine, which cannot land back on the first — two independent
-    // picks would collide about one race in nine and leave the field with a
-    // slowest and no fastest.
-    const seat = me - 1;
-    const quick = floor(fract(uRoll * 37.1) * 9);
-    const slack = mod(quick + 1 + floor(fract(uRoll * 61.3) * 8), 9);
-    const cap =
-      TOP_SPEED *
-      mix(
-        mix(
-          HANDICAP.x + roll * (HANDICAP.y - HANDICAP.x),
-          HANDICAP.y,
-          1 - step(0.5, abs(seat - quick)),
-        ),
-        HANDICAP.x,
-        1 - step(0.5, abs(seat - slack)),
-      );
-    // The cap eases the throttle off rather than clamping the speed, and that
-    // matters now that a shunt can add speed the racer did not ask for. Clamped,
-    // an AI sitting at its cap had any push from behind erased on the very next
-    // frame — the shove landed, the buffer was written, and the ceiling took it
-    // straight back off. Easing lets it run over its own limit for a second and
-    // coast back down, which is what being rear-ended is supposed to look like.
-    // Gated for everyone, player and AI alike. A grid where the field creeps
-    // away while you wait is not a grid.
-    // The cap eases the field's throttle and never the player's. The player has
-    // no cap at all — drag alone holds them at `TOP_SPEED`, which is what makes
-    // that number theirs and this one the field's.
-    const throttle =
-      mix(aiThrottle * (1 - smoothstep(cap - 5, cap, speed)), uThrottle, player) * uGo;
+    // That makes the field a lump by default, and that is the point. The spread
+    // has to come from something deliberate now, rather than from a number
+    // quietly holding nine racers back.
+    const throttle = mix(aiThrottle, uThrottle, player) * uGo;
     const steer = mix(aiSteer, uSteer, player);
 
     // ── Where it points, and where it goes ─────────────────────────────────
@@ -782,7 +745,7 @@ export const Physics = shader({
     // where a rival's throttle eases off. Read backwards out of the balance — a
     // racer settles at `sqrt(rate / c)` — so `c` is the number that puts the
     // player exactly at `TOP_SPEED`, with no cap of their own to do it.
-    speed = speed - speed * speed * dt * (7.5 / (TOP_SPEED * TOP_SPEED));
+    speed = speed - speed * speed * dt * (7.5 / (top * top));
     // A backstop well clear of anything the throttle can reach, not the thing
     // setting the top speed — see the ease above.
     // Ninety rather than sixty, and it is still a backstop rather than the thing
@@ -801,7 +764,7 @@ export const Physics = shader({
     // on this road that reversing solves — the rails hold you on it and a spin
     // has been impossible since the heading gained its wall — so the gear can
     // go. Braking now decelerates to a stop and holds there.
-    speed = clamp(speed, 0, TOP_SPEED * 2);
+    speed = clamp(speed, 0, top * 2);
 
     // ── The boost, as a held speed ─────────────────────────────────────────
     // **A pad sets the speed rather than adding to it, and then holds it there.**
@@ -817,14 +780,14 @@ export const Physics = shader({
     //
     // It overrides the throttle, braking included. That is what a boost pad is:
     // you drove onto it, and for three seconds the road is deciding.
-    speed = mix(speed, TOP_SPEED * 1.5, bGo);
+    speed = mix(speed, top * 1.5, bGo);
     // **And star power pins higher still, after the pad rather than before it.**
     // Both are held speeds and both override the throttle, so whichever is
     // written last is the one that counts — and taking a boost pad while starred
     // should not slow you down to 90. Twice the sixty this road tops out at, for
     // the whole seven seconds, which is the "twice as fast" half of the power-up
     // and the reason the ceiling above had to move.
-    speed = mix(speed, TOP_SPEED * 2, starGo);
+    speed = mix(speed, top * 2, starGo);
     // Both flattened back into the road's surface. This is the one thing the
     // track is still allowed to do to the unicorn's direction, and it is not
     // steering: it tips the direction up and down to follow a climb or a
@@ -1032,22 +995,25 @@ export const Physics = shader({
     // Rear-ending is now the only thing that reaches this. The rail used to as
     // well, through the same `knock`, and it was removed rather than reduced —
     // see the rails above.
-    // **The player's rule, and only the player's.** `player` is the gate. The
-    // rail is not a hazard the AI can be trusted with: they hold a line by
-    // steering at an aim point, and an aim point near the edge on a tightening
-    // corner puts them against it for a second at a time through no decision of
-    // their own. Halving them for it turns a corner into a lottery over who was
-    // on the outside, and a field that arrives at the flag in an order the road
-    // picked is not a race.
+    // **Everyone pays this, and that is the point.** It was the player's alone,
+    // on the reasoning that the rail was a hazard the AI could not be trusted
+    // with — they hold a line by steering at an aim point, and an aim point near
+    // the edge on a tightening corner used to put them against it through no
+    // decision of their own. That reason is gone twice over: the rail does not
+    // raise `knock` any more (only body-to-body contact does, in the loop above)
+    // and the rails cost nothing to touch. What was left was nine racers who
+    // could barge through a pack for free while the player was billed for every
+    // one, which is not a difficulty setting, it is the field cheating.
     //
-    // The bleed above and the speed traded on contact stay on everyone, so the
-    // field still behaves like bodies on a road — it is the *penalty* that is
-    // the player's, in the same way the mistake cue already is.
+    // It does not have the field crawling, for two reasons that were already
+    // here. `(1 - was.z)` makes it an *edge*: a pack in constant contact pays
+    // once on the frame the touch begins, not every frame it lasts. And `knock`
+    // needs `step(0.5, nose)` above — a square hit, not a scrape down the flank —
+    // so running side by side down a straight costs nobody anything.
     //
-    // Rear-ending is gated with it rather than separately. Ten racers in a pack
-    // touch constantly, and halving each of those would have the field crawling
-    // within a lap of the start.
-    const bang = knock * (1 - was.z) * player;
+    // The one asymmetry left is star power, and it is deliberate: `free` waives
+    // this for whoever is starred, which is the player and never a rival.
+    const bang = knock * (1 - was.z);
     speed = speed * (1 - 0.5 * bang);
 
     // Height above the surface. There is no "is there surface here" test any

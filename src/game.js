@@ -1679,7 +1679,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   /** "CIRCUIT 1 / 2" and its siblings, one a circuit, just above the numerals. */
   const CIRCUIT_ROW = PLACE_ROW - CIRCUITS.length;
   /** The countdown's own glyphs: 3, 2, 1, GO!. */
-  const COUNT_ROW = 12;
+  const COUNT_ROW = 11;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
   const SUFFIX_ROW = NAME_ROW - 5;
   const card = document.createElement('canvas');
@@ -2005,14 +2005,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       }
       if (rung >= SIGNALS) go(RACE_STATE);
     }
-    // **Up is the whole of the throttle, and there is no other half.** Down was
-    // a brake, and a brake held past a standstill was a reverse gear nobody
-    // asked for — a lap counter running backwards and a player with no idea they
-    // had done it. There is nothing on this road that slowing down deliberately
-    // solves: lifting off already sheds speed, the rails hold you on the track,
-    // and the corners are taken flat. So the key is gone rather than clamped,
-    // which is one listener's worth of input the physics never has to consider.
-    step[1] = driving * held('ArrowUp');
+    // **The throttle is not a key.** It was Up, and before that Up against a
+    // Down that was a reverse gear nobody asked for. Both are gone: there is
+    // nothing on this road that going slower solves — the rails hold you on it
+    // and the corners are taken flat — and a race whose winning input is "hold
+    // one key from the flag to the finish" is not asking the player a question.
+    // So it is held for them, always, and steering is the entire game.
+    step[1] = driving;
     step[2] = driving * (held('ArrowRight') - held('ArrowLeft'));
     step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
@@ -2029,6 +2028,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // because the block is written whole, not because it changes.
     step[11] = ROLL;
     step[12] = SLOT_ROWS;
+    step[13] = HANDICAPS[SELECTED_CIRCUIT];
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -2188,7 +2188,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // screen, into the circuit title; LARGE puts it in the corner where it
       // belongs, and thirteen characters still stop short of the title.
       const starY = HUD_TOP - tall(LARGE);
-      say(18, starY, LARGE, 1);
+      say(17, starY, LARGE, 1);
       // **The gap is set by the plate, not by the ink.** `tall` measures the
       // five pixels of ink, but what is actually drawn is the whole seven-pixel
       // row — the dark plate behind the letters — so two rows stacked by their
@@ -2202,7 +2202,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       const plate = tall(LARGE) * (7 / 5);
       // Clamped to the gauge's own length — see CELLS in text.js, which is where
       // the ten comes from and which generates exactly this many rows.
-      say(19 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
+      say(18 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
       // **And while it is running, say so.** The gauge tells you how far along
       // you are; it does not tell you that the rules have changed for the next
       // seven seconds. Off the clock rather than off a full gauge, which is the
@@ -2212,7 +2212,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       //
       // Pulsed rather than steady, because it arrives in the middle of a race
       // and a static line at the bottom of the screen is furniture.
-      if (starLeft > 0 && SCREEN === RACE_STATE) say(17, -0.86, MEDIUM, 0.55 + 0.45 * Math.sin(TIME * 7));
+      if (starLeft > 0 && SCREEN === RACE_STATE) say(16, -0.86, MEDIUM, 0.55 + 0.45 * Math.sin(TIME * 7));
     }
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);
@@ -2256,10 +2256,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // without a sentence, and the line that spelled it out was telling the
       // player a rule they were already watching happen.
       //
-      // -0.9 is the lowest a caption sits anywhere in the game, and the stack
-      // grows upward from it.
-      say(10, -0.76, MEDIUM, 1);
-      say(11, -0.9, MEDIUM, 1);
+      // One line, on the lowest row a caption sits on anywhere in the game. It
+      // was two, with "PRESS UP TO GO" above it — and the throttle is held down
+      // for the player now, so the only thing left to tell them is the only
+      // thing they can do.
+      say(10, -0.9, MEDIUM, 1);
     } else if (SCREEN === RACE_STATE && flash) {
       // Fading over the last second of the two, which is `min(flash, 1)` and
       // needs no second timer.
@@ -2304,7 +2305,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       }
       say(7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE, 1);
       say(
-        SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 16 : 8,
+        SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 15 : 8,
         0 - pitch * 5.5 - tall(MEDIUM) * 2,
         MEDIUM,
         1,
