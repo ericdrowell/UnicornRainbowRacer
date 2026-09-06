@@ -100,7 +100,7 @@ const SAYS = [
   'UNICORN RAINBOW RACER',       // 0
   'PRESS ANY KEY TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
-  'PRESS LEFT OR RIGHT TO CHOOSE', // 3
+  'ARROWS OR A D', // 3
   'PRESS ENTER TO RACE',          // 4
   'PAUSED',                      // 5
   'PRESS ANY KEY TO CONTINUE',   // 6
@@ -134,7 +134,7 @@ const SAYS = [
   // drops. **Steering is the whole of it.** There was a "PRESS UP TO GO" over
   // this one, back when the throttle was a key: it is held down for the player
   // now, so the line was an instruction to press something that does nothing.
-  'PRESS LEFT AND RIGHT TO STEER',          // 10
+  'ARROWS OR A D',          // 10
   // The countdown, and then the flag. One glyph a beat, drawn huge in the middle
   // of the screen — see the note on sizing where game.js draws them.
   //

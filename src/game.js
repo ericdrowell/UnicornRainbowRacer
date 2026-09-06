@@ -897,17 +897,8 @@ lay();
 // of the simulation: which keys are down, and a latch for the one that is an
 // event rather than a state.
 const HELD = {};
-/**
- * 1 when that key is down.
- *
- * **Four keys drive this game and there are no synonyms.** It took a pair —
- * WASD beside the arrows — and each control cost two lookups and two string
- * literals to ask the same question twice. The arrows are what a player reaches
- * for on a game that is drawn like this one, the on-screen instructions have
- * only ever named them, and nothing in the game was ever bound to a letter that
- * the arrows did not already do.
- */
-const held = (a) => (HELD[a] ? 1 : 0);
+// Each direction accepts either key without doubling steering when both are held.
+const held = (a, b) => (HELD[a] || HELD[b] ? 1 : 0);
 
 addEventListener('keydown', (e) => {
   HELD[e.code] = 1;
@@ -1332,7 +1323,7 @@ addEventListener('keydown', (e) => {
   if (SCREEN === SELECT_STATE) {
     // Wrapped both ways, so the roster is a carousel rather than a list with
     // ends to bump into.
-    const step = (e.code === 'ArrowRight' ? 1 : 0) - (e.code === 'ArrowLeft' ? 1 : 0);
+    const step = /^(ArrowRight|KeyD)$/.test(e.code) - /^(ArrowLeft|KeyA)$/.test(e.code);
     if (step) {
       // The winding moves by one whatever happens; the index wraps. That is what
       // makes the ring turn the short way round the ends.
@@ -2112,7 +2103,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // one key from the flag to the finish" is not asking the player a question.
     // So it is held for them, always, and steering is the entire game.
     step[1] = driving;
-    step[2] = driving * (held('ArrowRight') - held('ArrowLeft'));
+    step[2] = driving * (held('ArrowRight', 'KeyD') - held('ArrowLeft', 'KeyA'));
     step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
     step[10] = PICK_BASE;
