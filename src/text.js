@@ -100,7 +100,7 @@ const SAYS = [
   'UNICORN RAINBOW RACER',       // 0
   'PRESS ANY KEY TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
-  'ARROWS TO CHOOSE', // 3
+  'PRESS ARROWS TO CHOOSE', // 3
   'PRESS ENTER TO RACE',          // 4
   'PAUSED',                      // 5
   'PRESS ANY KEY TO CONTINUE',   // 6
