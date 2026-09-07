@@ -1,6 +1,6 @@
-const UNICORN_SELECT_NEXT = [MENU_SONG, 0, 93];
-const UNICORN_SELECT_PREV = [MENU_SONG, 0, 86];
-const READY_SIGNAL = [RACE_SONG, 1, 55];
+const UNICORN_SELECT_NEXT = [0, 93];
+const UNICORN_SELECT_PREV = [0, 86];
+const READY_SIGNAL = [1, 55];
 // A whoosh is noise with a moving filter on it, not a pitch, so no note of any
 // instrument in the songs can be one. This is its own instrument instead, spread
 // from the race song's fourth track — already noise behind a swept filter
@@ -20,9 +20,9 @@ WHOOSH[18] = 2600; // the top of the sweep, so this is what sets the pitch
 WHOOSH[26] = 4;
 WHOOSH[27] = 255;
 WHOOSH[21] = 0;
-const BOOST = [WHOOSH, 0, 60];
+const BOOST = [WHOOSH, 60];
 
-const MISTAKE = [RACE_SONG, 0, 47];
+const MISTAKE = [0, 47];
 
 // Picking one up — and it is a power-up, not a chime, because a star is a
 // quarter of a run rather than a thing you collected. Three notes climbing a
@@ -32,15 +32,15 @@ const MISTAKE = [RACE_SONG, 0, 47];
 // renders: resampling a note up a third and a fifth is a couple of dozen bytes
 // against a couple of hundred, and on a note this short the artefacts of doing
 // it that way are the arcade sound rather than a flaw in it.
-const GRAB = [RACE_SONG, 1, 89];
+const GRAB = [1, 89];
 
 
 
-const shot = ([song, track, note], loud) => {
+const shot = ([track, note], loud) => {
   let buf = null;
   if (MUSIC_ENABLED) {
-    // Either a song to take a track from, or an instrument outright (WHOOSH).
-    buf = renderNote(MUSIC, song.songData ? song.songData[track] : song, note);
+    // Tracks always come from the race song; WHOOSH supplies an instrument directly.
+    buf = renderNote(MUSIC, RACE_SONG.songData[track] || track, note);
   }
   return (vol = loud, rate) => {
     // **Star power used to silence this, and it does not any more.** Every

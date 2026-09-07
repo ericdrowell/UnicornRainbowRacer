@@ -159,8 +159,8 @@ const song = (name) => {
 //   - unicorns and circuits before text: text.js spells the roster's names and
 //     one caption per circuit into the atlas at module scope, so both lists have
 //     to exist by then.
-//   - both songs before soundEffects: an effect names the song it borrows its
-//     instrument from, and that is a const initialiser, not a call.
+//   - race song before soundEffects: WHOOSH copies one of its instruments
+//     in a const initialiser.
 //   - everything before game.js, obviously, but nothing else here evaluates
 //     anything — the synthesiser and brometal only declare, so they are free to
 //     sit anywhere the packer likes them.
@@ -391,7 +391,6 @@ if (!process.env.DEBUG) {
   const deps = [
     read('lib', 'sonantx-custom.js'),
     song(['RACE_SONG', 'race.json']),
-    song(['MENU_SONG', 'menu.json']),
     read('src', 'soundEffects.js'),
     `const SFX_SOURCE = ${JSON.stringify(read('src', 'soundEffects.js'))};`,
   ].join('\n');

@@ -26,7 +26,7 @@
 // The order matters and is the lookup: a character's glyph is at
 // `FONT_SET.indexOf(ch) * 5`. Space is first and blank, so anything unknown
 // landing at -1 is caught by the caller rather than reading off the end.
-const FONT_SET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!:-<>&/*';
+const FONT_SET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!:-<>&/*'";
 
 const FONT =
   // ␣      A      B      C      D      E      F      G
@@ -87,7 +87,9 @@ const FONT =
   //
   // It is a cell of the star meter in the corner, which is the only place it is
   // used, and it is the same thing that is picked up off the road.
-  '27250';
+  '27250' +
+  // Apostrophe, used by the title.
+  '22000';
 
 // ── The captions ────────────────────────────────────────────────────────────
 // Every line the game ever shows, in the order the atlas bakes them.
@@ -97,7 +99,7 @@ const FONT =
 // once: splitting the select screen's instructions in two moved PAUSED and both
 // win lines down by one each, and a pause then read "ENTER TO RACE".
 const SAYS = [
-  'UNICORN RAINBOW RACER',       // 0
+  "STARLIGHT'S RAINBOW RACE",     // 0
   'PRESS ANY KEY TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
   'PRESS ARROWS TO CHOOSE', // 3

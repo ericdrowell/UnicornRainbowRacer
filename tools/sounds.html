@@ -3,24 +3,24 @@
 <title>Sound effects — Unicorn Rainbow Racer</title>
 <!--
   A bench for picking sound effects. Not part of the game and not in the build:
-  it reads the same songs and the same synthesiser the game does, plays any
+  it reads the race song and the same synthesiser the game does, plays any
   instrument at any note, and hands back the two numbers to paste into
   src/soundEffects.js.
 
   Source lives here in tools/ because it is a thing for making the game, not a
   part of it — nothing in this directory reaches the entry. It is built into
-  dist/sounds.html with the synthesiser, both songs and the effects file inlined,
+  dist/sounds.html with the synthesiser, the race song and the effects file inlined,
   so the built page opens straight off the disk with no server:
 
       npm run sounds
 
   The inlining is not optional: `import` and `fetch` are both blocked on file://,
-  and this page needs sonantx and two songs, so opening *this* file directly
+  and this page needs sonantx and the race song, so opening *this* file directly
   gives a blank page. The game page has the same problem and solves it the same
   way.
 
   An effect in this game is an instrument and a note, and both halves of that
-  are visible here — change the song at the top and every button changes what it
+  are visible here — change the source at the top and every button changes what it
   sounds like, because the instruments belong to the song.
 -->
 <style>
@@ -83,15 +83,15 @@
 
 <h1>Sound effects</h1>
 <p class=sub>
-  An effect is <code>[song, track, note]</code> — which song to borrow an
-  instrument from, which of its tracks, and which note to hit it at. Click any key below to hear it; the line at the bottom
+  An effect is <code>[track, note]</code> — a track from the race song (or a custom
+  instrument such as WHOOSH), and the note to play. Click any key below to hear it; the line at the bottom
   is what goes in <code>src/soundEffects.js</code>. Rendering happens once per
   button and is then cached, so the first click on a key is a beat slower than
   the rest.
 </p>
 
 <div class=bar>
-  <label>Song <select id=song></select></label>
+  <label>Source <select id=song></select></label>
   <label>Lowest note <input id=lo type=number value=36 min=0 max=120 step=1></label>
   <label>Highest note <input id=hi type=number value=96 min=0 max=120 step=1></label>
   <span class=note-of id=status></span>
@@ -101,31 +101,27 @@
 <div id=tracks></div>
 
 <div class=out>
-  <input id=line readonly value="const MY_EFFECT = [RACE_SONG, 1, 72];">
+  <input id=line readonly value="const MY_EFFECT = [1, 72];">
   <button id=copy>Copy</button>
   <span class=note-of id=detail></span>
 </div>
 
 <script type=module>
-// sonantx, both songs, src/soundEffects.js, and its source as SFX_SOURCE — all
+// sonantx, the race song, src/soundEffects.js, and its source as SFX_SOURCE — all
 // pasted in by build.mjs. A module rather than a classic script because of the
 // top-level await further down; an *inline* module is fine on file://, it is
 // only importing from one that is not.
 /*DEPS*/
 
-// The songs the game ships, by the name the game knows each one by — which is
-// what goes into the effect, since an effect names its song and the same track
-// number means a different instrument depending on which it borrows from.
-// Custom instruments are wrapped as one-track songs so they appear in the same
-// dropdown and can be auditioned note by note like any other. Add a line here
-// for each one soundEffects.js defines.
-const SONGS = { RACE_SONG, MENU_SONG, WHOOSH: { songData: [WHOOSH] } };
+// The default race-song tracks and the custom instrument available to effects.
+const SONGS = { RACE_SONG, WHOOSH: { songData: [WHOOSH] } };
 
 // What src/soundEffects.js already defines, read out of its own source so this
 // page cannot drift from the file.
 function existingEffects() {
-  return [...SFX_SOURCE.matchAll(/^const ([A-Z0-9_]+) = \[\s*(\w+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/gm)]
-    .map((m) => ({ name: m[1], song: m[2], track: +m[3], note: +m[4] }));
+  return [...SFX_SOURCE.matchAll(/^const ([A-Z0-9_]+) = \[\s*(\w+)\s*,\s*(\d+)\s*\]/gm)]
+    .map((m) => ({ name: m[1], song: /^\d+$/.test(m[2]) ? 'RACE_SONG' : m[2],
+      track: /^\d+$/.test(m[2]) ? +m[2] : 0, note: +m[3] }));
 }
 
 const ctx = new AudioContext();
@@ -162,7 +158,7 @@ async function play(track, note, label, fromSong) {
   src.buffer = buf;
   src.connect(ctx.destination);
   src.start();
-  line.value = `const ${label || 'MY_EFFECT'} = [${which}, ${track}, ${note}];`;
+  line.value = `const ${label || 'MY_EFFECT'} = [${which === 'RACE_SONG' ? track : which}, ${note}];`;
   detail.textContent =
     `${which} · track ${track} · note ${note} · ${nameOf(note)} · ${buf.duration.toFixed(2)}s`;
   document.querySelectorAll('button.note.on').forEach((b) => b.classList.remove('on'));
@@ -226,7 +222,7 @@ load(picker.value);
 const host = document.getElementById('existing');
 for (const e of existingEffects()) {
   const b = document.createElement('button');
-  b.textContent = `${e.name}  [${e.song}, ${e.track}, ${e.note}]`;
+  b.textContent = `${e.name}  [${e.song === 'RACE_SONG' ? e.track : e.song}, ${e.note}]`;
   b.onclick = () => play(e.track, e.note, e.name, e.song);
   host.append(b);
 }
