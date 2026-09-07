@@ -335,19 +335,12 @@ export const Physics = shader({
     // and the buffer write at the bottom of the stage reports it. Nothing between
     // here and there moves the body along the ribbon it was measured on.
     const onLap = mix(ca.w, cb.w, along);
-    // **Through the gate is a boost, and the gate is the lap line.** `onLap` only
-    // ever climbs — the heading wall below means nobody drives backwards — so the
-    // one frame it comes out *smaller* than last frame's is the frame the line
-    // was crossed. No band, no lane test and no slot: the gate spans the whole
-    // road, so passing under it is the same event as starting a new lap.
-    //
-    // Last frame's rides in `.w` of the same word this stage stores the heading
-    // in, which is written at the very bottom of this file — so the read here is
-    // genuinely the previous frame's and not this one's.
-    //
-    // It cannot misfire on the first frame, when both are nought and `step`
-    // answers 1, nor before the flag, when `dt` is nought and `onLap` cannot move.
-    const crossed = 1 - step(storageRead(uState, mine + 4).w, onLap);
+    // A gate crossing wraps from the end of the lap back to its beginning.
+    // Require a drop of 100 metres: small backwards corrections on the grid
+    // or road must not consume the one-time starting boost. Every lap is
+    // thousands of metres long, so a real wrap comfortably clears this gap.
+    // Slot 6.y remembers the first crossing per racer; resetGrid clears it.
+    const crossed = step(onLap + 100, storageRead(uState, mine + 4).w) * uGo;
     const trackAlong = onLap * uPattern;
 
     // ── Boost pads ─────────────────────────────────────────────────────────
@@ -426,7 +419,8 @@ export const Physics = shader({
 
     // ── Stars ──────────────────────────────────────────────────────────────
     // **Slot 6 holds everything star-shaped, and it is read once here.** `.x` is
-    // the slot last collected, `.z` the run's clock, `.w` the rainbow phase it
+    // the slot last collected, `.y` records the starting-line crossing,
+    // `.z` is the run's clock, `.w` the rainbow phase it
     // has banked.
     const prev = storageRead(uState, mine + 6);
     // The boost word, read here rather than at the pad below because `.w` of it
@@ -515,7 +509,7 @@ export const Physics = shader({
     // worth of phase at the start of the next one, and there are three runs in a
     // gauge-and-a-half of stars. This only ever increases, so there is no
     // moment anywhere that it steps.
-    const starNow = vec4(mix(prev.x, bSlot, onStar), 0, starClock, prev.w + dt * starGo);
+    const starNow = vec4(mix(prev.x, bSlot, onStar), max(prev.y, crossed), starClock, prev.w + dt * starGo);
     storageWrite(uState, mine + 6, starNow);
     // **The moment of collection, written back onto the star itself.** A taken
     // star spins up and vanishes rather than simply being gone on the next
@@ -631,7 +625,7 @@ export const Physics = shader({
     // the grid on its own. `uGo` on the arming rather than on the pin, so a
     // countdown spent standing on one does not bank three seconds of boost to
     // spend the moment it drops.
-    const boost = max(was.x - dt, max(bOn, crossed) * 3 * uGo);
+    const boost = max(was.x - dt, max(bOn, crossed * (1 - prev.y)) * 3 * uGo);
     const bGo = step(0.001, boost);
 
     // **The field has no speed handicap.** Every rival used to race under a

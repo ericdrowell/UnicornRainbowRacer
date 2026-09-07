@@ -9,7 +9,7 @@
 // Everything here is plain globals, no imports: this file is concatenated with
 // the runtime, the compiled shaders and the mesh, and minified as one program.
 
-const canvas = document.getElementById('c');
+const canvas = document.querySelector('canvas');
 
 // ── Switches ────────────────────────────────────────────────────────────────
 // Everything that gets turned on and off while the game is being made, in one
@@ -914,6 +914,8 @@ addEventListener('keyup', (e) => (HELD[e.code] = 0));
 // moving* reads the gait out of the state buffer instead, and the gait is a
 // distance rather than a time.
 let TIME = 0;
+// Offset only the selection orbit: 5 seconds places it at 1.5 radians.
+let selectOrbit = 0;
 
 // ── Pause ───────────────────────────────────────────────────────────────────
 // Escape toggles. The frame keeps being drawn while paused — the camera still
@@ -947,7 +949,7 @@ let prev = 0;
 //   FLAG_STATE    the field on the start line, held, counting down.
 //   RACE_STATE    the thing itself.
 //   PAUSE_STATE   the race, frozen, with the world still drawn behind the card.
-//   WIN_STATE     the race over, and the same.
+//   FINISH_STATE     the race over, and the same.
 //
 // Every transition goes through `go`, which is what keeps the music honest:
 // each state names its own song, and the one place that changes state is the
@@ -956,7 +958,7 @@ const TITLE_STATE = 0;
 const SELECT_STATE = 1;
 const RACE_STATE = 2;
 const PAUSE_STATE = 3;
-const WIN_STATE = 4;
+const FINISH_STATE = 4;
 /**
  * On the start line, before the flag.
  *
@@ -1203,12 +1205,12 @@ function go(next) {
   // itself as if it were starting.
   if (next === RACE_STATE && SCREEN === FLAG_STATE) flash = 2;
   // **Crossing the line ends a run, and this is the only place that can say so.**
-  // WIN_STATE is the one way out of a race — a pause goes back to it, and star
+  // FINISH_STATE is the one way out of a race — a pause goes back to it, and star
   // power surviving a pause is right — so clearing here covers every exit
   // without touching the one state that should hold. `starLeft` goes with it:
   // the readback stops running the moment the racing does, so it would otherwise
   // keep the CPU's copy of a clock that no longer exists.
-  if (next === WIN_STATE) {
+  if (next === FINISH_STATE) {
     clearStars();
     starLeft = 0;
     // **The order they were in when the player crossed is the finishing order.**
@@ -1230,15 +1232,16 @@ function go(next) {
     // array is already in this circuit's finishing order.
     STANDINGS.sort((a, b) => TALLY[a] - TALLY[b]);
   }
+  // The palettes are shared between the carousel and the grid, so they are
+  // rewritten on the way into each.
+  if (next === SELECT_STATE) {
+    selectOrbit = TIME - 5;
+    showPick();
+  }
   if (next === FLAG_STATE) {
     ROUND.fill(0);
     DONE.fill(0);
     place = FIELD - 1;
-  }
-  // The palettes are shared between the carousel and the grid, so they are
-  // rewritten on the way into each.
-  if (next === SELECT_STATE) showPick();
-  if (next === FLAG_STATE) {
     // Circuit one is a new series, however it was reached — off the title, or
     // round again from the end of the last one. Cleared on the way *in* rather
     // than on the way out of the final race, so the last leaderboard is still
@@ -1249,8 +1252,9 @@ function go(next) {
     rung = 0;
     lineUp(PICK);
     dress(RACERS);
-    resetGrid();
   }
+  // Selection needs the grid too: restore the orbit centre after a series.
+  if (next === SELECT_STATE || next === FLAG_STATE) resetGrid();
   SCREEN = next;
   syncMusic();
 }
@@ -1353,7 +1357,7 @@ addEventListener('keydown', (e) => {
   // pause screen, which any key leaves. The result is worth a beat to read, and
   // a player still holding the throttle at the finish would otherwise clear it
   // before seeing it.
-  if (SCREEN === WIN_STATE && e.code === 'Enter') {
+  if (SCREEN === FINISH_STATE && e.code === 'Enter') {
     // On through the series, or back to the top once it is done — and either way
     // the road is rebuilt, because returning to the title has to put circuit one
     // back under the carousel rather than leaving the last one there.
@@ -1383,7 +1387,7 @@ function syncMusic() {
   // star track with nothing happening.
   const want = SCREEN === RACE_STATE && starLeft ? 'star' : SCORE[SCREEN];
   // Already playing the right thing. **This test is the whole reason pausing
-  // does not restart the menu music**: PAUSE_STATE and SELECT_STATE and WIN_STATE all ask for the
+  // does not restart the menu music**: PAUSE_STATE and SELECT_STATE and FINISH_STATE all ask for the
   // same song, so unpausing mid-bar drops straight back into the race rather
   // than restarting a track the player was already listening to.
   if (want === PLAYING_NAME) return;
@@ -1561,9 +1565,8 @@ function uploadTrack() {
  * over. `lay()` rebuilds the arrays and this hands the new ones to the two
  * programs that read them.
  *
- * The grid is not touched here: `go(FLAG_STATE)` calls `resetGrid`, which writes
- * the new `GRID` into the state buffer, and every caller of this follows it with
- * exactly that.
+ * The grid is reset on entry to the flag or selection screen. Both use the
+ * new `GRID`, including selection after returning from a completed series.
  */
 function swap(i) {
   SELECTED_CIRCUIT = i;
@@ -2035,7 +2038,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // counter, it is what keeps the running order honest across the line: a
       // racer who has just crossed has a `ROUND` of nearly nothing, and ordering
       // on that alone would show whoever is winning as last.
-      if (DONE[0] > 1) go(WIN_STATE);
+      if (DONE[0] > 1) go(FINISH_STATE);
     });
   };
 
@@ -2109,10 +2112,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[10] = PICK_BASE;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
-    step[7] = TIME;
+    step[7] = TIME - selectOrbit * (SCREEN === SELECT_STATE);
     // The orbiting camera is up for everything before the race; it is also what
     // switches off the road's shadow, since there is no unicorn to cast one.
-    step[8] = SCREEN === RACE_STATE || SCREEN === PAUSE_STATE || SCREEN === WIN_STATE || SCREEN === FLAG_STATE ? 0 : 1;
+    step[8] = SCREEN === RACE_STATE || SCREEN === PAUSE_STATE || SCREEN === FINISH_STATE || SCREEN === FLAG_STATE ? 0 : 1;
     // Everything holds on the grid until the flag.
     step[9] = SCREEN === FLAG_STATE ? 0 : 1;
     // Constant for the whole race — rolled once at the flag. Sent every frame
@@ -2354,7 +2357,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(COUNT_ROW + 3, 0.2, HUGE, Math.min(flash, 1));
     } else if (SCREEN === PAUSE_STATE) {
       heading(5, 6);
-    } else if (SCREEN === WIN_STATE) {
+    } else if (SCREEN === FINISH_STATE) {
       // ── The standings ───────────────────────────────────────────────────
       // Ten rows, one a racer, best total at the top: the position out at the
       // right where the place readout has always sat, and the name centred.
