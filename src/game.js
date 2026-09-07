@@ -225,7 +225,7 @@ let SELECTED_CIRCUIT = 0;
 // only real way to get this wrong.
 let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
-TRACK = CIRCUITS[SELECTED_CIRCUIT];
+TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT][0]);
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -2119,7 +2119,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // because the block is written whole, not because it changes.
     step[11] = ROLL;
     step[12] = SLOT_ROWS;
-    step[13] = HANDICAPS[SELECTED_CIRCUIT];
+    step[13] = CIRCUITS[SELECTED_CIRCUIT][1];
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -2197,6 +2197,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     let n = 0;
     /** A caption: atlas row, centre y, half-width, fade. Row -1 is the card. */
     const say = (row, y, half, fade) => {
+      // Share the prompt pulse; wall time keeps it moving on the pause screen.
+      // Bits 1, 3, 4, 6 and 8 select prompts; the bound prevents wrapping.
+      if (row < 9 && (346 >> row & 1)) fade = 0.6 + 0.4 * Math.cos(t * 3);
       cells.set([row, y, half, fade], n * 4);
       n++;
     };
@@ -2387,9 +2390,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
         // it is, which is why the arrow needs no other bookkeeping than this.
         if (!STANDINGS[i]) say(MARK_ROW, y, LARGE, 1);
       }
-      say(7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE, 1);
+      const more = SELECTED_CIRCUIT < CIRCUITS.length - 1;
+      say(more ? 28 : 7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE, 1);
       say(
-        SELECTED_CIRCUIT < CIRCUITS.length - 1 ? 15 : 8,
+        more ? 15 : 8,
         0 - pitch * 5.5 - tall(MEDIUM) * 2,
         MEDIUM,
         1,

@@ -172,6 +172,7 @@ const song = (name) => {
 // repo, and is the one place where the right move is usually to leave the
 // arithmetic alone.
 const parts = [
+  read('dist', 'shaders.js'),
   song(['MENU_SONG', 'menu.json']),
   song(['RACE_SONG', 'race.json']),
   song(['STAR_SONG', 'star.json']),
@@ -182,7 +183,6 @@ const parts = [
   read('src', 'circuits.js'),
   read('src', 'text.js'),
   read('dist', 'brometal.js'),
-  read('dist', 'shaders.js'),
   read('src', 'soundEffects.js'),
   read('src', 'game.js'),
 ];

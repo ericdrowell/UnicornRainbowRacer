@@ -229,15 +229,8 @@ const circuit = (seed) => {
 // closest ring-to-distant-road gap is 35 metres. 20260512 is the finale: two
 // thirds of it is banked past vertical against the third circuit's third, and
 // its own worst gap is 46 metres.
-const CIRCUITS = [
-  circuit(20260830),
-  circuit(20261225),
-  circuit(20260522),
-  circuit(20260512),
-];
-
 /**
- * What the field's top speed is multiplied by, one number a circuit.
+ * The second number of a row: what the field's top speed is multiplied by.
  *
  * **The player is 1 and is not written down**; these are relative to that. 1.06
  * means every rival tops out six per cent over the player's own ceiling, both on
@@ -268,4 +261,23 @@ const CIRCUITS = [
  * the corner lift were not already doing. One number a track, tuned by playing
  * the track.
  */
-const HANDICAPS = [1.06, 1.06, 1.055, 1.055];
+//
+// ── A circuit is a seed and a handicap ──────────────────────────────────────
+// The two lists used to sit apart, one of tracks and one of speeds, kept in step
+// by nothing but their index — which is exactly the kind of pairing that goes
+// wrong the day a circuit is inserted rather than appended. A row here is one
+// track, and there is no way to add a track without deciding what the field does
+// on it.
+//
+// **The seed, not the built circuit.** Holding `circuit(seed)` here ran the
+// generator for all four at load, and three of those tracks are not being raced.
+// `lay()` builds the one that is, which is where the seed is unrolled now — and
+// it already runs on every swap, so this costs nothing and saves three.
+const CIRCUITS = [
+  [20260830, 1.16],
+  [20261225, 1.1],
+  [20260522, 1.1],
+  [20260512, 1.1],
+];
+
+

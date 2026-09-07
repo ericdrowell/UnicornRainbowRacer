@@ -220,6 +220,7 @@ const LINES = [
   // cells and the change touched this line and the two thresholds and nothing
   // else.
   ...GAUGE.map((row) => row.padEnd(WIDE)),                                          // 17-27
+  'STANDINGS',                                                                  // 28
   // Which circuit this is, one row each. Built from the roster of seeds rather
   // than written out, so adding a track adds its own caption — and the "/ 2"
   // on every one of them corrects itself, which a hand-written list would not.

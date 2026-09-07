@@ -6,6 +6,7 @@ import {
   sin,
   cos,
   abs,
+  sign,
   min,
   max,
   exp,
@@ -188,8 +189,8 @@ export const Physics = shader({
     /** Tile rows to a pickup slot — see SLOT_ROWS in game.js. */
     uRows: 'float',
     /**
-     * The field's top-speed multiplier for this circuit — HANDICAPS in
-     * src/circuits.js. 1 would be parity with the player.
+     * The field's top-speed multiplier for this circuit — the second number of
+     * the circuit's row in src/circuits.js. 1 would be parity with the player.
      *
      * **Last in the block**, like everything added here: the uniforms are
      * positional and game.js fills them by index, so anything inserted above
@@ -825,21 +826,11 @@ export const Physics = shader({
     //
     // - *Position* always separates, whatever the angle. Nobody ever ends up
     //   inside anybody.
-    // - *Speed* is only traded nose-to-tail. Run into the side of a unicorn and
-    //   you knock it across the road and carry on at the speed you arrived at;
-    //   run into the back of one and you shunt it forward and lose the speed you
-    //   gave it.
-    //
-    // `nose` is what tells them apart: the contact direction against the
-    // direction of travel, so 1 is square in the back or square in the front and
-    // 0 is a pure side swipe. Taken absolute, because both halves of a rear-end
-    // are the same event seen from either end.
-    //
-    // The trade itself is the two speeds meeting in the middle — a perfectly
-    // inelastic collision, and the reason it needs no sign test. The racer
-    // behind is the faster one, so averaging costs it speed; the racer in front
-    // is the slower one, so the same average gives speed to it. One expression,
-    // and it is correct from both seats at once.
+    // - Speed changes once per substantial nose-to-tail contact: the hitter
+    //   loses half, while the horse ahead gains up to 25%, capped at top speed.
+    // `nose` is signed: positive means the other horse is behind this one;
+    // negative means it is ahead. Its absolute value measures how square the
+    // impact is, with zero meaning a side swipe.
     //
     // **The read here is racy and deliberately so.** These ten invocations share
     // a workgroup with no barrier, so another racer's slot may hold this frame's
@@ -851,7 +842,7 @@ export const Physics = shader({
     // The self-test is `abs(j - me)` rather than a branch: at j == me the gap is
     // zero, which would otherwise register as the hardest possible collision
     // with itself and fire every racer off the track on frame one.
-    // Anything this frame worth a knock — a body or the rail. Accumulated
+    // Signed body contact this frame. Accumulated
     // rather than tested at the end, because contact with a *particular*
     // neighbour is only known inside the loop below and is gone by the time it
     // finishes.
@@ -891,11 +882,10 @@ export const Physics = shader({
       // on the way out — 0.9 is about the mean half-extent, which is what makes
       // a shove separate them at the rate it used to.
       pos = pos.add(line.scale(hit * (1 - gap) * 0.9));
-      const nose = abs(dot(line, courseDir));
-      const theirs = storageRead(uState, RACER + j * SLOTS + 1).w;
+      const nose = dot(line, courseDir);
       // **Star power costs nothing to spend.** A starred unicorn ploughs
       // through the field rather than bouncing off it: the bodies still
-      // separate, but the speed trade and the mistake bell are both called off.
+      // separate, but the speed response and the mistake bell are both called off.
       // Being billed for the power-up is not the power-up.
       const free = starGo;
       // **Bulldozed.** Touching a starred racer throws this one at the rail —
@@ -914,24 +904,13 @@ export const Physics = shader({
         hit *
           step(0.001, storageRead(uState, RACER + j * SLOTS + 6).z) *
           (step(0, dot(line, sideT)) * 2 - 1);
-      // Not the whole way to the average in one frame: contact lasts while the
-      // two are still overlapping, so a firm shunt applies this several times
-      // over and arrives at the average anyway. Going all the way immediately
-      // makes a light touch feel like hitting a wall.
-      speed = mix(speed, (speed + theirs) * 0.5, hit * nose * 0.5 * (1 - free));
-      // **On `nose`, not on `hit` — the cue follows the speed loss, not the
-      // contact.** The line above already says a side swipe costs nothing: at
-      // nose 0 the mix weight is 0 and the two racers part with the speeds they
-      // arrived at. Ringing the mistake bell on every touch told the player they
-      // had been punished for something that was free, which is worse than
-      // silence — it teaches them to avoid a manoeuvre that has no downside.
-      //
-      // Half is where the trade becomes worth hearing: 60 degrees off the
-      // direction of travel, past which contact is a rear-end and below which it
-      // is a scrape down the flank. A hard step rather than scaling the cue's
-      // volume, because this drives a clock the CPU only samples six times a
-      // second — it either happened or it did not by the time anyone reads it.
-      knock = max(knock, hit * step(0.5, nose) * (1 - free));
+      // Only substantial front/back contact triggers a response. Side swipes
+      // separate the bodies without trading speed, and repeated overlap does
+      // not compound the initial penalty or rear-hit boost.
+      // Signed contact: +1 means hitting a horse ahead, -1 means being hit
+      // from behind. Front contact takes priority in a simultaneous pile-up.
+      knock = mix(knock, -sign(nose),
+        hit * step(0.5, abs(nose)) * (1 - free) * step(knock, 0));
     }
 
     // What gets *drawn*, and deliberately past even the nose. The gap between
@@ -994,42 +973,13 @@ export const Physics = shader({
     const held = clamp(mix(off, kerb * bull, abs(bull) * 0.6), 0 - kerb, kerb);
     pos = pos.add(sideT.scale(held - off));
 
-    // **Half your speed, once per contact.** A graze used to cost a rounding
-    // error: the rail bled 1.6 a second and a rear-end walked the two speeds
-    // together a fraction at a time, so the honest line and the line that
-    // bounced off everything finished within a length of each other. There was
-    // no reason to drive cleanly.
-    //
-    // On the *edge* of contact and not the fact of it, which is the whole
-    // difference between a penalty and a wall. Contact lasts as long as two
-    // bodies overlap — a firm shunt is ten or fifteen frames — and halving every
-    // frame is 0.5^15, which is not a penalty, it is a full stop. `was.z` is
-    // last frame's answer to the same question, so this fires on the frame
-    // contact begins and stays quiet until it has ended and begun again.
-    //
-    // Rear-ending is now the only thing that reaches this. The rail used to as
-    // well, through the same `knock`, and it was removed rather than reduced —
-    // see the rails above.
-    // **Everyone pays this, and that is the point.** It was the player's alone,
-    // on the reasoning that the rail was a hazard the AI could not be trusted
-    // with — they hold a line by steering at an aim point, and an aim point near
-    // the edge on a tightening corner used to put them against it through no
-    // decision of their own. That reason is gone twice over: the rail does not
-    // raise `knock` any more (only body-to-body contact does, in the loop above)
-    // and the rails cost nothing to touch. What was left was nine racers who
-    // could barge through a pack for free while the player was billed for every
-    // one, which is not a difficulty setting, it is the field cheating.
-    //
-    // It does not have the field crawling, for two reasons that were already
-    // here. `(1 - was.z)` makes it an *edge*: a pack in constant contact pays
-    // once on the frame the touch begins, not every frame it lasts. And `knock`
-    // needs `step(0.5, nose)` above — a square hit, not a scrape down the flank —
-    // so running side by side down a straight costs nobody anything.
-    //
-    // The one asymmetry left is star power, and it is deliberate: `free` waives
-    // this for whoever is starred, which is the player and never a rival.
-    const bang = knock * (1 - was.z);
-    speed = speed * (1 - 0.5 * bang);
+    // One response per continuous contact: halve the hitter's speed, or give
+    // the horse ahead up to 25% extra speed, capped at normal top speed.
+    // Existing power-up speed is preserved. A rear hit never rings the mistake cue
+    // or cancels a ring boost. Signed last-frame contact prevents compounding.
+    const impact = knock * (1 - abs(was.z));
+    const bang = max(impact, 0);
+    speed = min(speed * (1 + 0.25 * max(-impact, 0)), max(speed, top)) * (1 - 0.5 * bang);
 
     // Height above the surface. There is no "is there surface here" test any
     // more: the clamp above guarantees there is.
@@ -1352,7 +1302,7 @@ export const Physics = shader({
       // The penalty would apply everywhere except while boosting, which is the
       // one time a player is fast enough for it to matter.
       //
-      // .z is last frame's contact, for the edge test above. It costs nothing:
+      // .z is last frame's signed contact, for the edge test above. It costs nothing:
       // the word was being written as a zero either way.
       vec4(boost * (1 - bang), max(was.y - dt, knock * 0.2), knock, stars * (1 - engage)),
     );
