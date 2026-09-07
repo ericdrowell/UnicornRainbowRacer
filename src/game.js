@@ -1235,6 +1235,7 @@ function go(next) {
   // The palettes are shared between the carousel and the grid, so they are
   // rewritten on the way into each.
   if (next === SELECT_STATE) {
+    PICK = SELECTED_UNICORN;
     selectOrbit = TIME - 5;
     showPick();
   }
@@ -2129,7 +2130,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // this frame's rendering and the two never disagree about where anything is.
     bmDispatch(sim, 1);
 
-    u[0] = TIME;
+    // Start the selection turntable clock at zero on every entry.
+    u[0] = step[7] - 5 * (SCREEN === SELECT_STATE);
     tu[0] = TIME;
     // **Per frame, though they only change between races.** These were written
     // once at start-up, when there was one circuit and it could not change; a

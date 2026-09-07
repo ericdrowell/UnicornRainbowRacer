@@ -179,7 +179,7 @@ export const Unicorn = shader({
     //   gaze     the camera's target minus its eye. The chase camera puts those
     //            eight metres apart along the track and the orbit camera fifty
     //            out; they are never the same point.
-    //   ringSide gaze crossed with the camera's up. Zero only if the camera
+    //   ringSide camera up crossed with gaze (screen-left). Zero only if the camera
     //            looks straight along its own up vector — the up *is* the road
     //            normal and the gaze runs along the road, so they are
     //            perpendicular by construction.
@@ -194,7 +194,7 @@ export const Unicorn = shader({
     const gazeRaw = storageRead(uState, 9).xyz.sub(camEye);
     const gaze = normalize(gazeRaw);
     const camUp = storageRead(uState, 10).xyz;
-    const sideRaw = cross(gaze, camUp);
+    const sideRaw = cross(camUp, gaze);
     const ringSide = normalize(sideRaw);
     // Up on *screen*, not up in the world: the shot looks down at the circuit,
     // so world up runs into the frame at an angle and lifting by it moves the
@@ -238,6 +238,7 @@ export const Unicorn = shader({
     // hanging the model in the middle of the viewport left a gap under the name
     // and none under the hooves.
     const hub = camEye.add(gaze.scale(13)).sub(screenUp.scale(2.35));
+    // At time zero face screen-left, then keep the existing turntable speed.
     const turn = uTime * 1.15;
     const turned = ringSide.scale(cos(turn)).add(cross(screenUp, ringSide).scale(sin(turn)));
 
