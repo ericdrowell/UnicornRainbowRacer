@@ -41,8 +41,6 @@ export const Text = shader({
   },
   uniforms: {
     uTime: 'float',
-    /** Viewport aspect, so letters keep their shape whatever the window does. */
-    uAspect: 'float',
     /** How many rows the atlas holds, and how tall one row is against its width. */
     uRows: 'float',
     uRatio: 'float',
@@ -52,7 +50,7 @@ export const Text = shader({
   },
   varyings: { vUv: 'vec2', vFade: 'float' },
 
-  vertex({ aCorner, aCell }, { uAspect, uRows, uRatio, uHud }, v) {
+  vertex({ aCorner, aCell }, { uRows, uRatio, uHud }, v) {
     const solid = 1 - step(0, aCell.x);
     v.vFade = aCell.w;
     // One line out of the atlas. Every string is baked into its own row of a
@@ -60,9 +58,9 @@ export const Text = shader({
     // image rather than a texture per caption.
 
     // Height follows from width and the row's own proportions, so the letters
-    // never stretch. The card ignores all of that and covers the screen.
+    // keep their shape in the fixed 16:9 picture. The card covers the screen.
     const half = mix(aCell.z, 1, solid);
-    const tall = mix(aCell.z * uRatio * uAspect, 1, solid);
+    const tall = mix(aCell.z * uRatio * (16 / 9), 1, solid);
     let x = (aCorner.x * 2 - 1) * half;
     let y = aCell.y + (aCorner.y * 2 - 1) * tall;
     let texX = aCorner.x;
@@ -78,7 +76,7 @@ export const Text = shader({
         // become exactly 0 or 1 before applying the scale. Thus shared edges
         // have identical f32 coordinates instead of independent rounding.
         x = 1 - uHud.x + ((aCorner.x + suffix - 1) * aCell.z - uHud.w) * 9 * uHud.z;
-        y = uHud.y - 1 + (1 + (aCorner.y - 1) * aCell.z) * 7 * uHud.z * uAspect;
+        y = uHud.y - 1 + (1 + (aCorner.y - 1) * aCell.z) * 7 * uHud.z * (16 / 9);
         texX = mix(
           0.5 + (39 + aCorner.x * 9) * uRatio / 7,
           1 - (10 - aCorner.x * 9) * uRatio / 7,

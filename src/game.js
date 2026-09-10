@@ -1854,6 +1854,22 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Ordinal sizes are sent to the shader relative to EXTRA_LARGE.
   const SUFFIX = LARGE;
 
+  // Fixed 16:9 layout, computed once. Atlas proportions still determine glyph
+  // sizes, but resizing the window only scales the complete picture.
+  const tall = (half) => 5 * half / CARD_W * (16 / 9);
+  const plate = (half) => 7 * half / CARD_W * (16 / 9);
+  const PAD_X = 2 * SCREEN_PADDING;
+  const PAD_Y = PAD_X * (16 / 9);
+  const HUD_BOT = PAD_Y - 1;
+  const HUD_TOP = 1 - PAD_Y;
+  const HEAD_GAP = 0.26;
+  const headY = HEAD_GAP / 2 - (tall(EXTRA_LARGE) - tall(MEDIUM)) / 2;
+  const hint = HUD_BOT + plate(MEDIUM);
+  const HINT_GAP = plate(MEDIUM) * 2.1;
+  const pitch = plate(LARGE) * 2.1;
+  const SELECT_Y = (0.66 - plate(EXTRA_LARGE) + hint + HINT_GAP + plate(MEDIUM)) / 2;
+
+
   // **Every row below is counted back from the names, and the counts are the
   // block that sits in front of them.** src/text.js ends with, in order: ten
   // place numerals, four suffixes, the standings' star, the ten centred names
@@ -2143,8 +2159,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   };
 
   bmLoop((t) => {
-    // Share the rendered aspect across camera, captions, and HUD margins.
-    const aspect = canvas.width / canvas.height;
     // Clamped, and not only for tidiness. `t` is wall clock, so a tab left in
     // the background and come back to hands over a step of whatever the pause
     // was — seconds, sometimes minutes. Unclamped that integrates in one go: the
@@ -2209,7 +2223,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // So it is held for them, always, and steering is the entire game.
     step[1] = driving;
     step[2] = driving * (held('ArrowRight', 'KeyD') - held('ArrowLeft', 'KeyA'));
-    step[3] = aspect;
+    step[3] = canvas.width / canvas.height;
     step[4] = RINGS;
     step[10] = PICK_BASE;
     step[5] = TRACK_WIDTH;
@@ -2309,73 +2323,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       n++;
     };
 
-    // ── Centring a heading and its line ─────────────────────────────────────
-    // Where the heading has to sit for the *pair* to be centred, rather than the
-    // heading alone.
-    //
-    // Putting the heading at zero centres the heading and leaves the line below
-    // it hanging off the bottom, so the block reads low — which is what the
-    // title, pause and win screens were all doing. What wants to be at the
-    // middle of the screen is the midpoint between the top of the heading and
-    // the bottom of the line under it.
-    //
-    // Worked out here rather than written down as a number because it depends on
-    // the window: a caption's height is its half-width times the atlas row's
-    // proportions times the aspect ratio, so the right offset at one window size
-    // is wrong at the next.
-    //
-    // Five sevenths, because that is how much of a row is ink: a glyph is five
-    // pixels in a seven-pixel cell, centred, with the spare above and below
-    // holding the plate. The extent to balance is the ink's, not the quad's.
-    const tall = (half) => 5 * half / CARD_W * aspect;
-    /**
-     * The half-height of a caption's *plate* — the dark rectangle the letters
-     * sit on — where `tall` above is the half-height of the ink inside it.
-     *
-     * Seven sevenths against `tall`'s five: a glyph is five pixels of ink in a
-     * seven-pixel cell with the spare two holding the plate, so this is the
-     * whole quad, and it is deliberately the same expression text.shader.ts
-     * builds its height from. It has to be — this is what decides where the
-     * visible edge of a label actually lands.
-     *
-     * **Edges are measured on the plate; insides are measured on the ink.**
-     * Everything hung off HUD_TOP or HUD_BOT uses this one, because the corner
-     * readouts are positioned by the shader straight from their quads and their
-     * rectangles therefore sit exactly on the margin. A label that lined its
-     * *letters* up with them instead put the box around those letters two
-     * sevenths of a row past it, which is a different gap at every size and
-     * reads as one caption being closer to the edge than the rest. Balancing a
-     * heading against the line under it still uses `tall`: what the eye centres
-     * there is the lettering, not the boxes.
-     */
-    const plate = (half) => 7 * half / CARD_W * aspect;
-    /**
-     * SCREEN_PADDING in NDC, across and down.
-     *
-     * NDC runs -1 to 1 on both axes however wide the picture is, so a fraction
-     * of the *width* is `2 * p` across and `2 * p * aspect` down — the same
-     * margin in pixels on all four sides, which is the only reason the aspect
-     * is in here.
-     */
-    const PAD_X = 2 * SCREEN_PADDING;
-    const PAD_Y = PAD_X * aspect;
-    /**
-     * The two edges everything anchored to the top or the bottom hangs from.
-     *
-     * **Written down once so the four corners cannot drift apart.** These are
-     * the lines the place readout, the star gauge, the circuit caption and every
-     * instruction line share; each used to carry its own number, and the top ones
-     * were hand-tuned NDC constants that happened to come to sixteen pixels at
-     * one window size and to something else at every other.
-     *
-     * A caption's `y` is its *centre*, so a label sitting on one of these edges
-     * is `HUD_TOP - plate(size)` or `HUD_BOT + plate(size)` — the half-height
-     * that puts the edge of its rectangle on the line rather than across it.
-     */
-    const HUD_BOT = PAD_Y - 1;
-    const HUD_TOP = 1 - PAD_Y;
-    const HEAD_GAP = 0.26;
-    const headY = HEAD_GAP / 2 - (tall(EXTRA_LARGE) - tall(MEDIUM)) / 2;
     /** A heading with one line under it, centred as a pair. */
     const heading = (top, under) => {
       say(top, headY, EXTRA_LARGE);
@@ -2418,8 +2365,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // stack ten rows on, which is what keeps two lines of instructions reading
       // as a block rather than as two captions that happen to be near each
       // other.
-      const hint = HUD_BOT + plate(MEDIUM);
-      const HINT_GAP = plate(MEDIUM) * 2.1;
       say(2, HUD_TOP - plate(LARGE), LARGE);
       say(NAME_ROW + PICK, 0.66, EXTRA_LARGE);
       // Level with the unicorn, which is no longer level with the middle of the
@@ -2438,7 +2383,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // *position* is its half-width — the ink is at the ends of the row. It
       // scales with the atlas like everything else, so the triangles stay put
       // however long the longest caption gets.
-      say(9, (0.66 - plate(EXTRA_LARGE) + hint + HINT_GAP + plate(MEDIUM)) / 2, 0.78 * TYPE);
+      say(9, SELECT_Y, 0.78 * TYPE);
       say(3, hint + HINT_GAP, MEDIUM);
       say(4, hint, MEDIUM);
     } else if (SCREEN === FLAG_STATE) {
@@ -2446,11 +2391,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // characters at LARGE reach about a quarter of the way out from the
       // middle, and the lap and the place stop at 0.63 and 0.69.
       //
-      // Hung from HUD_TOP, which is the padding and nothing else. It was 0.96 —
-      // a number that came to sixteen pixels on the window it was chosen at and
-      // to something different on every other, so the caption crept towards the
-      // edge on a tall display and away from it on a short one while the corner
-      // readouts stayed put.
+      // Share the fixed top margin with the corner readouts.
       say(CIRCUIT_ROW + SELECTED_CIRCUIT, HUD_TOP - plate(LARGE), LARGE);
       // Three, two, one — one glyph a signal, and `rung` is already counting
       // them for the sound. Nothing on the first frame, when `rung` is zero:
@@ -2488,19 +2429,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // starts the same distance to the left of it. Both edges are set by the
       // same number, so the block stays square as the window changes.
       //
-      // **Spaced off `plate` and not off a constant.** A caption's height is its
-      // half-width times the atlas proportions times the aspect ratio, so the
-      // gap that stacks ten rows cleanly at one window size is wrong at the
-      // next.
-      //
-      // `plate` is a *half*-height, so two of them is one dark bar, and the
-      // extra tenth is the hairline that keeps ten of them reading as rows
-      // rather than as one block. It used to spell that out as `tall * 7 / 5`,
-      // which is the same number the long way round — the seven fifths that
-      // turn ink into its plate now live in `plate` itself, where the edge
-      // anchors need them too. Written the same way the star gauge stacks its
-      // two rows, and it is the same 2.1.
-      const pitch = plate(LARGE) * 2.1;
+      // Fixed row pitch leaves a small gap between the seven-pixel plates.
       // Centred as a block: five rows above the middle and five below, with the
       // heading over them and the way on underneath.
       for (let i = 0; i < FIELD; i++) {
@@ -2526,7 +2455,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // instanced draw wants and the one a per-draw uniform cannot give.
       bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
       textU.set([
-        TIME, aspect, LINES.length, ROW_H / CARD_W,
+        TIME, LINES.length, ROW_H / CARD_W, 0, // Align uHud to four floats.
         // The same two margins the CPU-side captions hang from, so the four
         // corners the shader places and the lines placed above agree.
         PAD_X, PAD_Y,
