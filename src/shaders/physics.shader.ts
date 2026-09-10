@@ -189,20 +189,30 @@ export const Physics = shader({
     /** Tile rows to a pickup slot — see SLOT_ROWS in game.js. */
     uRows: 'float',
     /**
-     * The field's top-speed multiplier for this circuit — the second number of
-     * the circuit's row in src/circuits.js. 1 would be parity with the player.
+     * The field's maximum top-speed multiplier — MAX_HANDICAP in src/game.js.
+     * Shared by every circuit. 1 would be parity with the player.
      *
      * **Last in the block**, like everything added here: the uniforms are
      * positional and game.js fills them by index, so anything inserted above
      * silently repoints every write below it.
      */
     uHand: 'float',
+    /**
+     * The floor of the same spread — what the slowest three run at. MIN_HANDICAP
+     * in src/game.js.
+     *
+     * **After uHand, which is where every addition goes**: a uniform's float
+     * index is its position in this list, and game.js writes `step[14]` on that
+     * assumption. The block held fourteen floats and padded to sixteen, so this
+     * one is free.
+     */
+    uHandMin: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
   compute(
-    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uHand, uTime, uTitle, uGo },
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uHand, uHandMin, uTime, uTitle, uGo },
     id,
   ) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -258,7 +268,22 @@ export const Physics = shader({
      * The player is always 1: `mix(uHand, 1, player)`. That is what makes
      * TOP_SPEED the player's number and this the field's.
      */
-    const top = TOP_SPEED * mix(uHand, 1, player);
+    // **Three bands of three, off the racer's own index.** The nine rivals split
+    // into thirds: the first three run at the shared ceiling, the last three
+    // at the floor, and the middle three exactly half way between — which is
+    // what `tier` being 0, 0.5 and 1 feeds into the `mix`. `floor((me - 1) / 3)`
+    // is the whole classifier; there is no table and nothing to keep in step.
+    //
+    // It lines the field up by ability, because grid slot is `me - 1`: the three
+    // quick ones start at the front, the three slow ones sit just ahead of the
+    // player at the back. A race is then something you climb through rather than
+    // nine unicorns all running the same speed.
+    //
+    // Racer zero falls out of the pattern — `floor(-1/3)` is -1, so its tier is
+    // -0.5 and the mix extrapolates past the ceiling. That is discarded on the
+    // next line: the player is always 1, whatever this said.
+    const tier = floor((me - 1) / 3) * 0.5;
+    const top = TOP_SPEED * mix(mix(uHand, uHandMin, tier), 1, player);
 
     const s0 = storageRead(uState, mine);
     const s1 = storageRead(uState, mine + 1);
@@ -669,7 +694,11 @@ export const Physics = shader({
     // Steering rotates the nose about the road's normal. Scaled by speed,
     // because a kart that pivots on the spot reads as a bug.
     const grip = min(speed / 7, 1);
-    const turn = steer * dt * 2.5 * grip;
+    // **1.25, halved from 2.5, because two playtesters found it unsteerable.**
+    // This is the whole steering rate: radians a second of nose rotation at full
+    // grip. It is the *handling* number and not the look — the drawn lean is
+    // re-solved below to land on the same angle it always had.
+    const turn = steer * dt * 1.25 * grip;
     headingDir = normalize(
       headingDir.scale(cos(turn)).add(cross(headingDir, upT).scale(sin(turn))),
     );
@@ -914,15 +943,20 @@ export const Physics = shader({
     // Going straight the two agree, the extrapolation has nothing to stretch,
     // and this is exactly the course.
     //
-    // 2.7, up from 1.5, purely to hold the look still while the handling
-    // changed. The camera aims along the course, so what a player sees is the
-    // angle from the course to this — and tightening the chase from 3.2 to 5
-    // shrank the gap this multiplies. The two were solved together to land back
-    // on the same 62 degrees of cocked body that was there before.
+    // 6.26, up from 2.7, and up from 1.5 before that — every time purely to hold
+    // the look still while the handling changed under it. The camera aims along
+    // the course, so what a player sees is the angle from the course to this,
+    // and anything that shrinks the real slip shrinks the drawn angle with it.
+    //
+    // Halving the steering rate above halves the slip, from 28 degrees to 14.
+    // Solved rather than guessed: the drawn angle is
+    // `atan2(k sin s, 1 + k (cos s - 1))`, so holding it at 62 degrees while `s`
+    // halves puts `k` at 6.26. Change the turn rate and this has to be solved
+    // again — they are one decision written in two places.
     //
     // Cannot degenerate, despite the size: the extrapolation is shortest when
     // nose and course agree, where it is exactly one unit long.
-    const dir = normalize(courseDir.add(headingDir.sub(courseDir).scale(2.7)));
+    const dir = normalize(courseDir.add(headingDir.sub(courseDir).scale(6.26)));
 
 
     // ── The rails hold ────────────────────────────────────────────────────

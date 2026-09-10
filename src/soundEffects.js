@@ -1,6 +1,6 @@
-const UNICORN_SELECT_NEXT = [0, 93];
-const UNICORN_SELECT_PREV = [0, 86];
-const READY_SIGNAL = [1, 55];
+const UNICORN_SELECT_NEXT_SOUND = [0, 93];
+const UNICORN_SELECT_PREV_SOUND = [0, 86];
+const READY_SIGNAL_SOUND = [1, 55];
 // A whoosh is noise with a moving filter on it, not a pitch, so no note of any
 // instrument in the songs can be one. This is its own instrument instead, spread
 // from the race song's fourth track — already noise behind a swept filter
@@ -20,28 +20,30 @@ WHOOSH[18] = 2600; // the top of the sweep, so this is what sets the pitch
 WHOOSH[26] = 4;
 WHOOSH[27] = 255;
 WHOOSH[21] = 0;
-const BOOST = [WHOOSH, 60];
+const BOOST_SOUND = [WHOOSH, 60];
 
-const MISTAKE = [0, 47];
+const MISTAKE_SOUND = [0, 47];
 
-// Picking one up — and it is a power-up, not a chime, because a star is a
+// Picking a star up — and it is a power-up, not a chime, because a star is a
 // quarter of a run rather than a thing you collected. Three notes climbing a
 // major triad is what that has sounded like since the arcade.
+//
+// It is also the click a screen change makes, one note of it on its own. See
+// `go` in src/game.js: the same note already means "something good happened"
+// everywhere else it is used, so it costs nothing to render and nothing to
+// learn.
 //
 // One buffer, played three times at three `playbackRate`s, and not three
 // renders: resampling a note up a third and a fifth is a couple of dozen bytes
 // against a couple of hundred, and on a note this short the artefacts of doing
 // it that way are the arcade sound rather than a flaw in it.
-const GRAB = [1, 89];
+const STAR_SOUND = [1, 89];
 
 
 
 const shot = ([track, note], loud) => {
-  let buf = null;
-  if (MUSIC_ENABLED) {
-    // Tracks always come from the race song; WHOOSH supplies an instrument directly.
-    buf = renderNote(MUSIC, RACE_SONG.songData[track] || track, note);
-  }
+  // Tracks always come from the race song; WHOOSH supplies an instrument directly.
+  const buf = MUSIC_ENABLED && renderNote(MUSIC, RACE_SONG.songData[track] || track, note);
   return (vol = loud, rate) => {
     // **Star power used to silence this, and it does not any more.** Every
     // effect in the game comes through here, so one test against `starLeft` was

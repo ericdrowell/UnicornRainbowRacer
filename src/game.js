@@ -198,6 +198,18 @@ const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 // first straight runs out from under it, which is what puts the model on the
 // road rather than beside it.
 const TRACK_WIDTH = 27;
+/** Equal outer HUD margins in CSS pixels, including on high-DPI displays. */
+const SCREEN_PADDING = 16;
+/**
+ * What the slowest three rivals' top speed is multiplied by.
+ *
+ * MAX_HANDICAP is the ceiling on every circuit, and MIN_HANDICAP is the
+ * floor under all of them. The nine rivals are split into
+ * thirds between the two by physics.shader.ts: three at the ceiling, three
+ * here, three half way between. The player is 1 and is not part of the spread.
+ */
+const MIN_HANDICAP = 0.75;
+const MAX_HANDICAP = 1.2;
 
 /**
  * Which one is being raced. Three are planned; this is the first of them.
@@ -225,7 +237,7 @@ let SELECTED_CIRCUIT = 0;
 // only real way to get this wrong.
 let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
-TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT][0]);
+TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT]);
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -239,8 +251,8 @@ const cross = (a, b) => [
   a[0] * b[1] - a[1] * b[0],
 ];
 const norm = (v) => {
-  const l = Math.hypot(v[0], v[1], v[2]) || 1;
-  return [v[0] / l, v[1] / l, v[2] / l];
+  const l = Math.hypot(...v) || 1;
+  return v.map((c) => c / l);
 };
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const dist = (a, b) => Math.hypot(...sub(a, b));
@@ -542,8 +554,7 @@ PICK_SLOTS = Math.ceil((LAP * PATTERN * 0.4456) / SLOT_ROWS);
 const PICK_LANE = new Float32Array(PICK_SLOTS);
 const PICK_TYPE = new Float32Array(PICK_SLOTS);
 {
-  let n = (TRACK.b * 1e6) | 0;
-  const rnd = () => ((n = (n * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const rnd = seeded((TRACK.b * 1e6) | 0);
   // Nothing anywhere until something is put there. 3 is the empty lane, and it
   // is what both ends of the lap keep: the grid stands behind the start line, so
   // a pickup in the last slots sits among ten stationary unicorns before the
@@ -1088,7 +1099,7 @@ let mistakeAt = 0;
  */
 function livery(r) {
   const paint = new Float32Array(24);
-  paint.set([...r.body, r.mane ? 0 : 1], 0);
+  paint.set([...r.body, !r.mane]);
   if (r.mane) {
     const a = r.mane.slice(0, 3);
     const c = r.mane.slice(-3);
@@ -1193,6 +1204,41 @@ function clearStars() {
 }
 
 function go(next) {
+  // **The click that says a screen changed, decided here rather than at each
+  // caller.** Every route between screens runs through this function — the key
+  // presses, the countdown reaching nought, the last racer crossing the line —
+  // so this is the one place that sees all of them, and separate call sites
+  // cannot drift out of agreement about which ones speak.
+  //
+  // **Three silent destinations, and testing the destination is the whole rule.**
+  // Every arrival that should stay quiet is an arrival into the race, into a
+  // pause, or onto the standings — so `next` alone decides it and the screen
+  // being left never has to be consulted:
+  //
+  //   - **into the race**, which is the flag dropping or a pause lifting. The
+  //     countdown already has three tones and the race song's own opening hit
+  //     landing on that frame; a fourth is one too many, and the race starting is
+  //     the least ambiguous moment in the game.
+  //   - **into a pause**, because a pause is not a change of scene — it is the
+  //     same scene held. Chiming on the way in makes stopping an event.
+  //   - **onto the standings**, which arrive on their own the moment the last
+  //     racer crosses. Nobody pressed anything, so there is no input to confirm —
+  //     and a flourish there would land on top of whatever the finish itself is
+  //     still ringing.
+  //
+  // Leaving a pause is covered for free: its only exit is back into the race.
+  // What is left that speaks is exactly the four a key causes.
+  //
+  // It borrows the pickup's own flourish rather than adding a sound: already
+  // rendered, already familiar, and the one thing in the game that means
+  // something good just happened.
+  //
+  // `powerUp` and not `playStar` — the triad, not one note of it. A single note
+  // is the *ingredient*, and on its own it reads as a click rather than as the
+  // sound a player already knows; what they recognise is the three of them
+  // climbing. It costs nothing extra either, being the same one buffer resampled
+  // twice on a pair of timers.
+  if (next !== RACE_STATE && next !== PAUSE_STATE && next !== FINISH_STATE) powerUp();
   // A race always starts from nothing, however it was reached.
   //
   // Last and not first: the grid puts the player behind the whole field, so the
@@ -1279,21 +1325,21 @@ const SONGS = {};
 // Each effect is rendered once at start-up and handed back as a function that
 // plays it. Both the effects and `shot`, which renders them, live in
 // src/soundEffects.js.
-const playSelectNext = shot(UNICORN_SELECT_NEXT);
-const playSelectPrev = shot(UNICORN_SELECT_PREV);
-const playReady = shot(READY_SIGNAL, 2);
-const playBoost = shot(BOOST, 3);
-const playMistake = shot(MISTAKE, 2);
-const playGrab = shot(GRAB, 2);
+const playSelectNext = shot(UNICORN_SELECT_NEXT_SOUND);
+const playSelectPrev = shot(UNICORN_SELECT_PREV_SOUND);
+const playReady = shot(READY_SIGNAL_SOUND, 2);
+const playBoost = shot(BOOST_SOUND, 3);
+const playMistake = shot(MISTAKE_SOUND, 2);
+const playStar = shot(STAR_SOUND, 2);
 /**
  * Root, major third, fifth, seventy milliseconds apart — the arcade's own
  * "you got something" and cheaper than a second instrument, since all three are
  * the one buffer resampled. See `shot`.
  */
 const powerUp = () => {
-  playGrab();
-  setTimeout(() => playGrab(2, 1.26), 70);
-  setTimeout(() => playGrab(2, 1.5), 140);
+  playStar();
+  setTimeout(() => playStar(2, 1.26), 70);
+  setTimeout(() => playStar(2, 1.5), 140);
 };
 
 // ── The start line ──────────────────────────────────────────────────────────
@@ -1428,7 +1474,7 @@ function syncMusic() {
  *
  * `songLen` is the render length in seconds, also authored by hand, and it
  * truncates whatever it is shorter than. Derived instead from the tempo the
- * scheduler actually runs at: `bpm` is *rounded* off rowLen inside sonant-x, so
+ * scheduler actually runs at: the build rounds `bpm` from rowLen as sonant-x does, so
  * the row it schedules is 60/bpm/4 rather than rowLen/44100, and computing this
  * from rowLen directly drifts a few milliseconds by the end of the loop.
  *
@@ -1457,12 +1503,8 @@ function syncMusic() {
  * indistinguishable from pass two hundred.
  */
 function renderLoop(song, into) {
-  const slots = Math.min(
-    song.endPattern + 1,
-    Math.max(...song.songData.map((ch) => ch[29].length)),
-  );
-  song.endPattern = slots - 1;
-  const loop = (slots * 32 * 60) / (Math.round(661500 / song.rowLen) * 4);
+  // The build caps the pattern count and rounds the tempo from the export.
+  const loop = ((song.endPattern + 1) * 480) / song.bpm;
   const rate = MUSIC.sampleRate;
   const len = Math.round(loop * rate);
   return renderSong(MUSIC, song, len * 2).then((raw) => {
@@ -1487,14 +1529,13 @@ function renderLoop(song, into) {
     // image, and it is the mix that is too loud, not one side of it.
     let peak = 1;
     for (let ch = 0; ch < 2; ch++) {
-      for (const v of raw.getChannelData(ch).subarray(len, len * 2)) {
-        peak = Math.max(peak, Math.abs(v));
+      for (const v of raw.getChannelData(ch).subarray(len)) {
+        peak = Math.max(peak, v, -v);
       }
     }
     for (let ch = 0; ch < 2; ch++) {
-      const src = raw.getChannelData(ch).subarray(len, len * 2);
-      const dst = buffer.getChannelData(ch);
-      for (let i = 0; i < len; i++) dst[i] = src[i] / peak;
+      const src = raw.getChannelData(ch).subarray(len);
+      buffer.getChannelData(ch).set(src.map((v) => v / peak));
     }
     SONGS[into] = buffer;
     // Whichever state is up may have been waiting for exactly this one.
@@ -1626,8 +1667,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // through the state buffer instead — see PALETTE above. Asking for five
   // instance buffers was ten in total, which is a validation error and a black
   // screen rather than a slow frame.
-  const IX = new Float32Array(FIELD);
-  for (let i = 0; i < FIELD; i++) IX[i] = i;
+  const IX = new Float32Array(FIELD).map((_, i) => i);
   /** The one instance buffer sits after the five per-vertex ones. */
   const herd = (p) => bmAttr(p, 5, IX);
 
@@ -1699,7 +1739,26 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
    * compensate. That correction is gone.
    */
   const ROW_H = 7;
-  const CARD_W = Math.max(...LINES.map((l) => l.length)) * CELL;
+  // WIDE is the atlas width; the padded HUD rows already fill it.
+  // **Two pixels wider than the rows it holds, and they are load-bearing.** A
+  // glyph's plate is five wide in a four-wide cell, starting one pixel left of
+  // the ink — that overhang is what merges neighbouring plates into one
+  // continuous bar instead of a row of separate boxes.
+  //
+  // At exactly `WIDE * CELL` a full-width row fills the card edge to edge, so
+  // `left` lands on nought and the first glyph's plate wants column -1. The
+  // old clamp folded it onto column 0 rather than letting it wrap into the
+  // previous scanline, leaving one letter per row with no black margin
+  // on its left where every other letter had one — visible on STAR POWER and on
+  // the first cell of the gauge, which are the only rows padded to the full
+  // width. Twelve glyphs in the atlas, all of them the leftmost of their row.
+  //
+  // **The slack costs nothing on screen.** A caption's ink spans
+  // `(N * CELL / CARD_W) * 2h`, and every `h` is a multiple of
+  // `TYPE = CARD_W / 116` — so `CARD_W` cancels and the rendered size is
+  // identical. `tall` cancels it the same way. All that changes is that every
+  // row sits one atlas pixel further right, which is 0.6% of a quad.
+  const CARD_W = WIDE * CELL + 2;
 
   // ── Type sizes ──────────────────────────────────────────────────────────
   // Three of them, named, so every screen agrees: EXTRA_LARGE for whatever a
@@ -1739,23 +1798,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const EXTRA_LARGE = TYPE;
   const LARGE = 0.62 * TYPE;
   const MEDIUM = 0.42 * TYPE;
-  /**
-   * The "ST" beside the place, and the one size that is derived rather than
-   * chosen.
-   *
-   * It used to be LARGE, and LARGE is 0.62 — which put the suffix's plate four
-   * thousandths *inside* the numeral's. The two are separate captions, so their
-   * plates are separate quads at half alpha, and where they overlapped the black
-   * doubled into a hard line down the gap.
-   *
-   * The two plates touch exactly at 0.6234, which falls out of where the ink
-   * sits in each row: the numeral's ends at atlas pixel 133 of 172 and the
-   * suffix's begins at 164, and each plate reaches one atlas pixel further,
-   * scaled by its own half-width. Sitting on that number would leave the join a
-   * rounding error away from a seam in either direction, so this is far enough
-   * past it to read as two boxes with a gap rather than one box with a fault.
-   */
-  const SUFFIX = 0.64 * TYPE;
+  // Ordinal sizes are sent to the shader relative to EXTRA_LARGE.
+  const SUFFIX = LARGE;
 
   // **Every row below is counted back from the names, and the counts are the
   // block that sits in front of them.** src/text.js ends with, in order: ten
@@ -1817,10 +1861,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // moving scene it has to be read against, and consistency with the rest of
       // the type is worth the panel.
       for (let y = 0; y < ROW_H; y++) {
-        for (let x = 0; x < 5; x++) put(row, Math.max(x0 + x - 1, 0), y, 0);
+        for (let x = 0; x < 5; x++) put(row, x0 + x - 1, y, 0);
       }
       for (let y = 0; y < 5; y++) {
-        const bits = parseInt(FONT[g * 5 + y], 8);
+        // A single digit 0–7 has the same value in octal and decimal;
+        // the bitwise mask below converts it to a number.
+        const bits = FONT[g * 5 + y];
         for (let x = 0; x < 3; x++) {
           // Octal digits run most significant bit first, which is leftmost.
           if (bits & (4 >> x)) put(row, x0 + x, y + 1, 255);
@@ -2086,7 +2132,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[0] = SCREEN === RACE_STATE || SCREEN === FLAG_STATE ? elapsed : 0;
     // Steering and throttle are dead outside the race, so the arrow keys that
     // pick a unicorn on the select screen do not also drive one.
-    const driving = SCREEN === RACE_STATE ? 1 : 0;
+    const driving = SCREEN === RACE_STATE;
     // The countdown. Signals are played by number rather than by deadline, so
     // being late plays them late rather than skipping them.
     if (SCREEN === FLAG_STATE) {
@@ -2116,14 +2162,15 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[7] = TIME - selectOrbit * (SCREEN === SELECT_STATE);
     // The orbiting camera is up for everything before the race; it is also what
     // switches off the road's shadow, since there is no unicorn to cast one.
-    step[8] = SCREEN === RACE_STATE || SCREEN === PAUSE_STATE || SCREEN === FINISH_STATE || SCREEN === FLAG_STATE ? 0 : 1;
+    step[8] = SCREEN <= SELECT_STATE;
     // Everything holds on the grid until the flag.
-    step[9] = SCREEN === FLAG_STATE ? 0 : 1;
+    step[9] = SCREEN !== FLAG_STATE;
     // Constant for the whole race — rolled once at the flag. Sent every frame
     // because the block is written whole, not because it changes.
     step[11] = ROLL;
     step[12] = SLOT_ROWS;
-    step[13] = CIRCUITS[SELECTED_CIRCUIT][1];
+    step[13] = MAX_HANDICAP;
+    step[14] = MIN_HANDICAP;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -2132,14 +2179,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
 
     // Start the selection turntable clock at zero on every entry.
     u[0] = step[7] - 5 * (SCREEN === SELECT_STATE);
-    tu[0] = TIME;
+
     // **Per frame, though they only change between races.** These were written
     // once at start-up, when there was one circuit and it could not change; a
     // series of three replaces the road under them, and a uniform set once is a
-    // uniform still describing the previous track. Three assignments a frame is
+    // uniform still describing the previous track. Updating all three values is
     // cheaper than remembering to reissue them from the one place that swaps.
-    tu[1] = 1 / (PATTERN * 0.4456 * 2);
-    tu[2] = PICK_BASE;
+    tu.set([TIME, 1 / (PATTERN * 0.4456 * 2), PICK_BASE]);
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
@@ -2167,11 +2213,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // names. Nothing warns when they are wrong — the model simply came back at
     // uScale 0, which is to say invisible.
     u[2] = SCREEN === SELECT_STATE ? 2.3 : 1.6;
-    u[3] = SCREEN === SELECT_STATE ? 1 : 0;
+    u[3] = SCREEN === SELECT_STATE;
 
     bmPassTo();
-    su[0] = TIME;
-    su[1] = 0;
+    su.set([TIME, 0]);
     bmUniforms(sky, su);
     bmDraw(sky);
     if (shown) {
@@ -2200,8 +2245,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // drawn in one go. One draw because a uniform cannot change between two of
     // them inside a pass — see the instance attributes in text.shader.ts.
     let n = 0;
-    /** A caption: atlas row, centre y, half-width, fade. Row -1 is the card. */
-    const say = (row, y, half, fade) => {
+    /** Ordinary caption: row, centre y, half-width, fade. Negative fades select HUD layouts; row -1 is the card. */
+    const say = (row, y, half, fade = 1) => {
       // Share the prompt pulse; wall time keeps it moving on the pause screen.
       // Bits 1, 3, 4, 6 and 8 select prompts; the bound prevents wrapping.
       if (row < 9 && (346 >> row & 1)) fade = 0.6 + 0.4 * Math.cos(t * 3);
@@ -2227,27 +2272,23 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // Five sevenths, because that is how much of a row is ink: a glyph is five
     // pixels in a seven-pixel cell, centred, with the spare above and below
     // holding the plate. The extent to balance is the ink's, not the quad's.
-    const tall = (half) => (5 / 7) * half * (ROW_H / CARD_W) * (canvas.width / canvas.height);
+    const tall = (half) => 5 * half / CARD_W * (canvas.width / canvas.height);
+    /** Shared bottom edge of the HUD backgrounds, independent of font size. */
+    const HUD_BOT = 2 * SCREEN_PADDING / canvas.clientHeight - 1;
     const HEAD_GAP = 0.26;
     const headY = HEAD_GAP / 2 - (tall(EXTRA_LARGE) - tall(MEDIUM)) / 2;
     /** A heading with one line under it, centred as a pair. */
     const heading = (top, under) => {
-      say(top, headY, EXTRA_LARGE, 1);
-      say(under, headY - HEAD_GAP, MEDIUM, 1);
+      say(top, headY, EXTRA_LARGE);
+      say(under, headY - HEAD_GAP, MEDIUM);
     };
 
     // The title's ground goes first so the text lands on top of it. It is drawn
     // over a world that is still being rendered underneath, which is what lets
     // the pink lift off the circuit rather than cut to it.
     if (PINK > 0.002) say(-1, 0, 1, PINK);
-    // The HUD, along the top: place at the right, lap at the left. Up from the
-    // moment the field lines up and still there when the race is over — both
-    // are as worth reading frozen as they are moving.
-    //
-    // Along the top and not the bottom because of what is behind it: the track
-    // fills the lower half of the screen and the sky the upper, so text down
-    // there sits on a moving rainbow and text up here sits on black. The
-    // readouts were at the bottom for a version and the road washed them out.
+    // The corner HUD stays visible from the grid through the race and finish.
+    // Its grouped backgrounds are anchored by the shader to SCREEN_PADDING.
     //
     // `SCREEN > SELECT_STATE` and not a list of four, which works only because
     // the race states are numbered above the two menu ones. It is the cheapest
@@ -2258,59 +2299,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // tucked against its shoulder, the way karting games have drawn a
       // position since the arcade. It has to be two — a caption is one quad at
       // one half-width, and one quad cannot hold two sizes.
-      // **Everything along the top of the screen hangs from one line.** A
-      // caption is placed by its *centre*, and its ink is `tall(half)` either
-      // side of that — so three readouts at three sizes given the same y have
-      // three different tops, which is what the corner used to look like: the
-      // star meter highest, the circuit title a little lower, the place numeral
-      // lower still, none of it deliberate and all of it visible against the
-      // straight edge of the screen just above.
-      //
-      // Hanging them from a top instead makes the size irrelevant to the
-      // placement: subtract each caption's own half-height and every one of them
-      // starts on the same scanline whatever type size it is set in. That is
-      // also why this cannot be four hand-tuned constants — `tall` depends on
-      // the aspect ratio, so the offsets change with the window and only the
-      // relationship survives.
-      //
-      // 0.96 rather than 1: the ink wants a margin off the edge, and this is the
-      // one the place numeral already had.
-      const HUD_TOP = 0.96;
-      // The suffix rides the numeral's shoulder — same top, its own smaller
-      // size — which is what puts the "ST" against the "1" rather than under it.
-      say(PLACE_ROW + place, HUD_TOP - tall(EXTRA_LARGE), EXTRA_LARGE, 1);
-      say(SUFFIX_ROW + Math.min(place, 3), HUD_TOP - tall(SUFFIX), SUFFIX, 1);
-      // Top left, where the lap used to be. Full-width rows for the same
-      // reason it was: only a full-width row's ink reaches the corner.
-      //
-      // **Both LARGE, and that is a position rather than a size.** A caption's
-      // ink starts at the left edge of its own quad, and the quad is as wide as
-      // the half-width — so the smaller of two sizes is also the one further in
-      // from the corner. MEDIUM put the label a third of the way across the
-      // screen, into the circuit title; LARGE puts it in the corner where it
-      // belongs, and thirteen characters still stop short of the title.
-      const starY = HUD_TOP - tall(LARGE);
-      say(16, starY, LARGE, 1);
-      // **The gap is set by the plate, not by the ink.** `tall` measures the
-      // five pixels of ink, but what is actually drawn is the whole seven-pixel
-      // row — the dark plate behind the letters — so two rows stacked by their
-      // ink heights overlap by the two pixels of plate they each carry. That is
-      // exactly what happened: the star cells' black backgrounds ran up into the
-      // bottom of STAR POWER.
-      //
-      // Seven fifths of the ink is the plate, so two of those is the closest the
-      // centres can be with the plates just touching; the extra tenth is the
-      // hairline that keeps them reading as two rows rather than one block.
-      const plate = tall(LARGE) * (7 / 5);
-      // Clamped to the gauge's own length — see CELLS in text.js, which is where
-      // the ten comes from and which generates exactly this many rows.
-      say(17 + Math.min(Math.max(starsHeld, 0), 10), starY - plate * 2.1, LARGE, 1);
+      // HUD markers: -1 numeral, -2 suffix, -3 gauge, -4 label. The shader
+      // anchors the groups to SCREEN_PADDING and gives adjacent plates shared
+      // edges. Ordinal sizes are relative to EXTRA_LARGE; left rows use halves.
+      say(PLACE_ROW + place, 0, 1, -1);
+      say(SUFFIX_ROW + Math.min(place, 3), 0, SUFFIX / EXTRA_LARGE, -2);
+      say(16, 0, LARGE, -4);
+      // Physics already bounds the stored star count to 0–10.
+      say(17 + starsHeld, 0, LARGE, -3);
     }
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);
     } else if (SCREEN === SELECT_STATE) {
-      say(2, 0.88, LARGE, 1);
-      say(NAME_ROW + PICK, 0.66, EXTRA_LARGE, 1);
+      say(2, 0.88, LARGE);
+      say(NAME_ROW + PICK, 0.66, EXTRA_LARGE);
       // Level with the unicorn, which is no longer level with the middle of the
       // screen: the name above and the two hints below are not symmetric about
       // it, so centring on zero left the animal riding high with a gap under the
@@ -2323,9 +2325,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // *position* is its half-width — the ink is at the ends of the row. It
       // scales with the atlas like everything else, so the triangles stay put
       // however long the longest caption gets.
-      say(9, -0.04, 0.78 * TYPE, 1);
-      say(3, -0.74, MEDIUM, 1);
-      say(4, -0.9, MEDIUM, 1);
+      say(9, -0.04, 0.78 * TYPE);
+      say(3, -0.74, MEDIUM);
+      say(4, -0.9, MEDIUM);
     } else if (SCREEN === FLAG_STATE) {
       // Between the two corner readouts rather than over either: thirteen
       // characters at LARGE reach about a quarter of the way out from the
@@ -2336,12 +2338,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // LARGE like the star meter, so the offset is identical — written out
       // rather than shared, because the two live in different branches and the
       // constant is one line.
-      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.96 - tall(LARGE), LARGE, 1);
+      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.96 - tall(LARGE), LARGE);
       // Three, two, one — one glyph a signal, and `rung` is already counting
       // them for the sound. Nothing on the first frame, when `rung` is zero:
       // there is a beat of quiet before the first tone, and a "3" hanging there
       // through it would be a countdown that starts early.
-      if (rung) say(COUNT_ROW + rung - 1, 0.2, HUGE, 1);
+      if (rung) say(COUNT_ROW + rung - 1, 0.2, HUGE);
       // Two lines again, back on the pair of rows they sat on before a third was
       // added under them. The star meter in the corner is the only instruction
       // star power needs: it fills as you collect, which says what stars are for
@@ -2352,7 +2354,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // was two, with "PRESS UP TO GO" above it — and the throttle is held down
       // for the player now, so the only thing left to tell them is the only
       // thing they can do.
-      say(10, -0.9, MEDIUM, 1);
+      say(10, HUD_BOT + tall(MEDIUM), MEDIUM);
     } else if (SCREEN === RACE_STATE && flash) {
       // Fading over the last second of the two, which is `min(flash, 1)` and
       // needs no second timer.
@@ -2389,19 +2391,18 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // heading over them and the way on underneath.
       for (let i = 0; i < FIELD; i++) {
         const y = pitch * 4.5 - i * pitch;
-        say(PLACE_ROW + i, y, LARGE, 1);
-        say(LIST_ROW + ((PICK + STANDINGS[i]) % FIELD), y, LARGE, 1);
+        say(PLACE_ROW + i, y, LARGE);
+        say(LIST_ROW + ((PICK + STANDINGS[i]) % FIELD), y, LARGE);
         // Slot zero is the player, always — `lineUp` rotates the roster so that
         // it is, which is why the arrow needs no other bookkeeping than this.
-        if (!STANDINGS[i]) say(MARK_ROW, y, LARGE, 1);
+        if (!STANDINGS[i]) say(MARK_ROW, y, LARGE);
       }
       const more = SELECTED_CIRCUIT < CIRCUITS.length - 1;
-      say(more ? 28 : 7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE, 1);
+      say(more ? 28 : 7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE);
       say(
         more ? 15 : 8,
         0 - pitch * 5.5 - tall(MEDIUM) * 2,
         MEDIUM,
-        1,
       );
     }
 
@@ -2410,10 +2411,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // lands before the pass is submitted, which is exactly the ordering an
       // instanced draw wants and the one a per-draw uniform cannot give.
       bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
-      textU[0] = TIME;
-      textU[1] = canvas.width / canvas.height;
-      textU[2] = LINES.length;
-      textU[3] = ROW_H / CARD_W;
+      textU.set([
+        TIME, canvas.width / canvas.height, LINES.length, ROW_H / CARD_W,
+        2 * SCREEN_PADDING / canvas.clientWidth,
+        2 * SCREEN_PADDING / canvas.clientHeight,
+        2 * EXTRA_LARGE / CARD_W, SUFFIX / EXTRA_LARGE,
+      ]);
       bmUniforms(text, textU);
       bmDraw(text, n);
     }

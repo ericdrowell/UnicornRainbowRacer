@@ -129,12 +129,30 @@ const song = (name) => {
   // Playback computes its duration; patterns need only note arrays. Missing
   // trailing notes decode as rests, keeping all 32 row positions unchanged.
   delete s.songLen;
+  // Match the player's tempo rounding and pattern limit at build time. These
+  // depend only on the exported song, not on the audio device or playback state.
+  s.bpm = Math.round(661500 / s.rowLen);
+  delete s.rowLen;
+  s.endPattern = Math.min(s.endPattern + 1, Math.max(...s.songData.map((ch) => ch.p.length))) - 1;
   s.songData = s.songData.map((ch) => [...SYNTH.map((k) => ch[k]), ch.p, ch.c.map(({ n }) => {
     n = [...n];
     while (n.length && !n[n.length - 1]) n.pop();
     return n;
   })]);
-  return `const ${name[0]} = ${JSON.stringify(s)};`;
+  // Fold each oscillator's octave and semitone offset into one note offset.
+  // Slots 1 and 7 are now unused; leave holes to keep every other index stable.
+  for (const ch of s.songData) {
+    ch[0] = (ch[0] - 8) * 12 + ch[1];
+    ch[6] = (ch[6] - 8) * 12 + ch[7];
+  }
+  // Pattern/note zeroes are rests; the player already treats missing entries
+  // as rests too. Array holes preserve their positions with fewer characters.
+  // Keep the final comma for a trailing hole so pattern lengths stay intact.
+  const rests = (values) => `[${values.map((n) => n || '').join(',')}${values.length && !values.at(-1) ? ',' : ''}]`;
+  const channels = s.songData.map((ch) =>
+    `[${ch.slice(0, 29).map((n, i) => i === 1 || i === 7 ? '' : JSON.stringify(n) ?? 'null').join(',')},${rests(ch[29])},[${ch[30].map(rests).join(',')}]]`,
+  );
+  return `const ${name[0]} = {songData:[${channels.join(',')}],endPattern:${s.endPattern},bpm:${s.bpm}};`;
 };
 
 // The inspector is appended only for `npm run debug`, so it cannot creep into a
@@ -173,10 +191,10 @@ const song = (name) => {
 // arithmetic alone.
 const parts = [
   read('dist', 'shaders.js'),
-  song(['MENU_SONG', 'menu.json']),
+  read('src', 'unicorns.js'),
   song(['RACE_SONG', 'race.json']),
   song(['STAR_SONG', 'star.json']),
-  read('src', 'unicorns.js'),
+  song(['MENU_SONG', 'menu.json']),
   // Before game.js, which reads its arrays at module scope to build the mesh.
   read('src', 'unicorn.js'),
   read('lib', 'sonantx-custom.js'),
@@ -235,7 +253,7 @@ const outPath = join(dist, 'g.js');
 run('npx', [
   'terser', rawPath,
   '--compress', 'passes=3', '--mangle', '--toplevel',
-  '--mangle-props', 'regex=/^(rowLen|endPattern|songData|mane|horn|eye)$/',
+  '--mangle-props', 'regex=/^(bpm|endPattern|songData|mane|horn|eye)$/',
   '--format', 'comments=false',
   '-o', outPath,
 ]);
@@ -271,10 +289,10 @@ run('npx', [
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
   numAbbreviations: 10,
-  recipLearningRate: 1632,
+  recipLearningRate: 1581,
   modelMaxCount: 4,
-  modelRecipBaseCount: 61,
-  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 197, 278, 362, 423],
+  modelRecipBaseCount: 70,
+  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 226, 278, 423, 449],
 };
 
 let script = readFileSync(outPath, 'utf8');

@@ -36,7 +36,7 @@ export const Text = shader({
    * component on it to avoid a sign test would cost more than it explains.
    */
   instanceAttributes: {
-    /** Atlas row, centre y in NDC, half-width in NDC, fade. */
+    /** Atlas row, centre y, half-width, fade. HUD markers: -1 numeral, -2 suffix, -3 gauge, -4 label. */
     aCell: 'vec4',
   },
   uniforms: {
@@ -46,30 +46,55 @@ export const Text = shader({
     /** How many rows the atlas holds, and how tall one row is against its width. */
     uRows: 'float',
     uRatio: 'float',
+    /** Horizontal/vertical padding, numeral pixel width in NDC, suffix scale. */
+    uHud: 'vec4',
     uGlyphs: 'sampler2D',
   },
-  varyings: { vUv: 'vec2', vFade: 'float', vSolid: 'float' },
+  varyings: { vUv: 'vec2', vFade: 'float' },
 
-  vertex({ aCorner, aCell }, { uAspect, uRows, uRatio }, v) {
+  vertex({ aCorner, aCell }, { uAspect, uRows, uRatio, uHud }, v) {
     const solid = 1 - step(0, aCell.x);
-    v.vSolid = solid;
     v.vFade = aCell.w;
     // One line out of the atlas. Every string is baked into its own row of a
     // single texture, so a screenful of text is a handful of instances over one
     // image rather than a texture per caption.
-    v.vUv = vec2(aCorner.x, (aCell.x + 1 - aCorner.y) / uRows);
+
     // Height follows from width and the row's own proportions, so the letters
     // never stretch. The card ignores all of that and covers the screen.
     const half = mix(aCell.z, 1, solid);
     const tall = mix(aCell.z * uRatio * uAspect, 1, solid);
-    // No vertical fudge: a glyph is five pixels in a seven-pixel cell with a
-    // spare above and below, so its ink already sits at the middle of the quad.
-    // At the old pitch of six the spare was all below, the ink rode a twelfth
-    // high, and this line had to push every caption back down.
-    return vec4((aCorner.x * 2 - 1) * half, aCell.y + (aCorner.y * 2 - 1) * tall, 0, 1);
+    let x = (aCorner.x * 2 - 1) * half;
+    let y = aCell.y + (aCorner.y * 2 - 1) * tall;
+    let texX = aCorner.x;
+    if (aCell.w < 0) {
+      if (aCell.w < -2) {
+        // Gauge (-3) and label (-4): adjacent rows share the same edge.
+        x = uHud.x - 1 + aCorner.x * 2 * half;
+        y = uHud.y - 1 + (aCorner.y - aCell.w - 3) * 2 * tall;
+      } else {
+        const suffix = 0 - aCell.w - 1;
+        // Ordinal half-widths are relative sizes. At the numeral's bottom,
+        // suffix's right edge, shared top, and shared side, the local terms
+        // become exactly 0 or 1 before applying the scale. Thus shared edges
+        // have identical f32 coordinates instead of independent rounding.
+        x = 1 - uHud.x + ((aCorner.x + suffix - 1) * aCell.z - uHud.w) * 9 * uHud.z;
+        y = uHud.y - 1 + (1 + (aCorner.y - 1) * aCell.z) * 7 * uHud.z * uAspect;
+        texX = mix(
+          0.5 + (39 + aCorner.x * 9) * uRatio / 7,
+          1 - (10 - aCorner.x * 9) * uRatio / 7,
+          suffix,
+        );
+      }
+      v.vFade = 1;
+    }
+    v.vUv = vec2(texX, (aCell.x + 1 - aCorner.y) / uRows);
+    return vec4(x, y, 0, 1);
   },
 
-  fragment({ uTime, uGlyphs }, { vUv, vFade, vSolid }) {
+  fragment({ uTime, uGlyphs }, { vUv, vFade }) {
+    // The card is atlas row -1, whose sampled y is negative throughout its
+    // interior. Derive its flag here instead of interpolating another varying.
+    const vSolid = 1 - step(0, vUv.y);
     // One sample, two answers. Alpha is coverage — the plate and the letter
     // together — and red is which: 1 on the letterform, 0 on the black
     // rectangle behind it. Both are baked into the atlas by game.js, so the
