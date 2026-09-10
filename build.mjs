@@ -371,7 +371,7 @@ run('npx', [
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
   numAbbreviations: 10,
-  recipLearningRate: 1581,
+  recipLearningRate: 1582,
   modelMaxCount: 4,
   modelRecipBaseCount: 55,
   sparseSelectors: [0, 1, 2, 3, 5, 7, 13, 26, 105, 225, 305, 390],

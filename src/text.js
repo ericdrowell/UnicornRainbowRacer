@@ -160,7 +160,7 @@ const SAYS = [
   // Appended rather than slotted in beside its sibling at 8, because these are
   // referenced by index: putting it next to the line it replaces would have
   // renumbered the arrows and the countdown under it.
-  'PRESS ENTER FOR NEXT RACE',              // 15
+  'PRESS ENTER FOR NEXT',              // 15
 ];
 
 /**

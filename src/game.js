@@ -219,6 +219,8 @@ const TRACK_WIDTH = 27;
  * number of NDC units across than it is down — see PAD_X and PAD_Y below.
  */
 const SCREEN_PADDING = 0.011;
+// Blank lines between stacked labels, measured using the upper label's plate.
+const LABEL_SPACING = 1;
 // The map shares the main canvas's fixed 16:9 CSS box. World-space x/z
 // positions become a 512-segment closed stroke centered at these NDC values.
 const MAP_X = 0.8;
@@ -1425,8 +1427,9 @@ const SIGNALS = 4;
 const SCORE = { 1: 'menu', 2: 'race', 3: 'menu', 4: 'menu' };
 
 addEventListener('keydown', (e) => {
+  const enter = e.code === 'Enter';
   if (SCREEN === TITLE_STATE) {
-    go(SELECT_STATE);
+    if (enter) go(SELECT_STATE);
     return;
   }
   if (SCREEN === SELECT_STATE) {
@@ -1441,7 +1444,7 @@ addEventListener('keydown', (e) => {
       (step > 0 ? playSelectNext : playSelectPrev)();
       showPick();
     }
-    if (e.code === 'Enter' || e.code === 'Space') go(FLAG_STATE);
+    if (enter || e.code === 'Space') go(FLAG_STATE);
     return;
   }
   // **Any key leaves a pause, and this is the one screen where that is right.**
@@ -1462,7 +1465,7 @@ addEventListener('keydown', (e) => {
   // pause screen, which any key leaves. The result is worth a beat to read, and
   // a player still holding the throttle at the finish would otherwise clear it
   // before seeing it.
-  if (SCREEN === FINISH_STATE && e.code === 'Enter') {
+  if (SCREEN === FINISH_STATE && enter) {
     // On through the series, or back to the top once it is done — and either way
     // the road is rebuilt, because returning to the title has to put circuit one
     // back under the carousel rather than leaving the last one there.
@@ -1867,12 +1870,14 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const PAD_Y = PAD_X * (16 / 9);
   const HUD_BOT = PAD_Y - 1;
   const HUD_TOP = 1 - PAD_Y;
-  const HEAD_GAP = 0.26;
-  const headY = HEAD_GAP / 2 - (tall(EXTRA_LARGE) - tall(MEDIUM)) / 2;
+  // Centre-to-centre distance: both half-heights plus a full upper line.
+  const HEAD_GAP = plate(EXTRA_LARGE * (1 + 2 * LABEL_SPACING) + MEDIUM);
+  const headY = plate(EXTRA_LARGE * LABEL_SPACING + MEDIUM);
   const hint = HUD_BOT + plate(MEDIUM);
-  const HINT_GAP = plate(MEDIUM) * 2.1;
+  const HINT_GAP = plate(MEDIUM * (2 + 2 * LABEL_SPACING));
   const pitch = plate(LARGE) * 2.1;
-  const SELECT_Y = (0.66 - plate(EXTRA_LARGE) + hint + HINT_GAP + plate(MEDIUM)) / 2;
+  const nameY = HUD_TOP - plate(LARGE * (2 + 2 * LABEL_SPACING) + EXTRA_LARGE);
+  const SELECT_Y = (nameY + HUD_BOT + HINT_GAP + plate(2 * MEDIUM - EXTRA_LARGE)) / 2;
 
 
   // **Every row below is counted back from the names, and the counts are the
@@ -2349,8 +2354,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     /** Ordinary caption: row, centre y, half-width, fade. Negative fades select HUD layouts; row -1 is the card. */
     const say = (row, y, half, fade = 1) => {
       // Share the prompt pulse; wall time keeps it moving on the pause screen.
-      // Bits 1, 3, 4, 6 and 8 select prompts; the bound prevents wrapping.
-      if (row < 9 && (346 >> row & 1)) fade = 0.6 + 0.4 * Math.cos(t * 3);
+      // Bits 1, 4, 6, 8 and 15 select prompts; the bound prevents wrapping.
+      if (row < 16 && (33106 >> row & 1)) fade = 0.6 + 0.4 * Math.cos(t * 3);
       cells.set([row, y, half, fade], n * 4);
       n++;
     };
@@ -2393,12 +2398,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // two instructions on the bottom line — the same two edges the race HUD
       // uses, so the screens frame their contents identically.
       //
-      // The pair at the bottom is spaced by the same row pitch the standings
-      // stack ten rows on, which is what keeps two lines of instructions reading
-      // as a block rather than as two captions that happen to be near each
-      // other.
+      // All stacked labels leave one full upper-label height between plates.
       say(2, HUD_TOP - plate(LARGE), LARGE);
-      say(NAME_ROW + PICK, 0.66, EXTRA_LARGE);
+      say(NAME_ROW + PICK, nameY, EXTRA_LARGE);
       // Level with the unicorn, which is no longer level with the middle of the
       // screen: the name above and the two hints below are not symmetric about
       // it, so centring on zero left the animal riding high with a gap under the
@@ -2481,8 +2483,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(more ? 28 : 7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE);
       say(
         more ? 15 : 8,
-        0 - pitch * 5.5 - tall(MEDIUM) * 2,
-        MEDIUM,
+        HUD_BOT + plate(LARGE),
+        LARGE,
       );
     }
 
