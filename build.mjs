@@ -7,6 +7,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, rmSync, statSync, existsSync } from 'node:fs';
 import { Packer } from 'roadroller';
+import { runInNewContext } from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -189,33 +190,102 @@ const song = (name) => {
 // to a file means: what is in lib/ implements a format that exists outside this
 // repo, and is the one place where the right move is usually to leave the
 // arithmetic alone.
+// Specialize the shipped synthesizer to the actual song/effect instruments.
+// The sound editor still receives the complete library below.
+const instrumentData = runInNewContext([
+  song(['RACE_SONG', 'race.json']), song(['STAR_SONG', 'star.json']),
+  song(['MENU_SONG', 'menu.json']), read('src', 'soundEffects.js'),
+  '[...RACE_SONG.songData,...STAR_SONG.songData,...MENU_SONG.songData,WHOOSH]',
+].join('\n'));
+let synth = read('lib', 'sonantx-custom.js').replace(/inst\[(\d+)\]/g, (access, slot) => {
+  const value = instrumentData[0][slot];
+  return slot < 29 && typeof value === 'number' && instrumentData.every(i => i[slot] === value)
+    ? JSON.stringify(value) : access;
+});
+if (instrumentData.every(i => [i[5], i[11], i[28]].every(w => w < 2))) {
+  const start = synth.indexOf('  (v) => (v % 1)');
+  if (start < 0) throw new Error('Synth waveform table changed');
+  synth = synth.slice(0, start) + synth.slice(synth.indexOf('];', start));
+}
+
+// Inline literals and single-use pure expressions within their own function.
+// Keep mutable reads, storage accesses and texture operations at their original
+// evaluation site. Parentheses preserve the arithmetic grouping.
+function compactShader(wgsl) {
+  return wgsl.replace(/\bfn\b[^{]*\{[\s\S]*?(?=\n(?:@|fn)|$)/g, (fn) => {
+    const literals = new Map();
+    for (const match of fn.matchAll(/\blet (\w+) = (\d+(?:\.\d+)?);/g)) {
+      const name = match[1];
+      // Skip shadowed names, including function parameters.
+      const declarations = fn.match(new RegExp(`\\b(?:let|var) ${name}\\b|\\b${name}\\s*:`, 'g'));
+      if (declarations.length === 1) literals.set(name, match[2]);
+    }
+    fn = fn.replace(/\blet (\w+) = (\d+(?:\.\d+)?);/g,
+      (declaration, name) => literals.has(name) ? '' : declaration);
+    fn = fn.replace(/(?<![.\w])\w+\b/g, (name) => literals.get(name) ?? name);
+    const mutable = new Set([...fn.matchAll(/\bvar (\w+)/g)].map(m => m[1]));
+    const pure = /^(?:vec[234][fiu]|mat[234]x[234]f|sin|cos|tan|abs|floor|ceil|fract|min|max|mix|step|smoothstep|normalize|length|dot|cross|pow|sqrt|sign|clamp|select|atan2)$/;
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const m of fn.matchAll(/\blet (\w+) = ([^;]+);/g)) {
+        const [declaration, name, expr] = m;
+        // Brackets may read mutable storage; field reads of mutable structs
+        // and non-whitelisted calls must stay at their original evaluation site.
+        if (expr.includes('[') || [...expr.matchAll(/(?<![.\w])([A-Za-z_]\w*)/g)].some(m => mutable.has(m[1]))) continue;
+        if ([...expr.matchAll(/\b(\w+)\s*\(/g)].some(m => !pure.test(m[1]))) continue;
+        const refs = new RegExp(`(?<![.\\w])${name}\\b`, 'g');
+        if ([...fn.matchAll(refs)].length !== 2) continue;
+        fn = fn.replace(declaration, '').replace(refs, `(${expr})`);
+        changed = true;
+        break;
+      }
+    }
+    return fn;
+  });
+}
+
+// Keep only glyphs used by the current captions/roster; the authored font stays
+// complete, so changing the text automatically restores any newly needed glyph.
+const textSource = read('src', 'text.js');
+const font = runInNewContext([
+  read('src', 'unicorns.js'), read('src', 'circuits.js'), textSource,
+  '({FONT_SET,FONT,LINES})',
+].join('\n'));
+const glyphs = [...font.FONT_SET].map((char, i) => [char, font.FONT.slice(i * 5, i * 5 + 5)])
+  .filter(([char]) => char === ' ' || font.LINES.some(line => line.includes(char)));
+const packedText = `const FONT_SET=${JSON.stringify(glyphs.map(g => g[0]).join(''))};\n` +
+  `const FONT=${JSON.stringify(glyphs.map(g => g[1]).join(''))};\n` +
+  textSource.slice(textSource.indexOf('const SAYS ='));
+
 const parts = [
-  // Compact generated WGSL; uniform/storage names are internal to each shader.
-  // Host bindings use numeric slots, so renaming leaves their layout intact.
+  // Compact generated WGSL; uniform, storage, attribute and varying names
+  // are internal to each shader.
+  // Host bindings and vertex locations use numeric slots, preserving layout.
   read('dist', 'shaders.js').replace(/"(?:\\.|[^"\\])*"/g, (literal) => {
     const names = new Map();
-    const wgsl = JSON.parse(literal);
+    const wgsl = compactShader(JSON.parse(literal));
     if (/\bU\d+\b/.test(wgsl)) throw new Error('WGSL compact-name collision');
     return JSON.stringify(wgsl
-      .replace(/\bu[A-Z]\w*\b/g, (name) => {
+      .replace(/\b[uav][A-Z]\w*\b/g, (name) => {
         if (!names.has(name)) names.set(name, `U${names.size}`);
         return names.get(name);
       })
       .replace(/\s*([{}(),;:])\s*/g, '$1'));
   }),
   read('src', 'unicorns.js'),
-  song(['RACE_SONG', 'race.json']),
-  song(['STAR_SONG', 'star.json']),
-  song(['MENU_SONG', 'menu.json']),
   // Before game.js, which reads its arrays at module scope to build the mesh.
   read('src', 'unicorn.js'),
-  read('lib', 'sonantx-custom.js'),
+  song(['STAR_SONG', 'star.json']),
+  song(['MENU_SONG', 'menu.json']),
+  song(['RACE_SONG', 'race.json']),
   read('src', 'circuits.js'),
-  read('src', 'text.js'),
+  synth,
+  packedText,
   read('dist', 'brometal.js'),
   read('src', 'soundEffects.js'),
   read('src', 'game.js'),
 ];
+parts.splice(0, parts.length, ...[0, 1, 5, 3, 9, 2, 6, 7, 8, 4, 10, 11].map(i => parts[i]));
 if (process.env.DEBUG) parts.push(read('src', 'debug.js'));
 let combined = parts.join('\n');
 
@@ -265,7 +335,7 @@ const outPath = join(dist, 'g.js');
 run('npx', [
   'terser', rawPath,
   '--compress', 'passes=3', '--mangle', '--toplevel',
-  '--mangle-props', 'regex=/^(bpm|endPattern|songData|mane|horn|eye)$/',
+  '--mangle-props', 'regex=/^(bpm|endPattern|songData|mane|horn|eye|ub|st|ix|bg|tx|sb|zwrite|fmt)$/',
   '--format', 'comments=false',
   '-o', outPath,
 ]);
@@ -303,8 +373,8 @@ const CACHED = {
   numAbbreviations: 10,
   recipLearningRate: 1581,
   modelMaxCount: 4,
-  modelRecipBaseCount: 57,
-  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 116, 353, 390, 425],
+  modelRecipBaseCount: 55,
+  sparseSelectors: [0, 1, 2, 3, 5, 7, 13, 26, 105, 225, 305, 390],
 };
 
 let script = readFileSync(outPath, 'utf8');

@@ -100,7 +100,7 @@ const FONT =
 // win lines down by one each, and a pause then read "ENTER TO RACE".
 const SAYS = [
   "STARLIGHT'S RAINBOW RACE",     // 0
-  'PRESS ANY KEY TO START',      // 1
+  'PRESS ENTER TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
   'PRESS ARROWS TO CHOOSE', // 3
   'PRESS ENTER TO RACE',          // 4
@@ -131,7 +131,16 @@ const SAYS = [
   // arrows had to clear the neighbours either side of the chosen unicorn. With
   // one unicorn left they were marooned at the edges of the display, pointing at
   // nothing in particular.
-  '<              >',                       // 9
+  //
+  // **One arrow, drawn twice.** It used to be both of them on this row with the
+  // gap between as spaces, and that stopped working the day a space started
+  // carrying its plate: the two heads came back joined by a bar the width of
+  // the screen. game.js draws this row a second time at a negative half-width,
+  // which mirrors the quad without mirroring the atlas — and a mirrored `<` is
+  // a `>`, exactly where the old row's right-hand end used to put it. Sixteen
+  // characters of padding either way, so nothing about where they land has
+  // changed.
+  '<'.padEnd(16),                           // 9
   // What to do with the keys, shown on the grid and gone the moment the flag
   // drops. **Steering is the whole of it.** There was a "PRESS UP TO GO" over
   // this one, back when the throttle was a key: it is held down for the player

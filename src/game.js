@@ -219,6 +219,11 @@ const TRACK_WIDTH = 27;
  * number of NDC units across than it is down — see PAD_X and PAD_Y below.
  */
 const SCREEN_PADDING = 0.011;
+// The map shares the main canvas's fixed 16:9 CSS box. World-space x/z
+// positions become a 512-segment closed stroke centered at these NDC values.
+const MAP_X = 0.8;
+const MAP_Y = -0.25;
+const MAP_DOTS = 512;
 /**
  * What the slowest three rivals' top speed is multiplied by.
  *
@@ -254,9 +259,10 @@ let SELECTED_CIRCUIT = 0;
 // block being reindented into the function: the values are built in one long
 // dependency order and breaking that order to group the exports would be the
 // only real way to get this wrong.
-let TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+let mapScale, TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
 TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT]);
+mapScale = .14 / Math.max(...TRACK.flat().map(Math.abs));
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -1019,7 +1025,7 @@ let PINK = 1;
 
 /**
  * How far round the lap each racer is, and how many times each has crossed the
- * line. Read back from the GPU six times a second; see `peek` below.
+ * line. Read back from the GPU as frames become available; see `peek` below.
  *
  * **Crossings are one more than laps completed**, because the grid stands behind
  * the line and the opening lap begins with a crossing that finishes nothing.
@@ -1094,8 +1100,7 @@ let ROLL = 0;
  *
  * **The rings are on the GPU and the speakers are on the CPU, and this is the
  * only wire between them.** Nothing here knows where a ring is; what the CPU
- * gets is the lap readback, which already copies every racer's block six times a
- * second with the clock inside it. So the cue is triggered by watching a number
+ * gets is the lap readback, which already copies every racer's block during the race with the clock inside it. So the cue is triggered by watching a number
  * rather than by watching the road.
  *
  * Racer zero's, and no one else's. This was field-wide with a distance falloff,
@@ -1340,7 +1345,7 @@ function go(next) {
     // The place readout resets with them, and only with them. Every other
     // circuit inherits the one the last race ended on — which is the player's
     // finishing position, which is now the slot they are standing in. The
-    // readback overwrites it a sixth of a second later either way; this is what
+    // next readback overwrites it either way; this is what
     // the countdown reads until then.
     if (!SELECTED_CIRCUIT) {
       TALLY.fill(0);
@@ -1911,11 +1916,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   };
   LINES.forEach((text, row) => {
     const left = ((CARD_W - text.length * CELL) / 2) | 0;
+    // **The plate runs from the first letter to the last, spaces included.** A
+    // caption is one bar behind one phrase, not a bar behind each of its words —
+    // "CIRCUIT 1 / 4" broke into four boxes with the road showing through the
+    // gaps, and at speed that reads as four things rather than as one line.
+    //
+    // The padding either side of that range stays clear, and it has to: the
+    // standings' names are padded to a fixed width so the column hangs off one
+    // edge, and plating those spaces would draw a bar the width of the atlas
+    // behind every row.
+    const first = text.search(/\S/);
+    const last = text.search(/\S\s*$/);
     for (let i = 0; i < text.length; i++) {
       const g = FONT_SET.indexOf(text[i]);
-      // Nothing at all for a space, plate included — otherwise the bar behind a
-      // caption would run straight through the gaps between its words.
-      if (g < 1) continue;
+      if (i < first || i > last) continue;
       const x0 = left + i * CELL;
       // The plate first, so the letter overwrites the middle of it. Five wide
       // and seven tall against a cell that is four by seven, which means the
@@ -1932,6 +1946,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       for (let y = 0; y < ROW_H; y++) {
         for (let x = 0; x < 5; x++) put(row, x0 + x - 1, y, 0);
       }
+      // A space is plate and nothing else — the bar carries on, the letterform
+      // is what is missing.
+      if (g < 1) continue;
       for (let y = 0; y < 5; y++) {
         // A single digit 0–7 has the same value in octal and decimal;
         // the bitwise mask below converts it to a number.
@@ -1957,23 +1974,64 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // baked into a pipeline at creation and cannot be switched on for one draw.
   const text = programFor(Text, { blend: 1, zwrite: 0 });
   bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
-  // Twenty-seven is the most any screen asks for, and it is the finish: the
-  // standings are a position and a name apiece for ten racers — twenty — plus
-  // the mark on the player's own row, with a heading over them and the way on
-  // under them, and the HUD along the top still drawn behind all of it, which is
-  // four more. Twenty-seven, and the title card would make twenty-eight if a
-  // player could reach the finish inside a third of a second of leaving the
-  // title, which they cannot.
-  //
-  // It was eight when the charge readout was one row of digits, and eleven once
-  // that became a label over a gauge. Each time the symptom was the one below
-  // rather than anything that points at a caption. Allocated once and written into every frame rather than rebuilt —
-  // bmAttr creates a fresh GPU buffer each call, which per frame is a leak
-  // rather than an upload.
-  //
-  // Too small is not a slow frame, it is `Float32Array.set` throwing `offset is
-  // out of bounds` from inside the render loop, and a black screen.
-  const CAPTIONS = 28;
+  // The minimap is a small 2D overlay. CSS gives both canvases the same 16:9
+  // box; these fixed backing dimensions keep its geometry independent of size.
+  // The atlas has been copied into cardTex; reuse its CPU canvas for the map.
+  const mapCanvas = card;
+  mapCanvas.width = 1920;
+  mapCanvas.height = 1080;
+  mapCanvas.style.pointerEvents = 'none';
+  document.body.appendChild(mapCanvas);
+  const mapContext = cctx;
+  const trackCanvas = mapCanvas.cloneNode();
+  const trackContext = trackCanvas.getContext('2d');
+  const drawMap = () => {
+    let ctx = trackContext;
+    ctx.clearRect(0, 0, 1920, 1080);
+    // Rotate the course and racer positions 180 degrees: the start heads up.
+    const point = (p) => [(MAP_X + 1) * 960 - p[0] * mapScale * 960,
+      (1 - MAP_Y) * 540 - p[2] * mapScale * 960];
+    ctx.beginPath();
+    for (let i = 0; i < MAP_DOTS; i++) ctx.lineTo(...point(ring(i * RINGS / MAP_DOTS | 0)));
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#555';
+    ctx.stroke();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    // Fade the completed bordered track once; its white stays white.
+    ctx = mapContext;
+    ctx.clearRect(0, 0, 1920, 1080);
+    ctx.globalAlpha = 77 / 255;
+    ctx.drawImage(trackCanvas, 0, 0);
+    ctx.globalAlpha = 1;
+    for (let i = FIELD; i--;) {
+      ctx.beginPath();
+      const [x, y] = point(mapRacers.subarray(i * RACER_SLOTS * 4));
+      if (i) ctx.arc(x, y, 4.8, 0, TAU);
+      else {
+        // Skip every other outer point; nonzero filling makes a solid star.
+        // Its five tips use a 17.28-pixel outer radius.
+        for (let j = 0; j < 5; j++) {
+          const angle = j * TAU * 2 / 5;
+          ctx.lineTo(x + 17.28 * Math.sin(angle), y - 17.28 * Math.cos(angle));
+        }
+      }
+      ctx.fillStyle = `rgb(${RACERS[i].body.map(c => c * 255).join(' ')})`;
+      ctx.fill();
+    }
+    const [x, y] = point(ring(0));
+    // Cross the course at the gate, above racers passing underneath.
+    ctx.beginPath();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ff9ead';
+    ctx.lineTo(x - 9 * TRACK_DATA[6], y + 9 * TRACK_DATA[4]);
+    ctx.lineTo(x + 9 * TRACK_DATA[6], y - 9 * TRACK_DATA[4]);
+    ctx.stroke();
+  };
+  const CAPTIONS = 29;
   const cells = new Float32Array(CAPTIONS * 4);
   bmAttr(text, 1, cells);
   const cellBuf = text.b[1];
@@ -2005,32 +2063,15 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // The circuit's boost phase, to the two stages that have to agree about where
   // the pads are: the physics decides whether a unicorn is standing on one, the
   // road draws them, and a disagreement is a pad you can see and not use. Sent
-  // ── Counting laps ───────────────────────────────────────────────────────
-  // One 16-byte read, six times a second, of the one number that decides when
-  // the race is over: how far round the lap racer zero is.
-  //
-  // Polled rather than pushed, and deliberately slow. A map is asynchronous —
-  // the answer arrives a frame or two later — so this can never be part of the
-  // frame it is asked in, which rules out anything that has to be exact. It does
-  // not have to be: a lap takes about a minute, and the only question being
-  // asked is "has the distance jumped from near the end back to near the
-  // beginning", which is true for several seconds either side of the line.
-  //
-  // The buffer is recycled and a read is never started while one is in flight —
-  // mapAsync on an already-mapped buffer is an error, and allocating a fresh
-  // staging buffer six times a second is a leak with extra steps.
-  /** Laps to race. Crossings needed is one more, for the start. */
-  // MAP_READ | COPY_DST. WebGPU allows MAP_READ to pair with COPY_DST and
-  // nothing else, so a staging buffer is the *destination* of the copy; the
-  // storage buffer is the one that needs COPY_SRC.
-  //
-  // The whole field now, not just the player: it used to copy one racer's fifth
-  // slot to count laps, and the running order needs the same number off every
-  // one of them. They are contiguous — five slots each from RACER_BASE — so it
-  // is still one copy, of 800 bytes instead of 16, six times a second.
+  // ── Positions, lap counts and effects ──────────────────────────────────
+  // One asynchronous read of all ten seven-vec4 racer blocks (1,120 bytes).
+  // Reuse the staging buffer and allow only one outstanding read. Results may
+  // arrive a frame or two later, but are no longer throttled to six per second.
+  // MAP_READ | COPY_DST; the simulation buffer supplies COPY_SRC.
   const lapPeek = bmDevice.createBuffer({ size: FIELD * RACER_SLOTS * 16, usage: 1 | 8 });
+  // Seed the markers from the grid before the first GPU readback arrives.
+  let mapRacers = state.subarray(RACER_BASE * 4);
   let peeking = false;
-  let peekAt = 0;
 
   const peek = () => {
     // The grid as well as the race: the order is on screen from the moment the
@@ -2045,6 +2086,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmDevice.queue.submit([enc.finish()]);
     lapPeek.mapAsync(1).then(() => {
       const seen = new Float32Array(lapPeek.getMappedRange().slice(0));
+      mapRacers = seen;
       lapPeek.unmap();
       peeking = false;
       // Same wrap test for all ten, and then the order falls out of the totals.
@@ -2059,16 +2101,14 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // shader holds the clock up for as long as the mistake is being made, and
       // this decides how often that is worth saying.
       //
-      // A quarter of a second is the floor on the gap. The readback lands six
-      // times a second, so the real rate is one sound every other poll — a shade
-      // over three a second, under the limit rather than at it.
+      // Keep scraping sounds at most four times a second, independently of
+      // the faster position readback.
       if (seen[21] > 0.01 && TIME > mistakeAt) {
         playMistake();
         mistakeAt = TIME + 0.25;
       }
       // Racer zero's boost clock, watched for a rise: the ring is under the
-      // hooves for a tenth of a second, less than the gap between reads, so the
-      // contact is routinely missed and the raised clock left behind never is.
+      // hooves briefly; the raised clock also survives a delayed readback.
       const lit = seen[20];
       if (lit > wasBoost) playBoost();
       // **The gate mirrors the shader's own condition rather than counting its
@@ -2077,7 +2117,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // while the shader was still fading, so the streaks vanished mid-fade.
       //
       // 1.8 is where the shader's envelope reaches zero, and the third of a
-      // second is cover for this poll: it runs six times a second, so a gate
+      // second covers asynchronous readback delays, so a gate
       // renewed on every read that finds the clock still up cannot lapse while
       // there is anything left to draw. Past that the pass draws nothing anyway;
       // this only decides whether it is issued at all.
@@ -2089,15 +2129,14 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       //
       // **On the rise only.** The gauge falls as well as climbs — the fourth
       // star spends all four — and a chime on the way down would ring for the
-      // wrong thing. The poll is six a second against a pickup that cannot
-      // repeat inside a tenth, so no rise is missed.
+      // wrong thing. Only a rising count should trigger the pickup sound.
       const nowStars = seen[23];
       if (nowStars > starsHeld) powerUp();
       starsHeld = nowStars;
       // The run's own clock, watched for the same edge, and what both the bang
       // and the rush hang off. It cannot be inferred from the
       // gauge: the gauge goes to ten and back to nought inside one frame of
-      // shader time, and this poll lands six times a second — so the full gauge
+      // shader time, between asynchronous readbacks — so the full gauge
       // that starts a run is very often never seen at all. The clock is up for
       // six seconds and cannot be missed.
       const nowStar = seen[26];
@@ -2117,14 +2156,14 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // way to arming is what tells the player they got there.
       if (nowStar > starLeft) playBoost();
       // Both ends of the run, and only those. `syncMusic` returns early when the
-      // answer has not changed, but this poll lands six times a second and there
+      // answer has not changed, but this poll can land every frame and there
       // is no reason to ask it that often.
       const swap = !nowStar !== !starLeft;
       starLeft = nowStar;
       if (swap) syncMusic();
       // **The warp is issued for a boost or for a run, and a run is the long
       // one.** Read straight out of `seen` rather than off `starLeft`, which is
-      // last poll's answer — a sixth of a second of no tunnel at the top of a
+      // last poll's answer — a delayed tunnel at the top of a
       // run is exactly where it would be noticed, because that is the frame the
       // player is looking for something to have happened.
       //
@@ -2169,18 +2208,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     const elapsed = prev ? Math.min(t - prev, 0.05) : 0;
     prev = t;
     if (SCREEN !== PAUSE_STATE) clock += elapsed;
-    // Six times a second is plenty for a question whose answer changes once a
-    // minute, and it keeps the copy off most frames entirely.
-    //
-    // No state test here — peek() has its own, and it allows the grid as well as
-    // the race. This gate used to say RACE_STATE, which made peek()'s FLAG_STATE
-    // clause dead code and left the readout showing whatever `place` last held
-    // all the way through the countdown: 1ST, for a player sitting at the back
-    // of the grid.
-    if (TIME > peekAt) {
-      peekAt = TIME + 1 / 6;
-      peek();
-    }
+    // Position readback also drives the minimap: request it every frame so
+    // markers do not jump between six snapshots a second. peek() permits only
+    // one outstanding copy and skips menus/paused screens.
+    peek();
     TIME = clock;
 
     // The pink card lifts over about a third of a second rather than blinking
@@ -2255,6 +2286,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // uniform still describing the previous track. Updating all three values is
     // cheaper than remembering to reissue them from the one place that swaps.
     tu.set([TIME, 1 / (PATTERN * 0.4456 * 2), PICK_BASE]);
+
     // The clouds first, into their own quarter-size target, then back to the
     // screen where the sky samples and composites them. Before the road, so the
     // ribbon paints over them and passes overhead on the climb.
@@ -2383,7 +2415,12 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // *position* is its half-width — the ink is at the ends of the row. It
       // scales with the atlas like everything else, so the triangles stay put
       // however long the longest caption gets.
+      // Left, then the same row mirrored for the right — see the note on row 9
+      // in src/text.js. A negative half-width flips the quad and not the
+      // texture, so the caret comes back pointing the other way at the other
+      // side, and the pair stays one row of the atlas rather than two.
       say(9, SELECT_Y, 0.78 * TYPE);
+      say(9, SELECT_Y, -0.78 * TYPE);
       say(3, hint + HINT_GAP, MEDIUM);
       say(4, hint, MEDIUM);
     } else if (SCREEN === FLAG_STATE) {
@@ -2449,13 +2486,16 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       );
     }
 
+    mapCanvas.hidden = SCREEN <= SELECT_STATE;
+    if (!mapCanvas.hidden) drawMap();
+
     if (n) {
       // Written straight into the buffer that already exists. A queue write
       // lands before the pass is submitted, which is exactly the ordering an
       // instanced draw wants and the one a per-draw uniform cannot give.
       bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
       textU.set([
-        TIME, LINES.length, ROW_H / CARD_W, 0, // Align uHud to four floats.
+        TIME, LINES.length, ROW_H / CARD_W, 0,
         // The same two margins the CPU-side captions hang from, so the four
         // corners the shader places and the lines placed above agree.
         PAD_X, PAD_Y,
