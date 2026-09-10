@@ -198,8 +198,27 @@ const idx = new Uint16Array(P.length / 3).map((_, i) => i);
 // first straight runs out from under it, which is what puts the model on the
 // road rather than beside it.
 const TRACK_WIDTH = 27;
-/** Equal outer HUD margins in CSS pixels, including on high-DPI displays. */
-const SCREEN_PADDING = 16;
+/**
+ * The margin every edge-anchored caption keeps off the edge of the picture, as
+ * a fraction of the display's width.
+ *
+ * **A fraction and not a pixel count, because the picture is a fixed shape now.**
+ * It used to be sixteen CSS pixels, which is a margin that means one thing on a
+ * laptop and another on a phone: the type scales with the display — every size
+ * on this screen is a multiple of `CARD_W`, which is a fraction of the width —
+ * so a constant pixel margin drifts against the letters it is supposed to frame.
+ * Held against the width instead, the whole layout is one drawing scaled to
+ * whatever box index.html gives it.
+ *
+ * 1.1% is what sixteen pixels came to on the window this was drawn at, so the
+ * screens look as they did at that size and hold their proportions everywhere
+ * else.
+ *
+ * **Equal on all four sides, which costs an aspect multiply.** NDC is 2 wide and
+ * 2 tall whatever shape the viewport is, so the same fraction is a different
+ * number of NDC units across than it is down — see PAD_X and PAD_Y below.
+ */
+const SCREEN_PADDING = 0.011;
 /**
  * What the slowest three rivals' top speed is multiplied by.
  *
@@ -821,9 +840,9 @@ for (let i = 0; i < PICK_SLOTS; i++) {
 // 9 % 3 are both 0. That falls out of the arithmetic rather than being arranged,
 // and would stop being true if the field or the lane count changed.
 //
-// The player takes the last slot rather than the first: a race you start in
-// front of is a time trial with scenery, and the whole reason for nine of them
-// is to have something to overtake.
+// **Indexed by slot and not by racer.** Which unicorn stands on which of these
+// is ORDER's business, and it changes between circuits — this is the shape of
+// the grid, not the seating plan.
 //
 // Only the position is seeded. Heading and course are left at zero, which the
 // physics stage already treats as "not yet placed" and fills from the tangent
@@ -876,12 +895,10 @@ const ringAt = (d) => {
 const LANES = 3;
 GRID = [];
 for (let i = 0; i < FIELD; i++) {
-  // Racer 0 is the player and goes to the back; the AI fill the rows in front.
-  const slot = i ? i - 1 : FIELD - 1;
   // Four metres a row. Tight, and it can be: the whole field is staggered, so
   // the nearest other racer is always a lane over as well as a row up, and the
   // physics only pushes two apart inside 2.4.
-  const g = ringAt(LAP - (6 + slot * 4));
+  const g = ringAt(LAP - (6 + i * 4));
   const arm = SIDEF[g];
   // Three lanes at a little under a third of the width apart, which leaves
   // about five metres from the outer lanes to the rails.
@@ -891,7 +908,7 @@ for (let i = 0; i < FIELD; i++) {
   // right of the back one. Both ends of the field on the same side is what makes
   // the diagonal read as one line rather than as scattered rows, and it is the
   // player's own lane that tells them which way the lattice leans.
-  const lat = (1 - (slot % LANES)) * TRACK_WIDTH * 0.3;
+  const lat = (1 - (i % LANES)) * TRACK_WIDTH * 0.3;
   // Four floats, not three: the ring this slot stands on rides along as `.w` of
   // the same word the position goes into. The physics searches for its segment
   // in a window around the ring it was on last frame, and on the very first
@@ -1043,6 +1060,28 @@ const TALLY = new Float32Array(FIELD);
  */
 let STANDINGS = [];
 /**
+ * Which racer stands on which grid slot, front to back.
+ *
+ * **Last race's finishing order is this race's grid**, which is the one piece of
+ * state a series has beyond its totals. Win a circuit and the next one starts
+ * from pole; come ninth and there is one unicorn in front of you to hunt. It is
+ * also what stops four circuits being four runs of the same race: the field the
+ * player drives through is a different field each time, arranged by what they
+ * did about it last.
+ *
+ * `(i + 1) % FIELD` is the opening grid, and it says two things at once — the AI
+ * fill the rows in front in roster order, and racer 0 wraps to the back. The
+ * player starts a series last because a race you start in front of is a time
+ * trial with scenery, and the whole reason for nine of them is to have something
+ * to overtake.
+ *
+ * Racer slots, like TALLY and STANDINGS. Handicaps are not in here and must not
+ * be: a unicorn's pace is keyed on its own index in the physics stage, so it
+ * travels with the unicorn while the grid moves underneath.
+ */
+const GRID1 = TALLY.map((_, i) => (i + 1) % FIELD);
+let ORDER = GRID1;
+/**
  * The draw the field takes for this race — see uRoll in physics.shader.ts.
  *
  * Rolled at the flag and held for the whole race, because it decides each AI's
@@ -1167,7 +1206,7 @@ function resetGrid() {
   for (let i = 0; i < FIELD; i++) {
     block.fill(0);
     block.set(GRID[i], 0);
-    bmDevice.queue.writeBuffer(STATE, (RACER_BASE + i * RACER_SLOTS) * 16, block);
+    bmDevice.queue.writeBuffer(STATE, (RACER_BASE + ORDER[i] * RACER_SLOTS) * 16, block);
   }
 }
 
@@ -1210,24 +1249,27 @@ function go(next) {
   // so this is the one place that sees all of them, and separate call sites
   // cannot drift out of agreement about which ones speak.
   //
-  // **Three silent destinations, and testing the destination is the whole rule.**
-  // Every arrival that should stay quiet is an arrival into the race, into a
-  // pause, or onto the standings — so `next` alone decides it and the screen
-  // being left never has to be consulted:
+  // **One destination speaks, and it is the grid.** This used to be a list of
+  // the screens that stay quiet, which is the wrong shape for the rule: a
+  // blacklist says yes to every arrival nobody has thought about yet, so each
+  // new screen is silently opted into a flourish and the way you find out is by
+  // hearing it. Naming the one arrival that earns the sound puts the default the
+  // other way round.
   //
-  //   - **into the race**, which is the flag dropping or a pause lifting. The
-  //     countdown already has three tones and the race song's own opening hit
-  //     landing on that frame; a fourth is one too many, and the race starting is
-  //     the least ambiguous moment in the game.
-  //   - **into a pause**, because a pause is not a change of scene — it is the
-  //     same scene held. Chiming on the way in makes stopping an event.
-  //   - **onto the standings**, which arrive on their own the moment the last
-  //     racer crosses. Nobody pressed anything, so there is no input to confirm —
-  //     and a flourish there would land on top of whatever the finish itself is
-  //     still ringing.
+  // The grid earns it because it is the only transition that *commits* to
+  // something. Picking a unicorn is browsing — the carousel turns under the
+  // roster whether or not you settle on one — and going back to the title is
+  // leaving; neither is a decision the game should congratulate. Walking out to
+  // the start line is, and the sound is the last thing heard before the
+  // countdown takes over.
   //
-  // Leaving a pause is covered for free: its only exit is back into the race.
-  // What is left that speaks is exactly the four a key causes.
+  // Every other arrival was already silent and stays that way for its own
+  // reasons: into the race, where the countdown's three tones and the race
+  // song's opening hit are landing on that frame and a fourth is one too many;
+  // into a pause, which is not a change of scene but the same scene held, and
+  // chiming there makes stopping an event; onto the standings, which arrive on
+  // their own the moment the last racer crosses, where nobody pressed anything
+  // and a flourish would land on top of whatever the finish is still ringing.
   //
   // It borrows the pickup's own flourish rather than adding a sound: already
   // rendered, already familiar, and the one thing in the game that means
@@ -1238,7 +1280,7 @@ function go(next) {
   // sound a player already knows; what they recognise is the three of them
   // climbing. It costs nothing extra either, being the same one buffer resampled
   // twice on a pair of timers.
-  if (next !== RACE_STATE && next !== PAUSE_STATE && next !== FINISH_STATE) powerUp();
+  if (next === FLAG_STATE) powerUp();
   // A race always starts from nothing, however it was reached.
   //
   // Last and not first: the grid puts the player behind the whole field, so the
@@ -1269,14 +1311,16 @@ function go(next) {
     // series and not over this circuit. A racer's own total is all that is kept;
     // where they came in each individual race is not something the game ever
     // shows again.
-    STANDINGS = [...TALLY.keys()].sort(
+    ORDER = [...TALLY.keys()].sort(
       (a, b) => DONE[b] * LAP + ROUND[b] - (DONE[a] * LAP + ROUND[a]),
     );
-    STANDINGS.forEach((r, i) => (TALLY[r] += i + 1));
-    // And now, sorted by the totals, which is what the leaderboard lists. Ties
-    // fall to whoever finished this race higher, since sort is stable and the
-    // array is already in this circuit's finishing order.
-    STANDINGS.sort((a, b) => TALLY[a] - TALLY[b]);
+    ORDER.forEach((r, i) => (TALLY[r] += i + 1));
+    // And the leaderboard is that again by the totals, which is what it lists.
+    // Ties fall to whoever finished this race higher, since sort is stable and
+    // the array it copies is already in this circuit's finishing order.
+    //
+    // A copy, because ORDER outlives this screen: it is the next circuit's grid.
+    STANDINGS = [...ORDER].sort((a, b) => TALLY[a] - TALLY[b]);
   }
   // The palettes are shared between the carousel and the grid, so they are
   // rewritten on the way into each.
@@ -1288,12 +1332,21 @@ function go(next) {
   if (next === FLAG_STATE) {
     ROUND.fill(0);
     DONE.fill(0);
-    place = FIELD - 1;
     // Circuit one is a new series, however it was reached — off the title, or
     // round again from the end of the last one. Cleared on the way *in* rather
     // than on the way out of the final race, so the last leaderboard is still
     // standing behind the player while they read it.
-    if (!SELECTED_CIRCUIT) TALLY.fill(0);
+    //
+    // The place readout resets with them, and only with them. Every other
+    // circuit inherits the one the last race ended on — which is the player's
+    // finishing position, which is now the slot they are standing in. The
+    // readback overwrites it a sixth of a second later either way; this is what
+    // the countdown reads until then.
+    if (!SELECTED_CIRCUIT) {
+      TALLY.fill(0);
+      ORDER = GRID1;
+      place = FIELD - 1;
+    }
     ROLL = Math.random();
     lights = 0;
     rung = 0;
@@ -1632,7 +1685,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // genuinely starting at — and a zero course is what tells the physics stage to
   // point each unicorn down the road it finds itself on.
   for (let i = 0; i < FIELD; i++) {
-    state.set(GRID[i], (RACER_BASE + i * RACER_SLOTS) * 4);
+    state.set(GRID[i], (RACER_BASE + ORDER[i] * RACER_SLOTS) * 4);
   }
   // Each racer's colours, six slots apiece. Written once and never again: a
   // livery is not state, it is a constant that happens to differ per instance,
@@ -2090,6 +2143,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   };
 
   bmLoop((t) => {
+    // Share the rendered aspect across camera, captions, and HUD margins.
+    const aspect = canvas.width / canvas.height;
     // Clamped, and not only for tidiness. `t` is wall clock, so a tab left in
     // the background and come back to hands over a step of whatever the pause
     // was — seconds, sometimes minutes. Unclamped that integrates in one go: the
@@ -2154,7 +2209,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // So it is held for them, always, and steering is the entire game.
     step[1] = driving;
     step[2] = driving * (held('ArrowRight', 'KeyD') - held('ArrowLeft', 'KeyA'));
-    step[3] = canvas.width / canvas.height;
+    step[3] = aspect;
     step[4] = RINGS;
     step[10] = PICK_BASE;
     step[5] = TRACK_WIDTH;
@@ -2272,9 +2327,53 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // Five sevenths, because that is how much of a row is ink: a glyph is five
     // pixels in a seven-pixel cell, centred, with the spare above and below
     // holding the plate. The extent to balance is the ink's, not the quad's.
-    const tall = (half) => 5 * half / CARD_W * (canvas.width / canvas.height);
-    /** Shared bottom edge of the HUD backgrounds, independent of font size. */
-    const HUD_BOT = 2 * SCREEN_PADDING / canvas.clientHeight - 1;
+    const tall = (half) => 5 * half / CARD_W * aspect;
+    /**
+     * The half-height of a caption's *plate* — the dark rectangle the letters
+     * sit on — where `tall` above is the half-height of the ink inside it.
+     *
+     * Seven sevenths against `tall`'s five: a glyph is five pixels of ink in a
+     * seven-pixel cell with the spare two holding the plate, so this is the
+     * whole quad, and it is deliberately the same expression text.shader.ts
+     * builds its height from. It has to be — this is what decides where the
+     * visible edge of a label actually lands.
+     *
+     * **Edges are measured on the plate; insides are measured on the ink.**
+     * Everything hung off HUD_TOP or HUD_BOT uses this one, because the corner
+     * readouts are positioned by the shader straight from their quads and their
+     * rectangles therefore sit exactly on the margin. A label that lined its
+     * *letters* up with them instead put the box around those letters two
+     * sevenths of a row past it, which is a different gap at every size and
+     * reads as one caption being closer to the edge than the rest. Balancing a
+     * heading against the line under it still uses `tall`: what the eye centres
+     * there is the lettering, not the boxes.
+     */
+    const plate = (half) => 7 * half / CARD_W * aspect;
+    /**
+     * SCREEN_PADDING in NDC, across and down.
+     *
+     * NDC runs -1 to 1 on both axes however wide the picture is, so a fraction
+     * of the *width* is `2 * p` across and `2 * p * aspect` down — the same
+     * margin in pixels on all four sides, which is the only reason the aspect
+     * is in here.
+     */
+    const PAD_X = 2 * SCREEN_PADDING;
+    const PAD_Y = PAD_X * aspect;
+    /**
+     * The two edges everything anchored to the top or the bottom hangs from.
+     *
+     * **Written down once so the four corners cannot drift apart.** These are
+     * the lines the place readout, the star gauge, the circuit caption and every
+     * instruction line share; each used to carry its own number, and the top ones
+     * were hand-tuned NDC constants that happened to come to sixteen pixels at
+     * one window size and to something else at every other.
+     *
+     * A caption's `y` is its *centre*, so a label sitting on one of these edges
+     * is `HUD_TOP - plate(size)` or `HUD_BOT + plate(size)` — the half-height
+     * that puts the edge of its rectangle on the line rather than across it.
+     */
+    const HUD_BOT = PAD_Y - 1;
+    const HUD_TOP = 1 - PAD_Y;
     const HEAD_GAP = 0.26;
     const headY = HEAD_GAP / 2 - (tall(EXTRA_LARGE) - tall(MEDIUM)) / 2;
     /** A heading with one line under it, centred as a pair. */
@@ -2311,13 +2410,27 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     if (SCREEN === TITLE_STATE) {
       heading(0, 1);
     } else if (SCREEN === SELECT_STATE) {
-      say(2, 0.88, LARGE);
+      // The heading on the top line, the roster's name hung under it, and the
+      // two instructions on the bottom line — the same two edges the race HUD
+      // uses, so the screens frame their contents identically.
+      //
+      // The pair at the bottom is spaced by the same row pitch the standings
+      // stack ten rows on, which is what keeps two lines of instructions reading
+      // as a block rather than as two captions that happen to be near each
+      // other.
+      const hint = HUD_BOT + plate(MEDIUM);
+      const HINT_GAP = plate(MEDIUM) * 2.1;
+      say(2, HUD_TOP - plate(LARGE), LARGE);
       say(NAME_ROW + PICK, 0.66, EXTRA_LARGE);
       // Level with the unicorn, which is no longer level with the middle of the
       // screen: the name above and the two hints below are not symmetric about
       // it, so centring on zero left the animal riding high with a gap under the
-      // name. Halfway between the name at 0.66 and the first hint at -0.74 is
-      // -0.04, and that is what both this and the model are hung from.
+      // name. So it rides halfway between the bottom of the name and the top of
+      // the upper hint, and that is what both this and the model are hung from.
+      //
+      // Worked out rather than written down now that the hints hang off the
+      // bottom edge: the pair moves with the padding, and a constant here would
+      // have left the animal where the old -0.74 put it.
       //
       // Just outside its neighbours, too.
       //
@@ -2325,20 +2438,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // *position* is its half-width — the ink is at the ends of the row. It
       // scales with the atlas like everything else, so the triangles stay put
       // however long the longest caption gets.
-      say(9, -0.04, 0.78 * TYPE);
-      say(3, -0.74, MEDIUM);
-      say(4, -0.9, MEDIUM);
+      say(9, (0.66 - plate(EXTRA_LARGE) + hint + HINT_GAP + plate(MEDIUM)) / 2, 0.78 * TYPE);
+      say(3, hint + HINT_GAP, MEDIUM);
+      say(4, hint, MEDIUM);
     } else if (SCREEN === FLAG_STATE) {
       // Between the two corner readouts rather than over either: thirteen
       // characters at LARGE reach about a quarter of the way out from the
       // middle, and the lap and the place stop at 0.63 and 0.69.
       //
-      // Hung from the same top line as the star meter and the place numeral, by
-      // the same subtraction, so the three of them start on one scanline. It is
-      // LARGE like the star meter, so the offset is identical — written out
-      // rather than shared, because the two live in different branches and the
-      // constant is one line.
-      say(CIRCUIT_ROW + SELECTED_CIRCUIT, 0.96 - tall(LARGE), LARGE);
+      // Hung from HUD_TOP, which is the padding and nothing else. It was 0.96 —
+      // a number that came to sixteen pixels on the window it was chosen at and
+      // to something different on every other, so the caption crept towards the
+      // edge on a tall display and away from it on a short one while the corner
+      // readouts stayed put.
+      say(CIRCUIT_ROW + SELECTED_CIRCUIT, HUD_TOP - plate(LARGE), LARGE);
       // Three, two, one — one glyph a signal, and `rung` is already counting
       // them for the sound. Nothing on the first frame, when `rung` is zero:
       // there is a beat of quiet before the first tone, and a "3" hanging there
@@ -2354,7 +2467,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // was two, with "PRESS UP TO GO" above it — and the throttle is held down
       // for the player now, so the only thing left to tell them is the only
       // thing they can do.
-      say(10, HUD_BOT + tall(MEDIUM), MEDIUM);
+      say(10, HUD_BOT + plate(MEDIUM), MEDIUM);
     } else if (SCREEN === RACE_STATE && flash) {
       // Fading over the last second of the two, which is `min(flash, 1)` and
       // needs no second timer.
@@ -2375,18 +2488,19 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // starts the same distance to the left of it. Both edges are set by the
       // same number, so the block stays square as the window changes.
       //
-      // **Spaced off `tall` and not off a constant.** A caption's height is its
+      // **Spaced off `plate` and not off a constant.** A caption's height is its
       // half-width times the atlas proportions times the aspect ratio, so the
       // gap that stacks ten rows cleanly at one window size is wrong at the
       // next.
       //
-      // `tall` is a *half*-height — every other caller subtracts it from a top
-      // to find a centre — so a row's full plate is twice it, and seven fifths
-      // of that again for the dark bar the letters sit on. The extra tenth is
-      // the hairline that keeps ten of them reading as rows rather than as one
-      // block. Written the same way the star gauge stacks its two rows, and it
-      // is the same 2.1.
-      const pitch = tall(LARGE) * (7 / 5) * 2.1;
+      // `plate` is a *half*-height, so two of them is one dark bar, and the
+      // extra tenth is the hairline that keeps ten of them reading as rows
+      // rather than as one block. It used to spell that out as `tall * 7 / 5`,
+      // which is the same number the long way round — the seven fifths that
+      // turn ink into its plate now live in `plate` itself, where the edge
+      // anchors need them too. Written the same way the star gauge stacks its
+      // two rows, and it is the same 2.1.
+      const pitch = plate(LARGE) * 2.1;
       // Centred as a block: five rows above the middle and five below, with the
       // heading over them and the way on underneath.
       for (let i = 0; i < FIELD; i++) {
@@ -2412,9 +2526,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // instanced draw wants and the one a per-draw uniform cannot give.
       bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
       textU.set([
-        TIME, canvas.width / canvas.height, LINES.length, ROW_H / CARD_W,
-        2 * SCREEN_PADDING / canvas.clientWidth,
-        2 * SCREEN_PADDING / canvas.clientHeight,
+        TIME, aspect, LINES.length, ROW_H / CARD_W,
+        // The same two margins the CPU-side captions hang from, so the four
+        // corners the shader places and the lines placed above agree.
+        PAD_X, PAD_Y,
         2 * EXTRA_LARGE / CARD_W, SUFFIX / EXTRA_LARGE,
       ]);
       bmUniforms(text, textU);

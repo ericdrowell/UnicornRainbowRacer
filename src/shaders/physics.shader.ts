@@ -274,10 +274,14 @@ export const Physics = shader({
     // what `tier` being 0, 0.5 and 1 feeds into the `mix`. `floor((me - 1) / 3)`
     // is the whole classifier; there is no table and nothing to keep in step.
     //
-    // It lines the field up by ability, because grid slot is `me - 1`: the three
-    // quick ones start at the front, the three slow ones sit just ahead of the
-    // player at the back. A race is then something you climb through rather than
-    // nine unicorns all running the same speed.
+    // **A racer's own index, and never its grid slot.** On circuit one the two
+    // agree — the opening grid is racers 1..9 in order with the player wrapped
+    // to the back, so the three quick ones do start at the front and the three
+    // slow ones sit just ahead of the player. From circuit two on they come
+    // apart: the grid is last race's finishing order (ORDER in src/game.js),
+    // and the pace has to travel with the unicorn rather than with the slot it
+    // happens to be standing on — a unicorn that was quick last time is the same
+    // unicorn however far back it lines up.
     //
     // Racer zero falls out of the pattern — `floor(-1/3)` is -1, so its tier is
     // -0.5 and the mix extrapolates past the ceiling. That is discarded on the

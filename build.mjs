@@ -190,7 +190,19 @@ const song = (name) => {
 // repo, and is the one place where the right move is usually to leave the
 // arithmetic alone.
 const parts = [
-  read('dist', 'shaders.js'),
+  // Compact generated WGSL; uniform/storage names are internal to each shader.
+  // Host bindings use numeric slots, so renaming leaves their layout intact.
+  read('dist', 'shaders.js').replace(/"(?:\\.|[^"\\])*"/g, (literal) => {
+    const names = new Map();
+    const wgsl = JSON.parse(literal);
+    if (/\bU\d+\b/.test(wgsl)) throw new Error('WGSL compact-name collision');
+    return JSON.stringify(wgsl
+      .replace(/\bu[A-Z]\w*\b/g, (name) => {
+        if (!names.has(name)) names.set(name, `U${names.size}`);
+        return names.get(name);
+      })
+      .replace(/\s*([{}(),;:])\s*/g, '$1'));
+  }),
   read('src', 'unicorns.js'),
   song(['RACE_SONG', 'race.json']),
   song(['STAR_SONG', 'star.json']),
@@ -291,8 +303,8 @@ const CACHED = {
   numAbbreviations: 10,
   recipLearningRate: 1581,
   modelMaxCount: 4,
-  modelRecipBaseCount: 70,
-  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 226, 278, 423, 449],
+  modelRecipBaseCount: 57,
+  sparseSelectors: [0, 1, 2, 3, 7, 13, 26, 49, 116, 353, 390, 425],
 };
 
 let script = readFileSync(outPath, 'utf8');
