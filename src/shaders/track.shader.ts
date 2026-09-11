@@ -500,14 +500,7 @@ export const Track = shader({
       const energy = core + halo + rays * 0.9;
       const alpha = min(1, energy) * (1 - smoothstep(0.8, 1, r));
       const tint = mix(vec3(1, 0.78, 0.3), vec3(1, 1, 1), min(1, energy));
-      // A narrow amber edge gives the white core contrast on bright road tiles.
-      // Let the strongest streaks shine through it; fade it with collection.
-      const rim = smoothstep(0.024, 0.032, r)
-        * (1 - smoothstep(0.04, 0.05, r)) * (1 - min(0.65, rays));
-      result = vec4(
-        mix(tint.scale(1.35), vec3(0.22, 0.085, 0.012), rim * 0.9),
-        max(alpha, rim * 0.85) * vV,
-      );
+      result = vec4(tint.scale(1.35), alpha * vV);
     } else {
 
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels

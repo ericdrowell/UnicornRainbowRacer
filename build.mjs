@@ -373,7 +373,7 @@ const CACHED = {
   numAbbreviations: 10,
   recipLearningRate: 1590,
   modelMaxCount: 4,
-  modelRecipBaseCount: 58,
+  modelRecipBaseCount: 55,
   sparseSelectors: [0, 1, 2, 3, 5, 7, 13, 26, 105, 225, 305, 390],
 };
 
