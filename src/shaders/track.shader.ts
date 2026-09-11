@@ -14,6 +14,8 @@ import {
   normalize,
   sign,
   pow,
+  exp,
+  length,
   smoothstep,
   cross,
   dot,
@@ -146,7 +148,9 @@ export const Track = shader({
     // meaning one thing. It rides every stage of the sweep below and changes
     // three of them: the radius, the normal and the alpha.
     const isFilm = isSpec * aEdge.y;
-    const slot = aPos.x * isSpec;
+    const isStar = step(9.5, aEdge.x);
+    let slot = aPos.x * isSpec;
+    if (isStar > 0.5) slot = storageRead(uState, 146 + aPos.x).x;
     // Sixteen rows to a slot and the pickup seated eight rows in, which is the
     // number physics.shader.ts seats its hitbox on: a hitbox anywhere but where
     // this hangs the thing is a pickup off a piece of empty road.
@@ -159,7 +163,6 @@ export const Track = shader({
     // is what decides which shape the sweep below turns into.
     const rec = storageRead(uTrack, uBase + slot);
     const lane = rec.x;
-    const isStar = rec.y * (1 - isFin);
     // ── A star that has been taken ─────────────────────────────────────────
     // **It goes, but not on the frame it is touched.** A pickup that simply
     // stops being drawn gives the player nothing to confirm what happened — at
@@ -262,7 +265,7 @@ export const Track = shader({
     // vertices slide off the peaks — the radii sampled stop being the extremes,
     // and the star does not spin, it melts into a decagon and back twice a turn.
     // Rings and the gate have no such alignment to lose.
-    const th = aPos.y * 6.2832 + uTime * 0.25 * (1 - isStar);
+    const th = aPos.y * 6.2832 + uTime * 0.25;
     // **Half a turn for the star, a whole one for the ring**, and that is not a
     // tidy-up — it is the difference between a clean surface and a flickering
     // one. The ring is a tube and needs the full circle to close it. The star's
@@ -277,7 +280,7 @@ export const Track = shader({
     // same depth, different shading — which reads as the colour tearing across
     // the star as it turns. Sweeping half a turn covers the surface once and
     // there is nothing left to disagree with.
-    const ph = aPos.z * mix(6.2832, 3.1416, isStar);
+    const ph = aPos.z * 6.2832;
     const cp = cos(ph);
     const sp = sin(ph);
     const tng = storageRead(uTrack, ri + 1).xyz;
@@ -347,7 +350,6 @@ export const Track = shader({
     // 1.2 against the ring's 4.5 is what makes it the small one: the pickup
     // measures 1.7 across at its widest against the ring's 9, so the two never
     // read as the same object even when they sit in the same lane.
-    const sf = 1.2 * sFade;
     // The rotating decagon must clear both road edges even when a flat faces
     // them. With a 13.5 m half-width, 5.44 m hub height and 2.4 m tube,
     // R >= 2.4 + length(vec2(13.5, 5.44)) / cos(pi / 10) = 17.704.
@@ -361,39 +363,11 @@ export const Track = shader({
     // out — from nought at the middle to the tube's *inner* edge, where it meets
     // the ring without poking through it.
     const ringR = mix(4.5, 17.9, isFin);
-    const radial = mix(
-      mix(ringR + tube * cp, (ringR - tube) * aPos.z, isFilm),
-      sf * (1 + 0.4 * sin(th * 5)) * (1 - abs(cp)),
-      isStar,
-    );
-    const axial = mix(tube * sp, sf * 0.35 * cp, isStar);
-    // **The normal, and the star's is not the torus's.** A cone's points away
-    // from the axis by the slope of its own slant, so it is `rad` leaned against
-    // `tng` — and `sign(cp)` is which of the two faces this vertex is on, the
-    // front one or the back. On the rim, where `cp` is nought and the two faces
-    // meet in a crease, it falls back to `rad` alone, which is the correct
-    // normal for an edge and lights it like one.
-    //
-    // 0.3 is the lean, and it is the shape's own aspect: the faces run about
-    // three tenths of their length out for every one along. It is written as a
-    // constant rather than derived from that radius because the derivation is a
-    // normalize either way and the arms only differ by a few degrees.
-    // One expression for both, with the type picking the two weights rather than
-    // picking between two finished vectors. The ring's is already unit, so
-    // running it through the normalize the star needs costs it nothing.
-    // The film faces down the road, flat on, which is what makes it catch the
-    // light evenly instead of going dark at the edges the way a tube's normal
-    // would carry it.
-    const nrm = mix(
-      normalize(
-        rad
-          .scale(mix(cp, 0.3, isStar))
-          .add(tng.scale(mix(sp, sign(cp), isStar))),
-      ),
-      tng,
-      isFilm,
-    );
-    const world = mix(
+    // Only rings and films reach the mesh shading; light quads override it.
+    const radial = mix(ringR + tube * cp, (ringR - tube) * aPos.z, isFilm);
+    const axial = tube * sp;
+    const nrm = mix(rad.scale(cp).add(tng.scale(sp)), tng, isFilm);
+    let world = mix(
       aPos,
       hub.add(rad.scale(radial)).add(tng.scale(axial)),
       isSpec,
@@ -445,7 +419,7 @@ export const Track = shader({
     // — so the two offsets can simply add.
     v.vU = mix(
       aEdge.x,
-      9 + 11 * isStar + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5),
+      9 + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5),
       isSpec,
     );
     // A film sends the radius out where a ring sends its light, which is what
@@ -476,6 +450,7 @@ export const Track = shader({
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
     // reconstruct, and it does not need one.
+    if (isStar > 0.5) world = hub;
     const c0 = storageRead(uState, 4);
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
@@ -483,15 +458,58 @@ export const Track = shader({
     // Kept so the fragment can find itself on screen: the reflection target is in
     // screen space, and the divide by w has to happen per fragment rather than
     // per vertex or the lookup skews across a triangle.
-    const clip = c0
+    let clip = c0
       .scale(world.x)
       .add(c1.scale(world.y))
       .add(c2.scale(world.z))
       .add(c3);
+    // A point-like light carried by a quad, always facing the camera.
+    // Keep the actual pickup's depth so roads and racers occlude its glow.
+    if (isStar > 0.5) {
+      v.vU = 40;
+      v.vV = sFade;
+      v.vWorld = vec3(aPos.y, aPos.z, slot);
+      clip = clip.add(vec4(aPos.y * 68.85 * (9 / 16) * sFade,
+        aPos.z * 68.85 * sFade, 0, 0));
+    }
     return clip;
   },
 
   fragment({ uTime, uState }, { vU, vV, vWorld }) {
+    let result = vec4(0, 0, 0, 0);
+    if (vU > 39) {
+      const r = length(vec3(vWorld.x, vWorld.y, 0));
+      const phase = vWorld.z;
+      const time = uTime;
+      let rays = 0;
+      // Each ray wanders and breathes independently; no rigid spinning star.
+      for (let i = 0; i < 6; i++) {
+        const seed = phase + i * 2.17;
+        const wave = sin(time * 1.4 + seed);
+        const angle = i * 1.0472 + wave * 0.28;
+        const along = vWorld.x * cos(angle) + vWorld.y * sin(angle);
+        const across = abs(vWorld.y * cos(angle) - vWorld.x * sin(angle));
+        const reach = 0.48 + 0.3 * wave;
+        const width = 0.014;
+        rays += exp(0 - across / width)
+          * pow(max(0, 1 - max(0, along) / reach), 2)
+          * step(0, along);
+      }
+      const core = exp(0 - r * r * 1500) * 2.5;
+      const halo = exp(0 - r * 7) * 0.22;
+      const energy = core + halo + rays * 0.9;
+      const alpha = min(1, energy) * (1 - smoothstep(0.8, 1, r));
+      const tint = mix(vec3(1, 0.78, 0.3), vec3(1, 1, 1), min(1, energy));
+      // A narrow amber edge gives the white core contrast on bright road tiles.
+      // Let the strongest streaks shine through it; fade it with collection.
+      const rim = smoothstep(0.024, 0.032, r)
+        * (1 - smoothstep(0.04, 0.05, r)) * (1 - min(0.65, rays));
+      result = vec4(
+        mix(tint.scale(1.35), vec3(0.22, 0.085, 0.012), rim * 0.9),
+        max(alpha, rim * 0.85) * vV,
+      );
+    } else {
+
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
     // to each 2π/0.7 of `vV` — so they come out square, and a lap holds a whole
     // number of them. That second part is not decoration. game.js sizes `vV` so
@@ -713,7 +731,6 @@ export const Track = shader({
     // and the clamp never bites.
     const gold = min(vV, 1);
     const film = step(31, vU);
-    const star = step(20, vU) * (1 - film);
     // Broad, slowly drifting interference colours, softly diluted with white.
     // The center stays almost clear; grazing reflections gather at the rim.
     const swirl = sin(vWorld.x * 2 + sin(vWorld.y * 3 - uTime * 0.12)) +
@@ -743,8 +760,8 @@ export const Track = shader({
     // white lands on cream, which is what a star looked like before. This is the
     // colour named outright, saturated, and it is the one pickup on the road
     // that should read the same every time you see it.
-    const tint = mix(mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45), vec3(1, 0.82, 0.16), star);
-    return vec4(
+    const tint = mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45);
+    result = vec4(
       mix(
         mix(
           lit
@@ -781,5 +798,7 @@ export const Track = shader({
       // The opacity is identical from either side of the gate.
       mix(1, 0.36 + filmRim * 0.22 + sheen * 0.28, film),
     );
+    }
+    return result;
   },
 });

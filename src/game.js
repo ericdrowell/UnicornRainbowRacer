@@ -221,11 +221,6 @@ const TRACK_WIDTH = 27;
 const SCREEN_PADDING = 0.011;
 // Blank lines between stacked labels, measured using the upper label's plate.
 const LABEL_SPACING = 1;
-// The map shares the main canvas's fixed 16:9 CSS box. World-space x/z
-// positions become a 512-segment closed stroke centered at these NDC values.
-const MAP_X = 0.8;
-const MAP_Y = -0.25;
-const MAP_DOTS = 512;
 /**
  * What the slowest three rivals' top speed is multiplied by.
  *
@@ -261,10 +256,9 @@ let SELECTED_CIRCUIT = 0;
 // block being reindented into the function: the values are built in one long
 // dependency order and breaking that order to group the exports would be the
 // only real way to get this wrong.
-let mapScale, TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+let STAR_SLOTS, TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
 TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT]);
-mapScale = .14 / Math.max(...TRACK.flat().map(Math.abs));
 
 /** Metres between ribbon rings. Small enough that corners read as curves. */
 const RING_SPACING = 2;
@@ -679,8 +673,7 @@ for (let i = 0; i < RINGS; i++) {
 // two angles rather than a position" — nothing more, because which pickup it is
 // comes from the table now.
 for (let i = 0; i < PICK_SLOTS; i++) {
-  if (PICK_LANE[i] > 2) continue;
-  const star = PICK_TYPE[i];
+  if (PICK_LANE[i] > 2 || PICK_TYPE[i]) continue;
   // **Ten round, for both, and offset half a step.** The pickup is a
   // five-pointed star — track.shader.ts swings its radius in and out five times
   // round the sweep — so it has ten corners and needs ten divisions. But a
@@ -696,7 +689,7 @@ for (let i = 0; i < PICK_SLOTS; i++) {
   // the twenty-four it used to be: the divisions are shared with the pickup, and
   // nothing here is stored, so the count is a single number for both.
   const uN = 10;
-  const vN = star ? 4 : 10;
+  const vN = 10;
   const base = TP.length / 3;
   for (let u = 0; u <= uN; u++) {
     for (let v = 0; v <= vN; v++) {
@@ -782,6 +775,19 @@ for (let i = 0; i < PICK_SLOTS; i++) {
   filmAt(i, 9);
 }
 filmAt(0, 8);
+// Point lights draw in GPU-sorted order, one quad per star.
+STAR_SLOTS = [];
+for (let i = 0; i < PICK_SLOTS; i++) {
+  if (PICK_LANE[i] > 2 || !PICK_TYPE[i]) continue;
+  const base = TP.length / 3;
+  for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    TP.push(STAR_SLOTS.length / 4, x, y);
+    TE.push(10, 0);
+  }
+  TI.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  STAR_SLOTS.push(i, 0, 0, 0);
+}
+
 
 // The ribbon, in the form the physics stage reads it: two vec4s a ring, centre
 // with distance travelled, then tangent with camber. Everything the simulation
@@ -1651,6 +1657,10 @@ const programFor = (shader, options = {}) => bmProgram(shader[0], {
 });
 
 function uploadTrack() {
+  const order = new Float32Array(STAR_SLOTS);
+  // Slot 146 follows all ten liveries; the shaders share this layout.
+  bmDevice.queue.writeBuffer(STATE, (PALETTE + FIELD * 6) * 16, order);
+  bmStorages(sim, STATE, rings);
   for (const program of [track, films]) {
     bmAttr(program, 0, new Float32Array(TP));
     bmAttr(program, 1, new Float32Array(TE));
@@ -1675,7 +1685,6 @@ function swap(i) {
   SELECTED_CIRCUIT = i;
   lay();
   rings = bmStore(TRACK_DATA);
-  bmStorages(sim, STATE, rings);
   uploadTrack();
 }
 
@@ -1688,7 +1697,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // Slots 13 and 14 are spare. They used to hold a falling star's arc and had to
   // be seeded with unit vectors, because the sky normalised them every frame and
   // normalising a zero vector is NaN rather than zero.
-  const state = new Float32Array((PALETTE + FIELD * 6) * 4);
+  const state = new Float32Array((PALETTE + FIELD * 6) * 4 + STAR_SLOTS.length);
   // The grid. Position only: everything else is zero, which every field here is
   // genuinely starting at — and a zero course is what tells the physics stage to
   // point each unicorn down the road it finds itself on.
@@ -1720,7 +1729,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // single unicorn and nothing here is parallel. It is on the GPU so that the
   // answer never has to come back — see physics.shader.ts.
   sim = bmCompute(Physics[0], { u: Physics[3], s: Physics[5] });
-  bmStorages(sim, STATE, rings);
 
   // ── The field, as instance data ─────────────────────────────────────────
   // One buffer, one float: which racer each instance is. WebGPU guarantees only
@@ -1979,63 +1987,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // baked into a pipeline at creation and cannot be switched on for one draw.
   const text = programFor(Text, { blend: 1, zwrite: 0 });
   bmAttr(text, 0, new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]));
-  // The minimap is a small 2D overlay. CSS gives both canvases the same 16:9
-  // box; these fixed backing dimensions keep its geometry independent of size.
-  // The atlas has been copied into cardTex; reuse its CPU canvas for the map.
-  const mapCanvas = card;
-  mapCanvas.width = 1920;
-  mapCanvas.height = 1080;
-  mapCanvas.style.pointerEvents = 'none';
-  document.body.appendChild(mapCanvas);
-  const mapContext = cctx;
-  const trackCanvas = mapCanvas.cloneNode();
-  const trackContext = trackCanvas.getContext('2d');
-  const drawMap = () => {
-    let ctx = trackContext;
-    ctx.clearRect(0, 0, 1920, 1080);
-    // Rotate the course and racer positions 180 degrees: the start heads up.
-    const point = (p) => [(MAP_X + 1) * 960 - p[0] * mapScale * 960,
-      (1 - MAP_Y) * 540 - p[2] * mapScale * 960];
-    ctx.beginPath();
-    for (let i = 0; i < MAP_DOTS; i++) ctx.lineTo(...point(ring(i * RINGS / MAP_DOTS | 0)));
-    ctx.closePath();
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 10;
-    ctx.strokeStyle = '#555';
-    ctx.stroke();
-    ctx.lineWidth = 8;
-    ctx.strokeStyle = '#fff';
-    ctx.stroke();
-    // Fade the completed bordered track once; its white stays white.
-    ctx = mapContext;
-    ctx.clearRect(0, 0, 1920, 1080);
-    ctx.globalAlpha = 77 / 255;
-    ctx.drawImage(trackCanvas, 0, 0);
-    ctx.globalAlpha = 1;
-    for (let i = FIELD; i--;) {
-      ctx.beginPath();
-      const [x, y] = point(mapRacers.subarray(i * RACER_SLOTS * 4));
-      if (i) ctx.arc(x, y, 4.8, 0, TAU);
-      else {
-        // Skip every other outer point; nonzero filling makes a solid star.
-        // Its five tips use a 17.28-pixel outer radius.
-        for (let j = 0; j < 5; j++) {
-          const angle = j * TAU * 2 / 5;
-          ctx.lineTo(x + 17.28 * Math.sin(angle), y - 17.28 * Math.cos(angle));
-        }
-      }
-      ctx.fillStyle = `rgb(${RACERS[i].body.map(c => c * 255).join(' ')})`;
-      ctx.fill();
-    }
-    const [x, y] = point(ring(0));
-    // Cross the course at the gate, above racers passing underneath.
-    ctx.beginPath();
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = '#ff9ead';
-    ctx.lineTo(x - 9 * TRACK_DATA[6], y + 9 * TRACK_DATA[4]);
-    ctx.lineTo(x + 9 * TRACK_DATA[6], y - 9 * TRACK_DATA[4]);
-    ctx.stroke();
-  };
   const CAPTIONS = 29;
   const cells = new Float32Array(CAPTIONS * 4);
   bmAttr(text, 1, cells);
@@ -2074,8 +2025,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // arrive a frame or two later, but are no longer throttled to six per second.
   // MAP_READ | COPY_DST; the simulation buffer supplies COPY_SRC.
   const lapPeek = bmDevice.createBuffer({ size: FIELD * RACER_SLOTS * 16, usage: 1 | 8 });
-  // Seed the markers from the grid before the first GPU readback arrives.
-  let mapRacers = state.subarray(RACER_BASE * 4);
   let peeking = false;
 
   const peek = () => {
@@ -2091,7 +2040,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmDevice.queue.submit([enc.finish()]);
     lapPeek.mapAsync(1).then(() => {
       const seen = new Float32Array(lapPeek.getMappedRange().slice(0));
-      mapRacers = seen;
       lapPeek.unmap();
       peeking = false;
       // Same wrap test for all ten, and then the order falls out of the totals.
@@ -2213,8 +2161,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     const elapsed = prev ? Math.min(t - prev, 0.05) : 0;
     prev = t;
     if (SCREEN !== PAUSE_STATE) clock += elapsed;
-    // Position readback also drives the minimap: request it every frame so
-    // markers do not jump between six snapshots a second. peek() permits only
+    // Keep standings and pickup sounds current. peek() permits only
     // one outstanding copy and skips menus/paused screens.
     peek();
     TIME = clock;
@@ -2276,6 +2223,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[12] = SLOT_ROWS;
     step[13] = MAX_HANDICAP;
     step[14] = MIN_HANDICAP;
+    step[15] = TIME;
     bmUniforms(sim, step);
     // Ahead of the draws below, though they were recorded first: bmLoop submits
     // only once this callback returns, so this frame's physics is queued before
@@ -2488,8 +2436,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       );
     }
 
-    mapCanvas.hidden = SCREEN <= SELECT_STATE;
-    if (!mapCanvas.hidden) drawMap();
 
     if (n) {
       // Written straight into the buffer that already exists. A queue write

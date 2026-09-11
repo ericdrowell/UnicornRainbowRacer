@@ -207,12 +207,13 @@ export const Physics = shader({
      * one is free.
      */
     uHandMin: 'float',
+    uLightTime: 'float',
   },
   storage: { uState: 'vec4', uTrack: 'vec4' },
   workgroupSize: [10, 1, 1],
 
   compute(
-    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uHand, uHandMin, uTime, uTitle, uGo },
+    { uState, uTrack, uDt, uThrottle, uSteer, uAspect, uRings, uWidth, uPattern, uBase, uRoll, uRows, uHand, uHandMin, uTime, uTitle, uGo, uLightTime },
     id,
   ) {
     // A tab left in the background delivers one enormous frame on return, and
@@ -1384,6 +1385,31 @@ export const Physics = shader({
       // spacing, which the rings do not actually have.
       storageWrite(uState, 11, vec4(courseDir, trackAlong));
       storageWrite(uState, 12, vec4(headingDir, 0));
+
+      // Player invocation alone sorts transparent glows with this frame's camera.
+    for (let i = 0; i < 40; i++) {
+      const slot = storageRead(uState, 146 + i).x;
+      const rec = storageRead(uTrack, uBase + slot);
+      const ri = floor((slot * 16 + 8) * (1 / (uPattern * 0.4456 * 2))) * 3;
+      const up = storageRead(uTrack, ri + 2).xyz;
+      const arm = cross(storageRead(uTrack, ri + 1).xyz, up);
+      const hub = storageRead(uTrack, ri).xyz
+        .add(arm.scale((rec.x - 1) * 9))
+        .add(up.scale(2.7 + sin(uLightTime * 1.2 + slot) * 0.9));
+      const depth = 0 - dot(zAxis, hub.sub(eye));
+      storageWrite(uState, 146 + i, vec4(slot, depth, 0, 0));
+    }
+    // Stable descending camera depth: farthest drawn first, closest last.
+    for (let i = 0; i < 40; i++) {
+      for (let j = 0; j < 39 - i; j++) {
+        const a = storageRead(uState, 146 + j);
+        const b = storageRead(uState, 146 + j + 1);
+        if (a.y < b.y) {
+          storageWrite(uState, 146 + j, b);
+          storageWrite(uState, 146 + j + 1, a);
+        }
+      }
+    }
 
     }
   },

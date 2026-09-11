@@ -111,7 +111,7 @@ const SAYS = [
   // one case it cannot claim. It heads the table of totals below it, and the
   // position readout in the corner is left to say how it went.
   'FINAL',                       // 7
-  'PRESS ENTER KEY FOR TITLE',   // 8
+  'PRESS ENTER FOR TITLE',   // 8
   // The selector's arrows, and they are a caption because that is far the
   // cheapest thing they can be.
   //
