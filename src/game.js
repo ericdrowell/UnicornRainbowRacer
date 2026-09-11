@@ -230,7 +230,7 @@ const LABEL_SPACING = 1;
  * here, three half way between. The player is 1 and is not part of the spread.
  */
 const MIN_HANDICAP = 0.75;
-const MAX_HANDICAP = 1.2;
+const MAX_HANDICAP = 1.3;
 
 /**
  * Which one is being raced. Three are planned; this is the first of them.
