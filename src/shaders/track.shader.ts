@@ -469,8 +469,8 @@ export const Track = shader({
       v.vU = 40;
       v.vV = sFade;
       v.vWorld = vec3(aPos.y, aPos.z, slot);
-      clip = clip.add(vec4(aPos.y * 68.85 * (9 / 16) * sFade,
-        aPos.z * 68.85 * sFade, 0, 0));
+      clip = clip.add(vec4(aPos.y * 55.08 * (9 / 16) * sFade,
+        aPos.z * 55.08 * sFade, 0, 0));
     }
     return clip;
   },
