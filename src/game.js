@@ -1919,9 +1919,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const cctx = card.getContext('2d');
   const glyphs = cctx.createImageData(card.width, card.height);
   // Two things go into this image, in two channels: alpha is *coverage* — the
-  // plate and the letter together — and red says which of the two a pixel is.
+  // outline and the letter together — and red identifies the letter itself.
   // The shader paints red pixels out of the rainbow and the rest black, so one
-  // sample carries both the letterform and the box behind it.
+  // sample carries both the letterform and its outline.
   const put = (row, x, y, ink) => {
     const k = ((row * ROW_H + y) * CARD_W + x) * 4;
     glyphs.data[k] = ink;
@@ -1929,38 +1929,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   };
   LINES.forEach((text, row) => {
     const left = ((CARD_W - text.length * CELL) / 2) | 0;
-    // **The plate runs from the first letter to the last, spaces included.** A
-    // caption is one bar behind one phrase, not a bar behind each of its words —
-    // "CIRCUIT 1 / 4" broke into four boxes with the road showing through the
-    // gaps, and at speed that reads as four things rather than as one line.
-    //
-    // The padding either side of that range stays clear, and it has to: the
-    // standings' names are padded to a fixed width so the column hangs off one
-    // edge, and plating those spaces would draw a bar the width of the atlas
-    // behind every row.
-    const first = text.search(/\S/);
-    const last = text.search(/\S\s*$/);
     for (let i = 0; i < text.length; i++) {
       const g = FONT_SET.indexOf(text[i]);
-      if (i < first || i > last) continue;
       const x0 = left + i * CELL;
-      // The plate first, so the letter overwrites the middle of it. Five wide
-      // and seven tall against a cell that is four by seven, which means the
-      // plate of one letter overlaps its neighbour's by a pixel: adjacent
-      // letters merge into one continuous bar behind the word, which is the
-      // point. A per-letter box with hairline gaps would read as stripes.
-      //
-      // The countdown gets one too. It used to be the exception — the plate
-      // scales with the caption and these four are drawn at five times the size,
-      // so a "3" arrived with a dark panel a third of the screen wide — but a
-      // countdown with no box behind it is the one caption that lands on a
-      // moving scene it has to be read against, and consistency with the rest of
-      // the type is worth the panel.
-      for (let y = 0; y < ROW_H; y++) {
-        for (let x = 0; x < 5; x++) put(row, x0 + x - 1, y, 0);
-      }
-      // A space is plate and nothing else — the bar carries on, the letterform
-      // is what is missing.
       if (g < 1) continue;
       for (let y = 0; y < 5; y++) {
         // A single digit 0–7 has the same value in octal and decimal;
@@ -1973,6 +1944,13 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       }
     }
   });
+  // Dilate only coverage, not ink: a one-pixel outline follows each letter.
+  // Cardinal neighbours leave the corners open instead of forming boxy plates.
+  for (let k = 0; k < glyphs.data.length; k += 4) {
+    if (glyphs.data[k]) {
+      for (const offset of [-4, 4, -CARD_W * 4, CARD_W * 4]) glyphs.data[k + offset + 3] = 255;
+    }
+  }
   cctx.putImageData(glyphs, 0, 0);
   // Nearest, or the blow-up smears each font pixel into its neighbours.
   const cardTex = bmTexture(card, 0);

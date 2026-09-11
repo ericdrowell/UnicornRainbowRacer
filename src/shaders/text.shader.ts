@@ -93,18 +93,10 @@ export const Text = shader({
     // The card is atlas row -1, whose sampled y is negative throughout its
     // interior. Derive its flag here instead of interpolating another varying.
     const vSolid = 1 - step(0, vUv.y);
-    // One sample, two answers. Alpha is coverage — the plate and the letter
-    // together — and red is which: 1 on the letterform, 0 on the black
-    // rectangle behind it. Both are baked into the atlas by game.js, so the
-    // plate costs this stage nothing but the swizzle.
-    //
-    // It used to be a second sample of the same texture a texel up and left,
-    // which drew a drop shadow instead of a plate. That reads well over flat
-    // colour and badly over a rainbow: half the letter still lands on whatever
-    // the road is doing. A box under the whole glyph does not care.
+    // Red holds the letters; alpha also covers their thin outline.
     const px = texture(uGlyphs, vUv);
     const ink = px.x;
-    const plate = px.w;
+    const outline = px.w;
 
     // The road's own palette, running across the text rather than along it, so
     // the words read as cut out of the rainbow the game is made of. Slow — text
@@ -128,17 +120,10 @@ export const Text = shader({
       vec3(0.95, 0.36, 0.62),
       vSolid,
     );
-    // The letter out of the rainbow, the plate black behind it at half alpha —
-    // enough to hold a letterform against a white road without stamping a solid
-    // block over the scene.
-    //
-    // Half of the *plate*, not of the pair: where the letter covers a pixel the
-    // alpha is still 1, so the glyph itself stays fully opaque.
-    //
-    // The card takes neither: it is a flat fill with no ink and no box.
+    // A translucent dark outline separates rainbow ink from bright scenery.
     return vec4(
       mix(vec3(0, 0, 0), paint, max(ink, vSolid)),
-      mix(max(ink, plate * 0.5), 1, vSolid) * vFade,
+      mix(max(ink, outline * 0.65), 1, vSolid) * vFade,
     );
   },
 });
