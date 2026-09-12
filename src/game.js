@@ -2318,7 +2318,9 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(17 + starsHeld, 0, LARGE, -3);
     }
     if (SCREEN === TITLE_STATE) {
-      heading(0, 1);
+      say(0, 0.36, EXTRA_LARGE);
+      say(29, -0.02, EXTRA_LARGE * 1.6);
+      say(1, -0.42, MEDIUM);
     } else if (SCREEN === SELECT_STATE) {
       // The heading on the top line, the roster's name hung under it, and the
       // two instructions on the bottom line — the same two edges the race HUD

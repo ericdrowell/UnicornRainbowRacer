@@ -99,7 +99,7 @@ const FONT =
 // once: splitting the select screen's instructions in two moved PAUSED and both
 // win lines down by one each, and a pause then read "ENTER TO RACE".
 const SAYS = [
-  "STARLIGHT'S RAINBOW RACE",     // 0
+  "STARLIGHT'S",                // 0
   'PRESS ENTER TO START',      // 1
   'CHOOSE YOUR RACER',           // 2
   'PRESS ARROWS TO CHOOSE', // 3
@@ -238,6 +238,7 @@ const LINES = [
   //
   // This is why circuits.js is concatenated ahead of this file: the count is
   // read here, at module scope, not at some later call.
+  'RAINBOW RACE', // 29: second title line, before the relative-indexed tail
   ...CIRCUITS.map((_, i) => `CIRCUIT ${i + 1} / ${CIRCUITS.length}`),
   // The running order, top right, in two pieces.
   //
