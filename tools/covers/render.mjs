@@ -55,7 +55,7 @@ const variants=[
  {name:'03-wide-sweep',eye:[14,10,15],target:[1,3,-3],fov:44,roll:.12,time:5.3},
 ];
 // A tightly grouped final sprint. The leader is less than a body length ahead.
-const positions=[[5,1.2],[.2,-.3],[-6,-12],[9,-3.5],[2,-8],[-2,-17],[6,-13],[-7,-5.8],[0,-75],[8,-14]];
+const positions=[[5,1.2],[-.8,-1.5],[-2,-12],[10,-4.5],[4,-11],[-3,-25],[6.5,-19],[-7,-5.8],[0,-75],[9,-21]];
 // Place a handful of existing pickup meshes on the final approach for cover staging.
 const trackData=new Float32Array(data.TRACK_DATA);
 const ringSlots=[...new Set(data.TP.filter((_,i)=>i%3===0 && data.TE[i/3*2]===9))];
@@ -71,7 +71,7 @@ for(const [slot,x,z]of [[ringSlots[0],-8,-65],[lightSlots[0],9,-150],[lightSlots
  for(let r=0;r<data.RINGS;r++){const distance=Math.hypot(...add(rec(r*3),mul(wanted,-1)));if(distance<best){best=distance;nearest=r;}}
  const t=unit(rec(nearest*3+1)),n=unit(rec(nearest*3+2)),a=cross(t,n),slot=ringSlots[0],ri=Math.floor((slot*16+8)/(data.PATTERN*.4456*2))*3;
  const bob=4.5+Math.sin(5.3*1.2+slot)*1.2;
- trackData.set(add(add(rec(nearest*3),mul(a,-8)),mul(n,3.7-bob)),ri*4);trackData.set(t,(ri+1)*4);trackData.set(n,(ri+2)*4);
+ trackData.set(add(add(rec(nearest*3),mul(a,-8)),mul(n,5-bob)),ri*4);trackData.set(t,(ri+1)*4);trackData.set(n,(ri+2)*4);
 }
 ctx.trackData=trackData;run('bmDevice.queue.writeBuffer(coverTrack,0,trackData)');
 // Stage copies of the actual course's loop sections across the distant skyline.
@@ -112,9 +112,12 @@ for(const v of variants.filter(v=>v.name==='03-wide-sweep')){
  const moonDir=unit(add(add(gaze,mul(moonRight,-.83/dot(moonRight,moonRight))),mul(cameraUp,.72/dot(cameraUp,cameraUp))));
  const shadowDir=unit(add(add(moonDir,mul(unit(cameraRight),.017)),mul(unit(cameraUp),.011)));
  ctx.moonDir=moonDir;ctx.shadowDir=shadowDir;
- run(`const moonShader=[...Sky];moonShader[0]=Sky[0].replace('vec3f(0.3444, 0.1241, 0.9306)','vec3f('+moonDir.join(',')+')').replace('vec3f(0.3292, 0.1358, 0.9344)','vec3f('+shadowDir.join(',')+')');sky=coverProgram(moonShader,{zwrite:0});bmAttr(sky,0,new Float32Array([-1,-1,3,-1,-1,3]));bmIndex(sky,new Uint16Array([0,1,2]));bmStorages(sky,coverState);`);
+ run(`const moonShader=[...Sky];moonShader[0]=Sky[0].replace('(1.0 - bm_u.uTitle)', '0.0').replace('vec3f(0.3444, 0.1241, 0.9306)','vec3f('+moonDir.join(',')+')').replace('vec3f(0.3292, 0.1358, 0.9344)','vec3f('+shadowDir.join(',')+')');sky=coverProgram(moonShader,{zwrite:0});bmAttr(sky,0,new Float32Array([-1,-1,3,-1,-1,3]));bmIndex(sky,new Uint16Array([0,1,2]));bmStorages(sky,coverState);`);
  // Shift the camera framing 100 pixels left without moving the title.
- for(let col=0;col<4;col++)matrix[col*4]-=.25*matrix[col*4+3];
+ for(let col=0;col<4;col++){
+  matrix[col*4]-=.3125*matrix[col*4+3];
+  matrix[col*4+1]-=.24*matrix[col*4+3]; // 60 pixels lower in the 500px cover.
+ }
  // Place the distant racer below the H, in the title's inter-word gap.
  let bestPlacement=null;
  for(let r=0;r<data.RINGS;r++){
@@ -128,7 +131,7 @@ for(const v of variants.filter(v=>v.name==='03-wide-sweep')){
   }
  }
  if(!bestPlacement)throw Error('No distant track position fits title gap');
- positions[7]=[1.3086259522258685,-16.04190679658235];positions[8]=[-7,-5.8];console.log('Koda placement',bestPlacement);
+ positions[7]=[1.5,-24];positions[8]=[-8,-8];console.log('Koda placement',bestPlacement);
  const state=new Float32Array(748);state.set(matrix,16);state.set(eye,32);state.set(target,36);state.set(camUp,40);
  for(let i=0;i<data.FIELD;i++){
   const [x,z]=positions[i];const pos=point(-x,0,z);const base=(16+i*7)*4;

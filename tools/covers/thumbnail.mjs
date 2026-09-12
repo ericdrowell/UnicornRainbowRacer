@@ -17,12 +17,12 @@ let baker=game.slice(game.indexOf('  const NAME_ROW ='),game.indexOf('  const ca
 baker=baker.replace('LINES.forEach((text, row) => {','LINES.forEach((text, row) => { if(row!==0 && row!==29)return;');
 run(baker);
 const {card,atlasRows,CARD_W,ROW_H}=run('({card,atlasRows,CARD_W,ROW_H})');
-const canvas=createCanvas(1600,1000),g=canvas.getContext('2d');
-g.drawImage(await loadImage('artifacts/covers/current/03-wide-sweep-scene.png'),0,0,1600,1000);
-for(const [row,centerY,scale] of [[0,40,7],[29,119,11]]){
+const canvas=createCanvas(1000,1000),g=canvas.getContext('2d');
+g.drawImage(await loadImage('artifacts/covers/current/03-wide-sweep-scene.png'),125,0,500,500,0,0,1000,1000);
+for(const [row,centerY,scale] of [[0,40,7],[29,119,9]]){
  const column=Math.floor(row/atlasRows)*CARD_W,top=(row%atlasRows)*ROW_H;
- g.drawImage(card,column*18,top*18,CARD_W*18,ROW_H*18,(400-CARD_W*scale/2)*2,(centerY-ROW_H*scale/2)*2,CARD_W*scale*2,ROW_H*scale*2);
+ g.drawImage(card,column*18,top*18,CARD_W*18,ROW_H*18,(250-CARD_W*scale/2)*2,(centerY-ROW_H*scale/2)*2,CARD_W*scale*2,ROW_H*scale*2);
 }
-const output=createCanvas(800,500);output.getContext('2d').drawImage(canvas,0,0,800,500);
-fs.writeFileSync('artifacts/covers/current/03-wide-sweep.png',output.toBuffer('image/png'));
-console.log('Saved 800 × 500 cover');
+const output=createCanvas(320,320);output.getContext('2d').drawImage(canvas,0,0,320,320);
+fs.writeFileSync('artifacts/covers/current/thumbnail-full.png',output.toBuffer('image/png'));
+console.log('Saved 320 × 320 thumbnail');

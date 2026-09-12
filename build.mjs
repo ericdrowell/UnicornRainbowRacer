@@ -255,7 +255,16 @@ const parts = [
   // Host bindings and vertex locations use numeric slots, preserving layout.
   read('dist', 'shaders.js').replace(/"(?:\\.|[^"\\])*"/g, (literal) => {
     const names = new Map();
-    const wgsl = compactShader(JSON.parse(literal));
+    let wgsl = compactShader(JSON.parse(literal));
+    // Local names do not affect shader bindings; reuse short names per function.
+    wgsl = wgsl.replace(/\bfn\b[^{]*\{[\s\S]*?(?=\n(?:@|fn)|$)/g, fn => {
+      const locals = new Map();
+      for (const m of fn.matchAll(/\b(?:let|var) (\w+)/g)) {
+        if (!locals.has(m[1])) locals.set(m[1], `L${locals.size}`);
+      }
+      if (/\bL\d+\b/.test(fn)) throw new Error('WGSL local-name collision');
+      return fn.replace(/(?<![.\w])\w+\b/g, name => locals.get(name) ?? name);
+    });
     if (/\bU\d+\b/.test(wgsl)) throw new Error('WGSL compact-name collision');
     return JSON.stringify(wgsl
       .replace(/\b[uav][A-Z]\w*\b/g, (name) => {

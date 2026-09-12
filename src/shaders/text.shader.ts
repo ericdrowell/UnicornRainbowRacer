@@ -61,7 +61,7 @@ export const Text = shader({
         // suffix's right edge, shared top, and shared side, the local terms
         // become exactly 0 or 1 before applying the scale. Thus shared edges
         // have identical f32 coordinates instead of independent rounding.
-        x = 1 - uHud.x + ((aCorner.x + suffix - 1) * aCell.z * 12 - uHud.w * 12 + (1 - suffix) * 2) * uHud.z;
+        x = 1 - uHud.x + ((aCorner.x + suffix - 1) * aCell.z * 12 - uHud.w * 12 + (1 - suffix) * 2 + aCell.y) * uHud.z;
         y = uHud.y - 1 + (0.75 + (aCorner.y - 0.75) * aCell.z) * 12 * uHud.z * (16 / 9);
         texX = aCorner.x * uRatio + mix(0.5 + 38 * uRatio / 12, 1 - uRatio, suffix);
       }

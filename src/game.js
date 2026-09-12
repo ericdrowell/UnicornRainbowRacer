@@ -1816,6 +1816,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const COUNT_ROW = 11;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
   const SUFFIX_ROW = NAME_ROW - 5;
+  const inkBounds = [];
   const atlasRows = Math.ceil(LINES.length / 2);
   const card = document.createElement('canvas');
   // Browser-font experiment: rasterize smooth rounded lettering at high
@@ -1866,6 +1867,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       edgeLeft = Math.min(edgeLeft, x);
       edgeRight = Math.max(edgeRight, x);
     }
+    inkBounds[row] = [edgeLeft, edgeRight];
     bctx.globalCompositeOperation = 'source-in';
     const rainbow = bctx.createLinearGradient(edgeLeft, 0, edgeRight, 0);
     for (let i = 0; i < 7; i++) rainbow.addColorStop(i / 6, `hsl(${i * 50} 90% 70%)`);
@@ -2237,7 +2239,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // HUD markers: -1 numeral, -2 suffix, -3 gauge, -4 label. The shader
       // anchors the groups to SCREEN_PADDING and gives adjacent plates shared
       // edges. Ordinal sizes are relative to FONT_L; left rows use halves.
-      say(PLACE_ROW + place, 0, FONT_XL / FONT_L, -1);
+      // Close the gap between visible outlines, not their padded atlas cells.
+      const suffixRow = SUFFIX_ROW + Math.min(place, 3);
+      const gap = (inkBounds[suffixRow][0] - CARD_W + 12) * FONT_M / FONT_L
+        - 2 - (inkBounds[PLACE_ROW + place][1] - CARD_W / 2 - 50) * FONT_XL / FONT_L;
+      say(PLACE_ROW + place, gap - 0.6, FONT_XL / FONT_L, -1);
       say(SUFFIX_ROW + Math.min(place, 3), 0, FONT_M / FONT_L, -2);
       say(16, 0, FONT_M, -4);
       say(17 + starsHeld, 0, FONT_M, -3);
@@ -2363,4 +2369,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       bmDraw(text, n);
     }
   });
+}, () => {
+  // A DOM fallback remains visible even when WebGPU cannot create a device.
+  document.body.innerHTML = '<p style=color:white>No WebGPU';
 });
