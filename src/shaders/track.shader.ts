@@ -417,9 +417,11 @@ export const Track = shader({
     //
     // A star and a film are mutually exclusive — only a ring has a hole to skin
     // — so the two offsets can simply add.
+    // Keep interpolated material IDs away from integer boundaries: slot zero
+    // otherwise lands exactly on the film cutoff and the tint's fract seam.
     v.vU = mix(
       aEdge.x,
-      9 + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5),
+      9.01 + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5) * 0.98,
       isSpec,
     );
     // A film sends the radius out where a ring sends its light, which is what
