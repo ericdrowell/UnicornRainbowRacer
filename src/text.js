@@ -1,97 +1,5 @@
-// Everything the game says, and the letters to say it with. A data file, the
-// way src/mesh.js and src/circuits.js are data files.
-//
-// The glyphs and the strings live together because they are the same decision:
-// a caption can only use characters the table below has, and the table only
-// carries characters some caption asks for. Split across two files that
-// invariant is invisible and gets broken — a name typed with an apostrophe
-// renders a hole, silently, because the atlas baker skips what it cannot find.
-//
-// ── The font ────────────────────────────────────────────────────────────────
-// A 3x5 pixel font.
-//
-// **Three by five is the smallest a Latin alphabet legibly goes.** At 3x4 the
-// letters that need a waist — B, E, S, R — have nowhere to put it, and at 2
-// wide there is no middle column to hang M, N, W or X off at all. Five rows is
-// what buys the crossbar.
-//
-// Each glyph is five rows, each row three pixels, and three pixels is exactly
-// one octal digit — so a glyph is five characters and the string *is* the
-// bitmap. 7 is a solid row, 5 is a row with a hole in it, 2 is a single middle
-// pixel. Reading down a glyph's five digits shows you the letter, and editing
-// one is editing the pixels, which is the whole reason this is not a packed
-// binary blob: the denser encodings save a hundred bytes before compression and
-// none after it, because a run of octal digits is exactly what gzip is good at.
-//
-// The order matters and is the lookup: a character's glyph is at
-// `FONT_SET.indexOf(ch) * 5`. Space is first and blank, so anything unknown
-// landing at -1 is caught by the caller rather than reading off the end.
-const FONT_SET = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.!:-<>&/*'";
+// Captions and logical atlas layout. Browser fonts are rasterized in game.js.
 
-const FONT =
-  // ␣      A      B      C      D      E      F      G
-  '00000' + '75755' + '65656' + '74447' + '65556' + '74647' + '74644' + '74557' +
-  // H      I      J      K      L      M      N      O
-  '55755' + '72227' + '11157' + '55655' + '44447' + '57755' + '65555' + '75557' +
-  // P      Q      R      S      T      U      V      W
-  '75744' + '75571' + '75765' + '74717' + '72222' + '55557' + '55552' + '55775' +
-  // X      Y      Z      0      1      2      3      4
-  '55255' + '55222' + '71247' + '75557' + '26227' + '71747' + '71717' + '55711' +
-  // 5      6      7      8      9      .      !      :      -
-  '74717' + '74757' + '71111' + '75757' + '75717' + '00002' + '22202' + '02020' + '00700' +
-  // <      >
-  //
-  // Not really less-than and greater-than: solid triangles, borrowed into those
-  // two slots because the selector wants arrows and the font is much the
-  // cheapest place in this game to keep a shape.
-  //
-  // The alternative was tried and reverted: a triangle cut out of a quad by the
-  // caption program's fragment stage, which meant a shape mode in the instance
-  // format, a second meaning for two of its four components, and a branch in
-  // both stages. It cost 74 bytes more than these ten octal digits.
-  '13731' + '46764' +
-  // &
-  //
-  // Three pixels is not really enough for an ampersand. This is the compromise —
-  // a bowl, a waist and a tail — and it reads as one at this size because nothing
-  // else in the set has that shape. It is here for exactly one racer's name.
-  '34253' +
-  // /
-  //
-  // A diagonal in three columns, which at this size is two pixels of rise per
-  // column and reads cleanly enough. It is here for the lap counter.
-  //
-  // Last, and in the order FONT_SET lists it — this pair went in the other way
-  // round once, and the lap counter drew an ampersand while M&M drew a slash.
-  // Nothing checks the two strings agree; the glyph is just whatever five digits
-  // land at five times the character's index.
-  '11244' +
-  // *
-  //
-  // Not an asterisk: a star, in the one slot left.
-  //
-  //     .#.
-  //     ###
-  //     .#.
-  //     #.#
-  //
-  // A point on top, arms out across the middle, a waist, and two legs under it.
-  // The waist is what makes it a star rather than a blob: filling that row gives
-  // a solid lump with a notch cut out of the bottom, and the eye reads it as a
-  // brick. Pinching it to one pixel is the whole shape.
-  //
-  // **Four rows in a five-row cell, and the blank is at the bottom.** Every
-  // letter in this font fills all five, so a star centred in the cell would sit
-  // a pixel low against the text beside it and read as having slipped. Aligned
-  // to the top instead, its arms land on the letters' own midline.
-  //
-  // It is a cell of the star meter in the corner, which is the only place it is
-  // used, and it is the same thing that is picked up off the road.
-  '27250' +
-  // Apostrophe, used by the title.
-  '22000';
-
-// ── The captions ────────────────────────────────────────────────────────────
 // Every line the game ever shows, in the order the atlas bakes them.
 //
 // **The index comments are not decoration.** game.js addresses rows by number,
@@ -239,6 +147,7 @@ const LINES = [
   // This is why circuits.js is concatenated ahead of this file: the count is
   // read here, at module scope, not at some later call.
   'RAINBOW RACE', // 29: second title line, before the relative-indexed tail
+  '>'.padStart(16), // 30: separately rendered right arrow; preserves bevel lighting
   ...CIRCUITS.map((_, i) => `CIRCUIT ${i + 1} / ${CIRCUITS.length}`),
   // The running order, top right, in two pieces.
   //
@@ -285,7 +194,7 @@ const LINES = [
   // from the middle, so three more cells of padding sets it three cells further
   // out — one for the mark itself and two of gap, which is what keeps its plate
   // from merging into the name's and reading as one word.
-  '*'.padEnd(27),
+  '*'.padEnd(28),
   ...UNICORNS.map((u) => u.name.toUpperCase()),
   // The same names again, padded, and the padding is the alignment: a row is
   // centred in the atlas, so a name on its own comes out centred — which is what

@@ -37,7 +37,7 @@ for (const instrument of instrumentData) {
 }
 console.log(`${samples} audio samples match exactly across all shipped instruments and three notes.`);
 
-const helper = build.slice(build.indexOf('function compactShader('), build.indexOf('// Keep only glyphs'));
+const helper = build.slice(build.indexOf('function compactShader('), build.indexOf('// Browser fonts supply glyphs'));
 const compact = runInNewContext(`${helper};compactShader`);
 const immutable = compact('fn f(p : f32) {\n let a = sin(p);\n return a;\n}');
 assert(!immutable.includes('let a'));
@@ -113,16 +113,3 @@ const frameStart = game.slice(game.indexOf('  bmLoop('), game.indexOf('    TIME 
 assert(frameStart.includes('    peek();') && !frameStart.includes('peekAt'));
 console.log('Position readback runs at frame cadence, never overlaps, and skips inactive screens.');
 
-const fontCode = build.slice(build.indexOf('const textSource ='), build.indexOf('\nconst parts ='));
-const { font, packedText } = runInNewContext(`${fontCode};({font,packedText})`, {read, runInNewContext});
-const compactFont = runInNewContext([
-  read('src', 'unicorns.js'), read('src', 'circuits.js'), packedText,
-  '({FONT_SET,FONT,LINES})',
-].join('\n'));
-assert.deepEqual(JSON.parse(JSON.stringify(compactFont.LINES)), JSON.parse(JSON.stringify(font.LINES)));
-for (const char of new Set(font.LINES.join(''))) {
-  const before = font.FONT_SET.indexOf(char), after = compactFont.FONT_SET.indexOf(char);
-  assert.equal(after < 0, before < 0);
-  if (before >= 0) assert.equal(compactFont.FONT.slice(after * 5, after * 5 + 5), font.FONT.slice(before * 5, before * 5 + 5));
-}
-console.log('Font pruning preserves every displayed caption and glyph bitmap.');

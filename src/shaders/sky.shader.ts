@@ -1,5 +1,7 @@
 import {
   shader,
+  vec2,
+  pow,
   vec3,
   vec4,
   sin,
@@ -100,7 +102,7 @@ function spectrum(k: number): Vec3 {
  * correlated anyway, because the rarest cells being the brightest is exactly how
  * a sky looks.
  */
-function starLayer(dir: Vec3, scale: number, cut: number, t: number): Vec3 {
+function starLayer(dir: Vec3, scale: number, cut: number): Vec3 {
   const p = dir.scale(scale);
   const h = fract(sin(floor(p.x) * 12.99 + floor(p.y) * 78.23 + floor(p.z) * 45.16) * 43758.5);
   // Written as fracts rather than reusing the floors above, which was tried and
@@ -115,7 +117,6 @@ function starLayer(dir: Vec3, scale: number, cut: number, t: number): Vec3 {
   // Each star keeps its own phase, from the same number, so they breathe
   // independently rather than pulsing as one field. Never all the way out at the
   // bottom of the cycle: a star that vanishes reads as a dead pixel.
-  const twinkle = 0.7 + 0.3 * sin(t + h * 90);
   // A hard core with a soft skirt — the same analytic stand-in for bloom the road
   // uses, and the reason a star a couple of pixels across still reads as a light
   // rather than as a dot. On the *squared* distance, which skips a square root
@@ -125,7 +126,7 @@ function starLayer(dir: Vec3, scale: number, cut: number, t: number): Vec3 {
   // Stars are not white. Tinting them from their own hash gives the sky its
   // blues, roses and golds — but only halfway, because a fully saturated star
   // stops looking hot.
-  return mix(vec3(1, 1, 1), spectrum(h * 40), 0.45).scale(spark * twinkle * fall * fall * fall);
+  return mix(vec3(1, 1, 1), spectrum(h * 40), 0.45).scale(spark * fall * fall * fall);
 }
 
 /**
@@ -167,7 +168,7 @@ export const Sky = shader({
    * never in front of it — the block is filled by index from JS, so a uniform
    * inserted above another silently renumbers it.
    */
-  uniforms: { uTime: 'float', uOver: 'float' },
+  uniforms: { uTime: 'float', uOver: 'float', uTitle: 'float' },
   storage: { uState: 'vec4' },
   varyings: { vNdc: 'vec2' },
 
@@ -182,13 +183,13 @@ export const Sky = shader({
     return vec4(aCorner.x, aCorner.y, mix(0.5, 0 - 1, uOver), 1);
   },
 
-  fragment({ uState, uTime, uOver }, { vNdc }) {
+  fragment({ uState, uTime, uOver, uTitle }, { vNdc }) {
     const c0 = storageRead(uState, 4);
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
     const right = vec3(c0.x, c1.x, c2.x);
     const up = vec3(c0.y, c1.y, c2.y);
-    const dir = normalize(
+    let dir = normalize(
       right
         .scale(vNdc.x / dot(right, right))
         .add(up.scale(vNdc.y / dot(up, up)))
@@ -205,10 +206,14 @@ export const Sky = shader({
     // Dim, because it is competing with a road that clips to white. Any brighter
     // and the sky stops being deep space and becomes a coloured wall a few
     // metres behind the track.
+    if (uTitle > 0.5) {
+      const turn = uTime * -0.015;
+      const x = vNdc.x * 0.8;
+      const y = vNdc.y * 0.45;
+      dir = normalize(vec3(x * cos(turn) + sin(turn), y, cos(turn) - x * sin(turn)));
+    }
     const veil =
       sin(dir.x * 1.9 + dir.y * 2.7) * 1.4 +
-      sin(dir.z * 1.3 - dir.y * 0.9) * 1.1 +
-      sin(dir.x * 4.1 - dir.z * 3.3) * 0.6 +
       uTime * 0.05;
     // Biased cold. Straight off the palette the nebula spends most of its range
     // in the warm half and comes out plum and sepia — which reads as dusty
@@ -222,9 +227,9 @@ export const Sky = shader({
     // fine layer is more than twice as dense and cut far harder, so it reads as
     // dust behind them, and it twinkles at its own rate: two fields breathing in
     // step would announce themselves as one field immediately.
-    const field = starLayer(dir, 70, 0.86, uTime * 3)
+    const field = starLayer(dir, 70, 0.86)
       .scale(3.2)
-      .add(starLayer(dir, 165, 0.93, uTime * 5.1).scale(1.4));
+      .add(starLayer(dir, 165, 0.93).scale(1.4));
 
     // The moon: one disc with a second, shifted disc taken out of it.
     //
@@ -240,7 +245,7 @@ export const Sky = shader({
     const toMoon = dir.sub(vec3(0.3444, 0.1241, 0.9306));
     const r2 = dot(toMoon, toMoon);
     const toShadow = dir.sub(vec3(0.3292, 0.1358, 0.9344));
-    const disc = 1 - smoothstep(0.001177, 0.001369, r2);
+    const disc = (1 - smoothstep(0.001177, 0.001369, r2)) * (1 - uTitle);
     const bite = 1 - smoothstep(0.001068, 0.001232, dot(toShadow, toShadow));
 
     // **The moon is a body, not a light.** It stands in front of the star field
@@ -272,25 +277,6 @@ export const Sky = shader({
     //
     // Centred on the moon and running right across it, unmasked, so the dark
     // limb sits in the same wash of light as the sky around it.
-    const air = max(1 - r2 * 42, 0);
-    const glow = vec3(0.7, 0.85, 1).scale(air * air * air * 0.45);
-
-    // ── The clouds ──────────────────────────────────────────────────────
-    // A flat deck, found by intersecting the view ray with one horizontal plane
-    // and shading whatever it hits. No volume, no march, no target.
-    //
-    // **What this replaces was a real volumetric renderer** — sixty-four steps a
-    // ray through a 64-cubed noise texture built on the CPU, lit by a second
-    // march towards the sun, drawn into a quarter-size target and composited
-    // back here. It looked better than this does. It also cost about a kilobyte
-    // once the shader, the volume builder, the render target and the extra
-    // program were counted, which is most of a feature on a budget this tight.
-    //
-    // The deck sits below the road, which is the one thing the old clouds and
-    // this have in common and the reason either works: you are always looking
-    // *down* on them from a rainbow in the sky, so a plane with texture on it
-    // reads as a cloud layer. Seen from underneath it would read as a painted
-    // ceiling, and the camera never goes there.
     const eye = storageRead(uState, 8).xyz;
     // Only rays heading downward meet the plane. Clamping the divisor rather
     // than branching keeps the horizon from dividing by zero and sends
@@ -309,14 +295,10 @@ export const Sky = shader({
     // distance into a few pixels near the horizon, and ribbons read as water,
     // not weather. Offsetting the sample point by a slower wave bends them into
     // lobes, which is the cheapest thing that stops it looking like a lake.
-    const warp = sin(at.z * 0.004 - drift) * 26 + sin(at.x * 0.0031 + drift * 1.7) * 22;
-    const wx = at.x + warp;
-    const wz = at.z + sin(at.x * 0.0052 + drift * 0.9) * 24;
+    const wx = at.x;
+    const wz = at.z;
     const puff =
-      sin(wx * 0.009 + wz * 0.007 + drift) * 0.62 +
-      sin(wz * 0.013 - wx * 0.005 - drift * 1.3) * 0.5 +
-      sin((wx + wz) * 0.024 + drift * 0.7) * 0.3 +
-      sin((wx - wz) * 0.047 - drift * 2.1) * 0.16;
+      sin(wx * 0.009 + wz * 0.007 + drift) * 0.62;
     // Thresholded low, so the deck is mostly cloud with holes in it rather than
     // mostly holes with cloud in them. Four waves summing to about ±1.6 means a
     // floor of -1.05 leaves roughly three quarters covered — enough that the
@@ -325,8 +307,8 @@ export const Sky = shader({
     // Held off the horizon. The band right at eye level is where the plane is
     // most foreshortened and least convincing, so the deck simply is not drawn
     // there — it fades in once you are looking down at it properly.
-    const near = smoothstep(0.04, 0.26, 0 - dir.y);
-    const lit = mix(vec3(0.55, 0.59, 0.74), vec3(1.05, 1.05, 1.12), cover);
+    const near = smoothstep(0.04, 0.26, 0 - dir.y - uTitle * 0.18);
+    const lit = mix(vec3(0.6, 0.6, 0.7), vec3(1, 1, 1), cover);
     const veilAmt = cover * near;
 
     // No moon any more. It was a crescent carved by subtracting a shifted disc
@@ -458,7 +440,7 @@ export const Sky = shader({
     // And the palette is walked along the streak as well as between them:
     // `spectrum` takes the seed *plus the radius*, so each star shifts hue as it
     // runs outward rather than being one flat colour flying past.
-    const sky = haze.add(field.scale(behind)).add(glow).add(moon).scale(1 - veilAmt).add(lit.scale(veilAmt));
+    const sky = haze.add(field.scale(behind)).add(moon).scale(1 - veilAmt).add(lit.scale(veilAmt));
     return vec4(
       mix(
         sky,

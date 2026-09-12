@@ -1,5 +1,6 @@
 import {
   shader,
+  vec2,
   vec3,
   vec4,
   sin,
@@ -147,7 +148,6 @@ export const Track = shader({
     // The skin over the hole, marked in the other component so `aEdge.x` keeps
     // meaning one thing. It rides every stage of the sweep below and changes
     // three of them: the radius, the normal and the alpha.
-    const isFilm = isSpec * aEdge.y;
     const isStar = step(9.5, aEdge.x);
     let slot = aPos.x * isSpec;
     if (isStar > 0.5) slot = storageRead(uState, 146 + aPos.x).x;
@@ -253,19 +253,8 @@ export const Track = shader({
     // 4.5 is the radius the ring has always had, a third of the road. 0.6 is the
     // tube — thick enough to catch a highlight across it, thin enough that the
     // hole is still the thing you aim at.
-    // **They turn, because everything out here is drifting.** A quarter of a
-    // radian a second is a corner every three seconds or so at ten sides — slow
-    // enough to read as float rather than as spin.
-    //
-    // **Off for a star, and that is a constraint rather than a taste.** A ring is
-    // a circle sampled at ten angles, so turning the angles turns the polygon and
-    // nothing else moves. A star is not: its points come from `sin(5 * th)`, and
-    // they are *sharp* only because game.js lands its ten vertices exactly on
-    // that swing's peaks and troughs. Rotate the angle continuously and the
-    // vertices slide off the peaks — the radii sampled stop being the extremes,
-    // and the star does not spin, it melts into a decagon and back twice a turn.
-    // Rings and the gate have no such alignment to lose.
-    const th = aPos.y * 6.2832 + uTime * 0.25;
+    // Smooth rings use a fixed angular orientation.
+    const th = aPos.y * 6.2832;
     // **Half a turn for the star, a whole one for the ring**, and that is not a
     // tidy-up — it is the difference between a clean surface and a flickering
     // one. The ring is a tube and needs the full circle to close it. The star's
@@ -364,9 +353,9 @@ export const Track = shader({
     // the ring without poking through it.
     const ringR = mix(4.5, 17.9, isFin);
     // Only rings and films reach the mesh shading; light quads override it.
-    const radial = mix(ringR + tube * cp, (ringR - tube) * aPos.z, isFilm);
+    const radial = ringR + tube * cp;
     const axial = tube * sp;
-    const nrm = mix(rad.scale(cp).add(tng.scale(sp)), tng, isFilm);
+    const nrm = rad.scale(cp).add(tng.scale(sp));
     let world = mix(
       aPos,
       hub.add(rad.scale(radial)).add(tng.scale(axial)),
@@ -421,18 +410,14 @@ export const Track = shader({
     // otherwise lands exactly on the film cutoff and the tint's fract seam.
     v.vU = mix(
       aEdge.x,
-      9.01 + 22 * isFilm + fract(sin(slot * 12.99) * 43758.5) * 0.98,
+      9.01 + fract(sin(slot * 12.99) * 43758.5) * 0.98,
       isSpec,
     );
     // A film sends the radius out where a ring sends its light, which is what
     // gives the fragment something to build a rim out of.
     v.vV = mix(
       aEdge.y,
-      mix(
-        0.22 + 0.78 * max(dot(nrm, vec3(0.28, 0.86, 0.43)), 0),
-        aPos.z,
-        isFilm,
-      ),
+      0.22 + 0.78 * max(dot(nrm, vec3(0.28, 0.86, 0.43)), 0),
       isSpec,
     );
     // The road point itself, unprojected. The shadow below is cast in world
@@ -447,7 +432,7 @@ export const Track = shader({
     // varying free. A sphere has no facets and wants nothing here.
     // Film coordinates stay attached to the gate and have the same scale on
     // boost rings and the finish gate. Other surfaces do not use these coordinates.
-    v.vWorld = vec3(cos(th) * aPos.z, sin(th) * aPos.z, 0);
+    v.vWorld = vec3(cos(th), sin(th), 0);
     // The view-projection, four columns from slot 4. A column-major matrix
     // times a point is its columns weighted by that point's components, which
     // is all `mat4.mul` was doing — the DSL has no mat4 in a storage buffer to
@@ -480,29 +465,15 @@ export const Track = shader({
   fragment({ uTime, uState }, { vU, vV, vWorld }) {
     let result = vec4(0, 0, 0, 0);
     if (vU > 39) {
-      const r = length(vec3(vWorld.x, vWorld.y, 0));
-      const phase = vWorld.z;
-      const time = uTime;
-      let rays = 0;
-      // Each ray wanders and breathes independently; no rigid spinning star.
-      for (let i = 0; i < 6; i++) {
-        const seed = phase + i * 2.17;
-        const wave = sin(time * 1.4 + seed);
-        const angle = i * 1.0472 + wave * 0.28;
-        const along = vWorld.x * cos(angle) + vWorld.y * sin(angle);
-        const across = abs(vWorld.y * cos(angle) - vWorld.x * sin(angle));
-        const reach = 0.48 + 0.3 * wave;
-        const width = 0.014;
-        rays += exp(0 - across / width)
-          * pow(max(0, 1 - max(0, along) / reach), 2)
-          * step(0, along);
-      }
-      const core = exp(0 - r * r * 1500) * 2.5;
-      const halo = exp(0 - r * 7) * 0.22;
-      const energy = core + halo + rays * 0.9;
-      const alpha = min(1, energy) * (1 - smoothstep(0.8, 1, r));
-      const tint = mix(vec3(1, 0.78, 0.3), vec3(1, 1, 1), min(1, energy));
-      result = vec4(tint.scale(1.35), alpha * vV);
+      const r = length(vWorld.xy);
+      // A gently turning four-point sparkle with breathing ray length.
+      const wave = sin(uTime * 1.4 + vWorld.z);
+      const x = vWorld.x + vWorld.y * wave * 0.3;
+      const y = vWorld.y - vWorld.x * wave * 0.3;
+      const rays = exp(0 - min(abs(x), abs(y)) * 70 - r * (7 - wave * 2));
+      const energy = exp(0 - r * r * 1500) * 2 + rays;
+      result = vec4(vec3(1.35, 1.2, 0.85),
+        min(1, energy) * (1 - smoothstep(0.8, 1, r)) * vV);
     } else {
 
     // Twelve panels across a road 27 wide, and 0.4456 along, which is four panels
@@ -725,39 +696,12 @@ export const Track = shader({
     // and it was not dark, it was undefined. On a ring this is already 0.22 to 1
     // and the clamp never bites.
     const gold = min(vV, 1);
-    const film = step(31, vU);
     // Broad, slowly drifting interference colours, softly diluted with white.
     // The center stays almost clear; grazing reflections gather at the rim.
-    const swirl = sin(vWorld.x * 2 + sin(vWorld.y * 3 - uTime * 0.12)) +
-      sin(vWorld.y * 2.5 + uTime * 0.09);
-    const thick = 5.5 + swirl * 1.2 + gold * gold * 2;
-    const iris = mix(vec3(1, 1, 1), vec3(
-      0.5 + 0.5 * cos(thick),
-      0.5 + 0.5 * cos(thick * 1.18),
-      0.5 + 0.5 * cos(thick * 1.44),
-    ), 0.42);
-    const filmRim = pow(gold, 4);
-    // A soft upper-left reflection breaks up the silhouette. Clamp its input
-    // because this expression also runs on world coordinates for the road.
-    const reflection = pow(min(1, max(0, -vWorld.x * 0.6 + vWorld.y * 0.8)), 8);
-    const sheen = filmRim * (0.12 + reflection * 0.55);
-    // Both kinds take their colour from the sky, off the same cosine palette and
-    // the same 0.45 toward white — the pastels overhead, on the road.
-    // `fract(vU)` is the slot's hash, laid into the marker by the vertex stage.
-    //
-    // **One tint, because there is one shape.** A star had its own: the palette
-    // at the rim going white toward the middle, keyed off facet coordinates this
-    // stage no longer receives. It was there because a faceted star needed the
-    // facets to read, and a sphere has none — it is lit by its own normal like
-    // the ring's tube, out of `vV`, and wants nothing said about it here.
-    // A ring takes the slot's own pastel off the sky's palette. **A star is
-    // always gold**, and not a pastel gold: the palette run through `mix` toward
-    // white lands on cream, which is what a star looked like before. This is the
-    // colour named outright, saturated, and it is the one pickup on the road
-    // that should read the same every time you see it.
-    const tint = mix(vec3(1, 1, 1), spectrum(fract(vU) * 40), 0.45);
+    // A soft translucent white film inside the colorful ring.
+
+    const tint = mix(vec3(1, 1, 1), spectrum(fract(vU) * 40 + vWorld.x * 2 + vWorld.y * 2 - uTime * 0.7), 0.65);
     result = vec4(
-      mix(
         mix(
           lit
             .add(glass.scale(halo * 0.8))
@@ -786,12 +730,9 @@ export const Track = shader({
         tint.scale(0.85 + 3.4 * gold * gold),
           step(4, vU),
         ),
-        iris.add(vec3(1, 1, 1).scale(sheen)),
-        film,
-      ),
       // Films blend after opaque geometry, testing depth without writing it.
       // The opacity is identical from either side of the gate.
-      mix(1, 0.36 + filmRim * 0.22 + sheen * 0.28, film),
+      1,
     );
     }
     return result;

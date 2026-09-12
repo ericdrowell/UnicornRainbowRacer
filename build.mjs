@@ -224,7 +224,7 @@ function compactShader(wgsl) {
       (declaration, name) => literals.has(name) ? '' : declaration);
     fn = fn.replace(/(?<![.\w])\w+\b/g, (name) => literals.get(name) ?? name);
     const mutable = new Set([...fn.matchAll(/\bvar (\w+)/g)].map(m => m[1]));
-    const pure = /^(?:vec[234][fiu]|mat[234]x[234]f|sin|cos|tan|abs|floor|ceil|fract|min|max|mix|step|smoothstep|normalize|length|dot|cross|pow|sqrt|sign|clamp|select|atan2)$/;
+    const pure = /^(?:vec[234][fiu]|mat[234]x[234]f|sin|cos|tan|abs|floor|ceil|fract|min|max|mix|step|smoothstep|normalize|length|dot|cross|pow|sqrt|exp|exp2|sign|clamp|select|atan2)$/;
     for (let changed = true; changed;) {
       changed = false;
       for (const m of fn.matchAll(/\blet (\w+) = ([^;]+);/g)) {
@@ -234,8 +234,10 @@ function compactShader(wgsl) {
         if (expr.includes('[') || [...expr.matchAll(/(?<![.\w])([A-Za-z_]\w*)/g)].some(m => mutable.has(m[1]))) continue;
         if ([...expr.matchAll(/\b(\w+)\s*\(/g)].some(m => !pure.test(m[1]))) continue;
         const refs = new RegExp(`(?<![.\\w])${name}\\b`, 'g');
-        if ([...fn.matchAll(refs)].length !== 2) continue;
-        fn = fn.replace(declaration, '').replace(refs, `(${expr})`);
+        const uses = [...fn.matchAll(refs)].length;
+        if (uses > 2) continue;
+        fn = fn.replace(declaration, '');
+        if (uses === 2) fn = fn.replace(refs, `(${expr})`);
         changed = true;
         break;
       }
@@ -244,18 +246,8 @@ function compactShader(wgsl) {
   });
 }
 
-// Keep only glyphs used by the current captions/roster; the authored font stays
-// complete, so changing the text automatically restores any newly needed glyph.
-const textSource = read('src', 'text.js');
-const font = runInNewContext([
-  read('src', 'unicorns.js'), read('src', 'circuits.js'), textSource,
-  '({FONT_SET,FONT,LINES})',
-].join('\n'));
-const glyphs = [...font.FONT_SET].map((char, i) => [char, font.FONT.slice(i * 5, i * 5 + 5)])
-  .filter(([char]) => char === ' ' || font.LINES.some(line => line.includes(char)));
-const packedText = `const FONT_SET=${JSON.stringify(glyphs.map(g => g[0]).join(''))};\n` +
-  `const FONT=${JSON.stringify(glyphs.map(g => g[1]).join(''))};\n` +
-  textSource.slice(textSource.indexOf('const SAYS ='));
+// Browser fonts supply glyphs; only caption strings need to be bundled.
+const packedText = read('src', 'text.js');
 
 const parts = [
   // Compact generated WGSL; uniform, storage, attribute and varying names
@@ -334,7 +326,7 @@ const outPath = join(dist, 'g.js');
 // paid for and find nothing.
 run('npx', [
   'terser', rawPath,
-  '--compress', 'passes=3', '--mangle', '--toplevel',
+  '--compress', 'passes=3,unsafe=true,unsafe_arrows=true,unsafe_methods=true', '--ecma', '2020', '--mangle', '--toplevel',
   '--mangle-props', 'regex=/^(bpm|endPattern|songData|mane|horn|eye|ub|st|ix|bg|tx|sb|zwrite|fmt)$/',
   '--format', 'comments=false',
   '-o', outPath,
@@ -371,10 +363,10 @@ run('npx', [
 const PACK = process.env.PACK ?? '0';
 const CACHED = {
   numAbbreviations: 10,
-  recipLearningRate: 1590,
+  recipLearningRate: 2090,
   modelMaxCount: 4,
-  modelRecipBaseCount: 55,
-  sparseSelectors: [0, 1, 2, 3, 5, 7, 13, 26, 105, 225, 305, 390],
+  modelRecipBaseCount: 70,
+  sparseSelectors: [0, 1, 2, 3, 5, 7, 13, 26, 35, 205, 305, 390],
 };
 
 let script = readFileSync(outPath, 'utf8');
@@ -534,7 +526,9 @@ if (process.env.DEBUG) {
 let zipBytes = null;
 let packedZip = false;
 try {
-  run('zip', ['-9', '-q', '-j', 'game.zip', 'index.html'], { cwd: dist });
+  // Recreate without stale entries or optional filesystem metadata.
+  rmSync(join(dist, 'game.zip'), { force: true });
+  run('zip', ['-9', '-X', '-q', '-j', 'game.zip', 'index.html'], { cwd: dist });
   try {
     run('advzip', ['-z', '-4', '-i', '200', '-q', 'game.zip'], { cwd: dist });
     packedZip = true;

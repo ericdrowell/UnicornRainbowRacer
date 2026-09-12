@@ -87,6 +87,7 @@ export const Unicorn = shader({
     uScale: 'float',
     /** 1 on the select screen, where the roster rides a carousel. */
     uSelect: 'float',
+    uSeat: 'float',
     /** How far round the ring has wound, in seats. Eased, so fractional. */
     /** How many unicorns are on the ring, for the wrap above. */
   },
@@ -121,7 +122,7 @@ export const Unicorn = shader({
     vStar: 'float',
   },
 
-  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uScale, uSelect }, v) {
+  vertex({ aPos, aNrm, aRoot, aSkin, aColor, aRacer }, { uState, uTime, uRun, uScale, uSelect, uSeat }, v) {
     // This racer's block. The layout mirrors the player's old fixed slots —
     // position, drawn facing with speed, surface normal with gait — so
     // everything below reads exactly as it did when there was only one.
@@ -237,7 +238,7 @@ export const Unicorn = shader({
     // it stands on is not symmetric — one caption above it, two below — so
     // hanging the model in the middle of the viewport left a gap under the name
     // and none under the hooves.
-    const hub = camEye.add(gaze.scale(13)).sub(screenUp.scale(2.35));
+    const hub = camEye.add(gaze.scale(13));
     // At time zero face screen-left, then keep the existing turntable speed.
     const turn = uTime * 1.15;
     const turned = ringSide.scale(cos(turn)).add(cross(screenUp, ringSide).scale(sin(turn)));
@@ -318,7 +319,7 @@ export const Unicorn = shader({
     // Twice a stride at a walk, because a trot's diagonal pairs land twice a
     // cycle. A gallop lands once and lands harder, so it heaves once, deeper.
     const bob = mix(sin(normal.w * 2) * 0.03, sin(normal.w) * 0.07, run);
-    const local = limb.add(aRoot).add(vec3(0, bob, 0));
+    const local = limb.add(aRoot).add(vec3(0, bob - 0.93 * uSelect, 0));
 
     // Onto the track. The model is built facing +x with +y up, so its own axes
     // map straight onto the road's: forward, the surface normal, and the third
@@ -446,7 +447,8 @@ export const Unicorn = shader({
     const c1 = storageRead(uState, 5);
     const c2 = storageRead(uState, 6);
     const c3 = storageRead(uState, 7);
-    return c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
+    const clip = c0.scale(world.x).add(c1.scale(world.y)).add(c2.scale(world.z)).add(c3);
+    return clip.add(vec4(0, uSeat * clip.w, 0, 0));
   },
 
   fragment({ uState, uTime, uSelect }, { vNormal, vColor, vFace, vHair, vAlong, vEye, vStar }) {
@@ -519,17 +521,11 @@ export const Unicorn = shader({
     // it. Washed out this far, the tint is unmistakable and the unicorn is still
     // the unicorn.
     //
-    // Taken all the way to white on the select screen. The road there is
-    // scenery, not a light: the unicorns are hanging in the air well clear of it
-    // and the player is trying to compare four liveries, so a floor that tints
-    // them turns "which colour do I want" into "which colour is it under this
-    // bit of track". They are still shaded — the falloff and the key light below
-    // both stay, or a unicorn is a flat cut-out — but nothing about the road
-    // reaches them.
+    // Selection and racing share the road-colored bounce light.
     const glow = mix(
       vec3(0.5 + 0.5 * cos(wash), 0.5 + 0.5 * cos(wash + 2.09), 0.5 + 0.5 * cos(wash + 4.19)),
       vec3(1, 1, 1),
-      mix(0.55, 1, uSelect),
+      0.55,
     );
 
     // Strongest on the underside and falling off over the top, which is what an

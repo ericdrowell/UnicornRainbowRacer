@@ -1181,34 +1181,9 @@ export const Physics = shader({
     // steady, which is what makes the moment it arrives read as an event rather
     // than as the camera having come loose.
     //
-    // **The two no longer share an amplitude, and star power's is much the
-    // bigger.** They did share one, at the 0.3 metres a boost pad has always
-    // been worth, and at that size the kick was there but nobody found it: a pad
-    // is a thing that happens *to* you every lap and wants a nudge, while star
-    // power is the rules changing and wants to be felt. 0.75 metres over 0.43
-    // seconds against 0.3 over 0.2 — two and a half times the throw for twice as
-    // long, which reads as a thump rather than a rattle and still settles well
-    // before the first corner arrives at twice the speed.
-    //
-    // **Star power's is two terms, because it has to last and cannot last at
-    // full strength.** A pad is an event and gets one shape: a kick that decays.
-    // A run is a six-second state, and the shake has to be up for all of it —
-    // but 0.75 metres of throw held for that long while the road goes past
-    // at twice speed is not exciting, it is unreadable, and it is the kind of
-    // thing that makes people put the controller down.
-    //
-    // So: a low rumble held for the whole run, and the big kick laid on top of
-    // it for the first half second. Together they still reach the same 0.75 at
-    // the moment of engaging, and the body of the run sits at 0.18 — enough that
-    // the camera never settles and the player can feel the state continuing,
-    // little enough that the road stays sharp enough to drive.
-    //
-    // The rumble eases out over the last third of a second rather than stopping,
-    // for the same reason the boost's does: a shake that ends on a frame reads as
-    // a dropped frame. And it is nought at a clock of nought, so a racer with no
-    // star power gets nothing from either term.
+    // Boosts hit at star power's 0.75-unit strength, then decay in 0.15 seconds.
+    // Star power retains a separate 0.18-unit rumble throughout its duration.
     const jolt =
-      smoothstep(2.5, 2.7, boost) * 0.3 +
       smoothstep(6.55, 6.98, starNow.z) * 0.57 +
       smoothstep(0, 0.35, starNow.z) * 0.18;
     const chaseEye = pos

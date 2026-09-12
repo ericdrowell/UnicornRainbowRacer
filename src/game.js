@@ -256,7 +256,7 @@ let SELECTED_CIRCUIT = 0;
 // block being reindented into the function: the values are built in one long
 // dependency order and breaking that order to group the exports would be the
 // only real way to get this wrong.
-let STAR_SLOTS, TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, FILM_START, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
+let STAR_SLOTS, TRACK, RINGS, ring, LAP, PATTERN, TP, TE, SLOT_ROWS, TI, PICK_BASE, PICK_SLOTS, TRACK_DATA, RACER_BASE, RACER_SLOTS, PALETTE, GRID;
 const lay = () => {
 TRACK = circuit(CIRCUITS[SELECTED_CIRCUIT]);
 
@@ -688,8 +688,8 @@ for (let i = 0; i < PICK_SLOTS; i++) {
   // ten-sided ring, which at the size a ring is read at is a circle. Ten and not
   // the twenty-four it used to be: the divisions are shared with the pickup, and
   // nothing here is stored, so the count is a single number for both.
-  const uN = 10;
-  const vN = 10;
+  const uN = 64;
+  const vN = 16;
   const base = TP.length / 3;
   for (let u = 0; u <= uN; u++) {
     for (let v = 0; v <= vN; v++) {
@@ -714,19 +714,6 @@ for (let i = 0; i < PICK_SLOTS; i++) {
 // from the middle. That is free: it only ever reaches the sweep as `cos` and
 // `sin` of a whole turn, so at 0 and 1 both come back the same and the film's
 // own radius is what the shader reads instead.
-const filmAt = (slot, mark) => {
-  const fb = TP.length / 3;
-  // Match the host polygon: pickups start half a segment over; the gate does not.
-  const offset = mark === 9 ? 0.5 : 0;
-  for (let u = 0; u <= 10; u++) {
-    TP.push(slot, (u + offset) / 10, 0);
-    TE.push(mark, 1);
-    TP.push(slot, (u + offset) / 10, 1);
-    TE.push(mark, 1);
-  }
-  for (let u = 0; u < 10; u++) TI.push(fb + u * 2, fb + u * 2 + 1, fb + u * 2 + 3);
-};
-
 // **The finish gate: one ring the size of the road, at ring zero.** A lap ends
 // on a line painted across the ribbon, which is a thing you are on top of before
 // you can see it. An arch is visible from the far side of the circuit, so the
@@ -750,8 +737,8 @@ const filmAt = (slot, mark) => {
 // visible. A thirty-two-sided gate was tried first and is a circle — and a
 // circle turning about its own axis is a circle, however fast it spins.
 {
-  const uN = 10;
-  const vN = 8;
+  const uN = 64;
+  const vN = 16;
   const base = TP.length / 3;
   for (let u = 0; u <= uN; u++) {
     for (let v = 0; v <= vN; v++) {
@@ -767,14 +754,6 @@ const filmAt = (slot, mark) => {
   }
 }
 
-// Transparent films use a separate pass with depth writes disabled, so a
-// nearer film cannot prevent a farther one from rendering as the camera turns.
-FILM_START = TI.length;
-for (let i = 0; i < PICK_SLOTS; i++) {
-  if (PICK_LANE[i] > 2 || PICK_TYPE[i]) continue;
-  filmAt(i, 9);
-}
-filmAt(0, 8);
 // Point lights draw in GPU-sorted order, one quad per star.
 STAR_SLOTS = [];
 for (let i = 0; i < PICK_SLOTS; i++) {
@@ -1012,6 +991,7 @@ const FINISH_STATE = 4;
  */
 const FLAG_STATE = 5;
 let SCREEN = TITLE_STATE;
+let titleSince = 0;
 
 /** Which unicorn the player has picked, as an index into UNICORNS. */
 let PICK = SELECTED_UNICORN;
@@ -1029,7 +1009,6 @@ let PICK = SELECTED_UNICORN;
  */
 
 /** Fades the title card's pink out from under the world when SELECT_STATE arrives. */
-let PINK = 1;
 
 /**
  * How far round the lap each racer is, and how many times each has crossed the
@@ -1117,6 +1096,7 @@ let ROLL = 0;
  * are now the player's alone.
  */
 let wasBoost = 0;
+let boostImpact = -1;
 let warpUntil = 0;
 /** Stars in racer zero's pocket, as of the last readback — the HUD's only source. */
 let starsHeld = 0;
@@ -1368,6 +1348,7 @@ function go(next) {
   }
   // Selection needs the grid too: restore the orbit centre after a series.
   if (next === SELECT_STATE || next === FLAG_STATE) resetGrid();
+  if (next === TITLE_STATE) titleSince = TIME;
   SCREEN = next;
   syncMusic();
 }
@@ -1651,7 +1632,7 @@ let STATE = null;
 // and the road mixes toward black across its whole surface.
 // The four the swap between circuits has to re-point at a new road. Out here
 // rather than inside the setup closure for that reason alone.
-let sim, track, films, rings;
+let sim, track, rings;
 const programFor = (shader, options = {}) => bmProgram(shader[0], {
   a: shader[1], i: shader[2], u: shader[3], t: shader[4], s: shader[5], ...options
 });
@@ -1661,12 +1642,10 @@ function uploadTrack() {
   // Slot 146 follows all ten liveries; the shaders share this layout.
   bmDevice.queue.writeBuffer(STATE, (PALETTE + FIELD * 6) * 16, order);
   bmStorages(sim, STATE, rings);
-  for (const program of [track, films]) {
-    bmAttr(program, 0, new Float32Array(TP));
-    bmAttr(program, 1, new Float32Array(TE));
-    bmIndex(program, new Uint16Array(program === track ? TI.slice(0, FILM_START) : TI.slice(FILM_START)));
-    bmStorages(program, STATE, rings);
-  }
+  bmAttr(track, 0, new Float32Array(TP));
+  bmAttr(track, 1, new Float32Array(TE));
+  bmIndex(track, new Uint16Array(TI));
+  bmStorages(track, STATE, rings);
 }
 
 /**
@@ -1754,8 +1733,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // half a lap of it is above the camera on the climb, so the underside is on
   // screen as often as the top.
   // Opaque geometry draws first; the two-sided films blend over it separately.
-  track = programFor(Track);
-  films = programFor(Track, { blend: 1, zwrite: 0 });
+  track = programFor(Track, { blend: 1 });
   uploadTrack();
 
   // The sky. One triangle big enough to cover the screen — the corners run to 3
@@ -1766,7 +1744,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   // `zwrite: 0` and drawn before everything else: it fills the frame with sky,
   // leaves the depth buffer as it found it, and the road and the unicorn then
   // paint over it wherever they are.
-  const su = new Float32Array(2);
+  const su = new Float32Array(Sky[3] / 4);
   const sky = programFor(Sky, { zwrite: 0 });
 
   // The warp, from the same shader over the same triangle — the pipeline differs
@@ -1780,95 +1758,19 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmStorages(p, STATE);
   }
 
-  // The captions, baked. Every line the game shows lives in src/text.js; this
-  // paints them into the rows of one texture.
-  //
-  // Baked rather than rasterised in a shader because none of it changes: the
-  // roster is fixed, so even the unicorn names are known at start-up. A lap
-  // counter would want the glyph table in a storage buffer and the bits picked
-  // out per fragment; this wants a canvas and a loop.
-  //
-  // White on transparent, so the shader gets coverage rather than colour and is
-  // free to paint the letters out of the rainbow. One canvas pixel per font
-  // pixel with a nearest filter, so a 3x5 letter stays a 3x5 letter however
-  // large the quad lands it.
-  /** Font pixels per glyph cell: three of letter and one of gap. */
+  // Logical atlas cells keep menu and HUD alignment consistent. Browser glyphs
+  // are rasterized at 16x resolution below for smooth rounded lettering.
   const CELL = 4;
-  /**
-   * And seven down: five of letter with a spare above and below.
-   *
-   * **Seven and not six because of the plate** — the black rectangle behind each
-   * letter, which is the glyph's 3x5 with a pixel of margin all round, so 5x7.
-   * At a pitch of six a plate would run a pixel into the row above, and rows are
-   * unrelated captions: the lap counter would have carried a stray black bar
-   * from whatever happened to be baked above it.
-   *
-   * Seven also centres the ink, which the old six did not — five in six left it
-   * a twelfth high and the vertex stage had to shift every quad down to
-   * compensate. That correction is gone.
-   */
-  const ROW_H = 7;
-  // WIDE is the atlas width; the padded HUD rows already fill it.
-  // **Two pixels wider than the rows it holds, and they are load-bearing.** A
-  // glyph's plate is five wide in a four-wide cell, starting one pixel left of
-  // the ink — that overhang is what merges neighbouring plates into one
-  // continuous bar instead of a row of separate boxes.
-  //
-  // At exactly `WIDE * CELL` a full-width row fills the card edge to edge, so
-  // `left` lands on nought and the first glyph's plate wants column -1. The
-  // old clamp folded it onto column 0 rather than letting it wrap into the
-  // previous scanline, leaving one letter per row with no black margin
-  // on its left where every other letter had one — visible on STAR POWER and on
-  // the first cell of the gauge, which are the only rows padded to the full
-  // width. Twelve glyphs in the atlas, all of them the leftmost of their row.
-  //
-  // **The slack costs nothing on screen.** A caption's ink spans
-  // `(N * CELL / CARD_W) * 2h`, and every `h` is a multiple of
-  // `TYPE = CARD_W / 116` — so `CARD_W` cancels and the rendered size is
-  // identical. `tall` cancels it the same way. All that changes is that every
-  // row sits one atlas pixel further right, which is 0.6% of a quad.
+  const ROW_H = 12;
   const CARD_W = WIDE * CELL + 2;
 
-  // ── Type sizes ──────────────────────────────────────────────────────────
-  // Three of them, named, so every screen agrees: EXTRA_LARGE for whatever a
-  // screen is *about*, LARGE for the line under it, MEDIUM for instructions.
-  //
-  // The number is the half-width of the caption's quad in NDC, not a height —
-  // and that is what makes one constant give the same *letter* size to every
-  // line. Each row of the atlas is as wide as the longest string in the game and
-  // shorter ones are centred in it, so a row always carries the same number of
-  // font pixels across; scaling the quad therefore scales the glyphs and nothing
-  // else. `PAUSED` at EXTRA_LARGE is six big letters, not one word stretched to
-  // fill the screen.
-  //
-  // **Derived from the atlas width, not written down.** A row is padded to the
-  // longest line in the game and shorter strings are centred in the padding, so
-  // the same half-width draws smaller letters the moment a longer caption
-  // appears. That happened twice — 29 characters to 38 to 44 — and each time
-  // every constant here had to be multiplied by hand to keep the screens looking
-  // as they did, with the arrows and the two aligned readouts needing their own
-  // corrections on top. Scaling off CARD_W does it instead.
-  //
-  // 116 is the width these numbers were chosen at: 29 cells of four pixels. The
-  // ratio is what matters, so the type stays the size it looks on screen however
-  // long the longest caption gets.
   const TYPE = CARD_W / 116;
-  /**
-   * The countdown, and nothing else.
-   *
-   * **Far wider than the screen, on purpose.** A caption's half-width sizes its
-   * glyphs, and these rows are one and three characters long in an atlas
-   * forty-three wide — so nearly all of the quad is empty padding either side of
-   * the ink, and only the middle of it is ever on screen. Sizing this off the
-   * type scale like everything else would give a numeral the height of a
-   * caption; the countdown wants to be a third of the display.
-   */
-  const HUGE = 5.2 * TYPE;
-  const EXTRA_LARGE = TYPE;
-  const LARGE = 0.62 * TYPE;
-  const MEDIUM = 0.42 * TYPE;
-  // Ordinal sizes are sent to the shader relative to EXTRA_LARGE.
-  const SUFFIX = LARGE;
+  // Five shared text sizes, relative to the logical atlas scale.
+  const FONT_S = 0.42 * TYPE;
+  const FONT_M = 0.62 * TYPE;
+  const FONT_L = TYPE;
+  const FONT_XL = 1.25 * TYPE;
+  const FONT_XXL = 1.6 * TYPE;
 
   // Fixed 16:9 layout, computed once. Atlas proportions still determine glyph
   // sizes, but resizing the window only scales the complete picture.
@@ -1879,13 +1781,14 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const HUD_BOT = PAD_Y - 1;
   const HUD_TOP = 1 - PAD_Y;
   // Centre-to-centre distance: both half-heights plus a full upper line.
-  const HEAD_GAP = plate(EXTRA_LARGE * (1 + 2 * LABEL_SPACING) + MEDIUM);
-  const headY = plate(EXTRA_LARGE * LABEL_SPACING + MEDIUM);
-  const hint = HUD_BOT + plate(MEDIUM);
-  const HINT_GAP = plate(MEDIUM * (2 + 2 * LABEL_SPACING));
-  const pitch = plate(LARGE) * 2.1;
-  const nameY = HUD_TOP - plate(LARGE * (2 + 2 * LABEL_SPACING) + EXTRA_LARGE);
-  const SELECT_Y = (nameY + HUD_BOT + HINT_GAP + plate(2 * MEDIUM - EXTRA_LARGE)) / 2;
+  const HEAD_GAP = plate(FONT_L * (1 + 2 * LABEL_SPACING) + FONT_S);
+  const headY = plate(FONT_L * LABEL_SPACING + FONT_S);
+  const hint = HUD_BOT + ROW_H * FONT_S / CARD_W * (16 / 9);
+  const HINT_GAP = plate(FONT_S * (2 + 2 * LABEL_SPACING));
+  const pitch = plate(FONT_M) * 1.8;
+  const headingInset = (ROW_H - 7) * FONT_M / CARD_W * (16 / 9);
+  const nameY = HUD_TOP - plate(FONT_M * (2 + 2 * LABEL_SPACING) + FONT_L);
+  const SELECT_Y = (nameY + HUD_BOT + HINT_GAP + plate(2 * FONT_S - FONT_L)) / 2 - 0.08;
 
 
   // **Every row below is counted back from the names, and the counts are the
@@ -1913,47 +1816,69 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
   const COUNT_ROW = 11;
   /** The row of "ST", then ND, RD, TH; four suffixes cover ten places. */
   const SUFFIX_ROW = NAME_ROW - 5;
+  const atlasRows = Math.ceil(LINES.length / 2);
   const card = document.createElement('canvas');
-  card.width = CARD_W;
-  card.height = LINES.length * ROW_H;
+  // Browser-font experiment: rasterize smooth rounded lettering at high
+  // resolution, preserving the atlas's logical cells and existing HUD anchors.
+  card.width = CARD_W * 2 * 18;
+  card.height = atlasRows * ROW_H * 18;
   const cctx = card.getContext('2d');
-  const glyphs = cctx.createImageData(card.width, card.height);
-  // Two things go into this image, in two channels: alpha is *coverage* — the
-  // outline and the letter together — and red identifies the letter itself.
-  // The shader paints red pixels out of the rainbow and the rest black, so one
-  // sample carries both the letterform and its outline.
-  const put = (row, x, y, ink) => {
-    const k = ((row * ROW_H + y) * CARD_W + x) * 4;
-    glyphs.data[k] = ink;
-    glyphs.data[k + 3] = 255;
-  };
+  cctx.scale(18, 18);
+  const bevel = document.createElement('canvas');
+  bevel.width = CARD_W * 18;
+  bevel.height = ROW_H * 18;
+  const bctx = bevel.getContext('2d');
+  bctx.scale(18, 18);
+  bctx.textAlign = 'center';
+  bctx.textBaseline = 'middle';
+  bctx.lineJoin = 'round';
+  cctx.shadowColor = '#0008';
+  cctx.shadowBlur = 12;
+  cctx.shadowOffsetY = 10;
   LINES.forEach((text, row) => {
     const left = ((CARD_W - text.length * CELL) / 2) | 0;
-    for (let i = 0; i < text.length; i++) {
-      const g = FONT_SET.indexOf(text[i]);
-      const x0 = left + i * CELL;
-      if (g < 1) continue;
-      for (let y = 0; y < 5; y++) {
-        // A single digit 0–7 has the same value in octal and decimal;
-        // the bitwise mask below converts it to a number.
-        const bits = FONT[g * 5 + y];
-        for (let x = 0; x < 3; x++) {
-          // Octal digits run most significant bit first, which is leftmost.
-          if (bits & (4 >> x)) put(row, x0 + x, y + 1, 255);
-        }
+    const column = Math.floor(row / atlasRows) * CARD_W;
+    const top = (row % atlasRows) * ROW_H;
+    let edgeLeft = CARD_W, edgeRight = 0;
+    // Align numeral ink, including italic overhang, instead of its fixed cell.
+    bctx.font = (/[<>]/.test(text) ? '' : 'italic ') + '700 6.5px Tahoma, sans-serif';
+    let numeralShift = 0;
+    if (row >= PLACE_ROW && row < PLACE_ROW + 10) {
+      const last = bctx.measureText(text.at(-1));
+      numeralShift = 1.9 - last.actualBoundingBoxRight * Math.min(1, 3.8 / last.width);
+    }
+    const glyphs = (offset, stroke) => {
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i] === '<' ? '◀' : text[i] === '>' ? '▶' : text[i] === '*' ? '★' : text[i];
+        bctx[stroke ? 'strokeText' : 'fillText'](char, left + i * CELL + 1.5 + numeralShift + Math.min(offset, 0), ROW_H / 2 - 0.6 + offset, 3.8);
       }
+    };
+    bctx.clearRect(0, 0, CARD_W, ROW_H);
+    bctx.globalCompositeOperation = 'source-over';
+    bctx.strokeStyle = '#fff';
+    // Title, countdown and placement numerals share the narrower rounded rim.
+    bctx.lineWidth = row === 29 || (row >= COUNT_ROW && row <= COUNT_ROW + 3) || (row >= PLACE_ROW && row < PLACE_ROW + 10) ? 1 : 1.5;
+    for (let depth = 4; depth >= 0; depth--) glyphs(depth / 4, 1);
+    // Measure the merged silhouette directly, including the rounded rim.
+    const mask = bctx.getImageData(0, 0, bevel.width, bevel.height).data;
+    for (let i = 3; i < mask.length; i += 4) if (mask[i]) {
+      const x = (i >> 2) % bevel.width / 18;
+      edgeLeft = Math.min(edgeLeft, x);
+      edgeRight = Math.max(edgeRight, x);
     }
+    bctx.globalCompositeOperation = 'source-in';
+    const rainbow = bctx.createLinearGradient(edgeLeft, 0, edgeRight, 0);
+    for (let i = 0; i < 7; i++) rainbow.addColorStop(i / 6, `hsl(${i * 50} 90% 70%)`);
+    bctx.fillStyle = rainbow;
+    bctx.fillRect(0, 0, CARD_W, ROW_H);
+    bctx.globalCompositeOperation = 'source-over';
+    bctx.fillStyle = '#0003';
+    glyphs(-0.15, 0);
+    bctx.fillStyle = '#fff';
+    glyphs(0, 0);
+    cctx.drawImage(bevel, column, top, CARD_W, ROW_H);
   });
-  // Dilate only coverage, not ink: a one-pixel outline follows each letter.
-  // Cardinal neighbours leave the corners open instead of forming boxy plates.
-  for (let k = 0; k < glyphs.data.length; k += 4) {
-    if (glyphs.data[k]) {
-      for (const offset of [-4, 4, -CARD_W * 4, CARD_W * 4]) glyphs.data[k + offset + 3] = 255;
-    }
-  }
-  cctx.putImageData(glyphs, 0, 0);
-  // Nearest, or the blow-up smears each font pixel into its neighbours.
-  const cardTex = bmTexture(card, 0);
+  const cardTex = bmTexture(card, 1);
 
   // The march, at a quarter of the width and a quarter of the height — one
   // sixteenth of the rays. A cloud is the one thing in the scene that loses
@@ -2041,7 +1966,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // Racer zero's boost clock, watched for a rise: the ring is under the
       // hooves briefly; the raised clock also survives a delayed readback.
       const lit = seen[20];
-      if (lit > wasBoost) playBoost();
+      if (lit > wasBoost) { playBoost(); boostImpact = TIME; }
       // **The gate mirrors the shader's own condition rather than counting its
       // own second.** It used to be set from the rise, one second long, which
       // put two clocks on the same effect — and the pass stopped being issued
@@ -2146,7 +2071,6 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
 
     // The pink card lifts over about a third of a second rather than blinking
     // out, revealing the world that has been rendering behind it all along.
-    PINK = SCREEN === TITLE_STATE ? 1 : Math.max(PINK - elapsed * 3, 0);
     flash = Math.max(flash - elapsed, 0);
 
     // A zero step is the pause. The stage still runs — the camera has to keep
@@ -2244,26 +2168,29 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     // gap it left, and these indices are positions in that block rather than
     // names. Nothing warns when they are wrong — the model simply came back at
     // uScale 0, which is to say invisible.
-    u[2] = SCREEN === SELECT_STATE ? 2.3 : 1.6;
     u[3] = SCREEN === SELECT_STATE;
+    u[2] = u[3] ? 2.3 : 1.6;
+    u[4] = SELECT_Y * u[3];
 
     bmPassTo();
-    su.set([TIME, 0]);
+    const age = TIME - titleSince;
+    const impact = Math.max(0, SCREEN === TITLE_STATE ? age - 1.125 : TIME - boostImpact);
+    const shake = Math.max(0, 0.2 - impact) * Math.sin(impact * 100) * -6;
+    canvas.style.transform = `translateY(${shake}%)`;
+    su.set([TIME, 0, SCREEN === TITLE_STATE]);
     bmUniforms(sky, su);
     bmDraw(sky);
     if (shown) {
       bmUniforms(prog, u);
       bmDraw(prog, shown);
-    }
     // The same array, and the same sixteen bytes: the track reads uTime out of
     // the front of it and never looks at the gait behind. Each program owns its
     // uniform buffer, so one write does not reach the other — the camera they
     // share travels the other way, through the state buffer, and never touches
     // the CPU at all.
-    bmUniforms(track, tu);
-    bmDraw(track);
-    bmUniforms(films, tu);
-    bmDraw(films);
+      bmUniforms(track, tu);
+      bmDraw(track);
+    }
 
     if (TIME < warpUntil) {
       su[1] = 1;
@@ -2281,21 +2208,20 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     const say = (row, y, half, fade = 1) => {
       // Share the prompt pulse; wall time keeps it moving on the pause screen.
       // Bits 1, 4, 6, 8 and 15 select prompts; the bound prevents wrapping.
-      if (row < 16 && (33106 >> row & 1)) fade = 0.6 + 0.4 * Math.cos(t * 3);
-      cells.set([row, y, half, fade], n * 4);
-      n++;
+      if (row < 16 && (33106 >> row & 1)) fade *= 0.6 + 0.4 * Math.cos((row === 1 ? Math.max(0, age - 2.3) : t) * 3);
+      cells.set([row, y, half, fade], n++ * 4);
     };
 
     /** A heading with one line under it, centred as a pair. */
     const heading = (top, under) => {
-      say(top, headY, EXTRA_LARGE);
-      say(under, headY - HEAD_GAP, MEDIUM);
+      say(top, headY, FONT_L);
+      say(under, headY - HEAD_GAP, FONT_S);
     };
 
     // The title's ground goes first so the text lands on top of it. It is drawn
     // over a world that is still being rendered underneath, which is what lets
     // the pink lift off the circuit rather than cut to it.
-    if (PINK > 0.002) say(-1, 0, 1, PINK);
+
     // The corner HUD stays visible from the grid through the race and finish.
     // Its grouped backgrounds are anchored by the shader to SCREEN_PADDING.
     //
@@ -2310,25 +2236,26 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // one half-width, and one quad cannot hold two sizes.
       // HUD markers: -1 numeral, -2 suffix, -3 gauge, -4 label. The shader
       // anchors the groups to SCREEN_PADDING and gives adjacent plates shared
-      // edges. Ordinal sizes are relative to EXTRA_LARGE; left rows use halves.
-      say(PLACE_ROW + place, 0, 1, -1);
-      say(SUFFIX_ROW + Math.min(place, 3), 0, SUFFIX / EXTRA_LARGE, -2);
-      say(16, 0, LARGE, -4);
-      // Physics already bounds the stored star count to 0–10.
-      say(17 + starsHeld, 0, LARGE, -3);
+      // edges. Ordinal sizes are relative to FONT_L; left rows use halves.
+      say(PLACE_ROW + place, 0, FONT_XL / FONT_L, -1);
+      say(SUFFIX_ROW + Math.min(place, 3), 0, FONT_M / FONT_L, -2);
+      say(16, 0, FONT_M, -4);
+      say(17 + starsHeld, 0, FONT_M, -3);
     }
     if (SCREEN === TITLE_STATE) {
-      say(0, 0.36, EXTRA_LARGE);
-      say(29, -0.02, EXTRA_LARGE * 1.6);
-      say(1, -0.42, MEDIUM);
+      const slide = 1 + 2.6 * (1 - Math.max(0, Math.min(1, (age - 0.75) / 0.375)));
+
+      say(0, 0.36, FONT_L, slide);
+      say(29, -0.02, FONT_XXL, slide);
+      say(1, -0.42, FONT_S, Math.max(0, Math.min(1, (age - 2) / 0.3)));
     } else if (SCREEN === SELECT_STATE) {
       // The heading on the top line, the roster's name hung under it, and the
       // two instructions on the bottom line — the same two edges the race HUD
       // uses, so the screens frame their contents identically.
       //
       // All stacked labels leave one full upper-label height between plates.
-      say(2, HUD_TOP - plate(LARGE), LARGE);
-      say(NAME_ROW + PICK, nameY, EXTRA_LARGE);
+      say(2, HUD_TOP - plate(FONT_M) - headingInset, FONT_M);
+      say(NAME_ROW + PICK, nameY - headingInset, FONT_L);
       // Level with the unicorn, which is no longer level with the middle of the
       // screen: the name above and the two hints below are not symmetric about
       // it, so centring on zero left the animal riding high with a gap under the
@@ -2349,22 +2276,22 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // in src/text.js. A negative half-width flips the quad and not the
       // texture, so the caret comes back pointing the other way at the other
       // side, and the pair stays one row of the atlas rather than two.
-      say(9, SELECT_Y, 0.78 * TYPE);
-      say(9, SELECT_Y, -0.78 * TYPE);
-      say(3, hint + HINT_GAP, MEDIUM);
-      say(4, hint, MEDIUM);
+      say(9, SELECT_Y, FONT_L);
+      say(30, SELECT_Y, FONT_L);
+      say(3, hint + HINT_GAP, FONT_S);
+      say(4, hint, FONT_S);
     } else if (SCREEN === FLAG_STATE) {
       // Between the two corner readouts rather than over either: thirteen
-      // characters at LARGE reach about a quarter of the way out from the
+      // characters at FONT_M reach about a quarter of the way out from the
       // middle, and the lap and the place stop at 0.63 and 0.69.
       //
       // Share the fixed top margin with the corner readouts.
-      say(CIRCUIT_ROW + SELECTED_CIRCUIT, HUD_TOP - plate(LARGE), LARGE);
+      say(CIRCUIT_ROW + SELECTED_CIRCUIT, HUD_TOP - plate(FONT_M), FONT_M);
       // Three, two, one — one glyph a signal, and `rung` is already counting
       // them for the sound. Nothing on the first frame, when `rung` is zero:
       // there is a beat of quiet before the first tone, and a "3" hanging there
       // through it would be a countdown that starts early.
-      if (rung) say(COUNT_ROW + rung - 1, 0.2, HUGE);
+      if (rung) say(COUNT_ROW + rung - 1, 0.5, FONT_XXL);
       // Two lines again, back on the pair of rows they sat on before a third was
       // added under them. The star meter in the corner is the only instruction
       // star power needs: it fills as you collect, which says what stars are for
@@ -2375,11 +2302,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // was two, with "PRESS UP TO GO" above it — and the throttle is held down
       // for the player now, so the only thing left to tell them is the only
       // thing they can do.
-      say(10, HUD_BOT + plate(MEDIUM), MEDIUM);
+      say(10, HUD_BOT + ROW_H * FONT_S / CARD_W * (16 / 9), FONT_S);
     } else if (SCREEN === RACE_STATE && flash) {
       // Fading over the last second of the two, which is `min(flash, 1)` and
       // needs no second timer.
-      say(COUNT_ROW + 3, 0.2, HUGE, Math.min(flash, 1));
+      say(COUNT_ROW + 3, 0.5, FONT_XXL, Math.min(flash, 1));
     } else if (SCREEN === PAUSE_STATE) {
       heading(5, 6);
     } else if (SCREEN === FINISH_STATE) {
@@ -2399,20 +2326,23 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // Fixed row pitch leaves a small gap between the seven-pixel plates.
       // Centred as a block: five rows above the middle and five below, with the
       // heading over them and the way on underneath.
+      const promptY = HUD_BOT + ROW_H * FONT_M / CARD_W * (16 / 9);
+      const headingY = HUD_TOP - ROW_H * FONT_L / CARD_W * (16 / 9);
+      const listY = (headingY - tall(FONT_L) + promptY + tall(FONT_M)) / 2;
       for (let i = 0; i < FIELD; i++) {
-        const y = pitch * 4.5 - i * pitch;
-        say(PLACE_ROW + i, y, LARGE);
-        say(LIST_ROW + ((PICK + STANDINGS[i]) % FIELD), y, LARGE);
+        const y = pitch * (4.5 - i) + listY;
+        say(PLACE_ROW + i, y, FONT_S);
+        say(LIST_ROW + ((PICK + STANDINGS[i]) % FIELD), y, FONT_S);
         // Slot zero is the player, always — `lineUp` rotates the roster so that
         // it is, which is why the arrow needs no other bookkeeping than this.
-        if (!STANDINGS[i]) say(MARK_ROW, y, LARGE);
+        if (!STANDINGS[i]) say(MARK_ROW, y, FONT_S);
       }
       const more = SELECTED_CIRCUIT < CIRCUITS.length - 1;
-      say(more ? 28 : 7, pitch * 5.5 + tall(EXTRA_LARGE), EXTRA_LARGE);
+      say(more ? 28 : 7, headingY, FONT_L);
       say(
         more ? 15 : 8,
-        HUD_BOT + plate(LARGE),
-        LARGE,
+        promptY,
+        FONT_M,
       );
     }
 
@@ -2423,11 +2353,11 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       // instanced draw wants and the one a per-draw uniform cannot give.
       bmDevice.queue.writeBuffer(cellBuf, 0, cells, 0, n * 4);
       textU.set([
-        TIME, LINES.length, ROW_H / CARD_W, 0,
+        atlasRows, ROW_H / CARD_W, 0, 0,
         // The same two margins the CPU-side captions hang from, so the four
         // corners the shader places and the lines placed above agree.
         PAD_X, PAD_Y,
-        2 * EXTRA_LARGE / CARD_W, SUFFIX / EXTRA_LARGE,
+        2 * FONT_L / CARD_W, FONT_M / FONT_L,
       ]);
       bmUniforms(text, textU);
       bmDraw(text, n);
