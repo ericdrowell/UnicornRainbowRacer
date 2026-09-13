@@ -1874,8 +1874,10 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bctx.fillStyle = rainbow;
     bctx.fillRect(0, 0, CARD_W, ROW_H);
     bctx.globalCompositeOperation = 'source-over';
-    bctx.fillStyle = '#0003';
-    glyphs(-0.15, 0);
+    // Shade the rainbow rim of the top face, above the brighter extrusion.
+    bctx.strokeStyle = '#0004';
+    bctx.lineWidth = 0.8;
+    glyphs(0, 1);
     bctx.fillStyle = '#fff';
     glyphs(0, 0);
     cctx.drawImage(bevel, column, top, CARD_W, ROW_H);
