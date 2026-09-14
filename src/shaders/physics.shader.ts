@@ -144,7 +144,7 @@ export const Physics = shader({
      * uPattern's sake and only seven were used, so this rides along at no cost.
      */
     uTime: 'float',
-    /** 1 before the flag, while the title card is up. See the camera below. */
+    /** 1 for the shared title/selection orbit, 0 for racing. */
     uTitle: 'float',
     /**
      * 1 once the flag drops, 0 on the grid during the countdown.

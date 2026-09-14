@@ -46,8 +46,6 @@ export const Text = shader({
     const half = aCell.z;
     const tall = aCell.z * uRatio * (16 / 9);
     let x = (aCorner.x * 2 - 1) * half;
-    // Values above one carry the title's opposing horizontal entrance offsets.
-    x += max(0, aCell.w - 1) * (step(1, aCell.x) * 2 - 1);
     let y = aCell.y + (aCorner.y * 2 - 1) * tall;
     let texX = aCorner.x;
     if (aCell.w < 0) {

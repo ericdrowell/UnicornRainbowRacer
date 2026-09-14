@@ -1,0 +1,4147 @@
+[
+  {
+    "title": "Oh No My Rainbow!",
+    "url": "https://js13kgames.com/2026/games/oh-no-my-rainbow",
+    "slug": "oh-no-my-rainbow",
+    "repo": "js13kGames/oh-no-my-rainbow",
+    "source": "eguneys/ohnomyrainbow",
+    "checks": [
+      {
+        "repo": "js13kGames/oh-no-my-rainbow",
+        "url": "https://github.com/js13kGames/oh-no-my-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "eguneys/ohnomyrainbow",
+        "url": "https://github.com/eguneys/ohnomyrainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorns Sitter",
+    "url": "https://js13kgames.com/2026/games/unicorns-sitter",
+    "slug": "unicorns-sitter",
+    "repo": "js13kGames/unicorns-sitter",
+    "source": "Turkum-Webci/unicornsitterjs13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorns-sitter",
+        "url": "https://github.com/js13kGames/unicorns-sitter/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Turkum-Webci/unicornsitterjs13k",
+        "url": "https://github.com/Turkum-Webci/unicornsitterjs13k/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Unicorn Sky Runner",
+    "url": "https://js13kgames.com/2026/games/rainbow-unicorn-sky-runner",
+    "slug": "rainbow-unicorn-sky-runner",
+    "repo": "js13kGames/rainbow-unicorn-sky-runner",
+    "source": "DininduPeiris/Rainbow-Unicorn-Sky-Runner",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-unicorn-sky-runner",
+        "url": "https://github.com/js13kGames/rainbow-unicorn-sky-runner/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "DininduPeiris/Rainbow-Unicorn-Sky-Runner",
+        "url": "https://github.com/DininduPeiris/Rainbow-Unicorn-Sky-Runner/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Gothicorn",
+    "url": "https://js13kgames.com/2026/games/gothicorn",
+    "slug": "gothicorn",
+    "repo": "js13kGames/gothicorn",
+    "source": "jacktheclown91/Gothicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/gothicorn",
+        "url": "https://github.com/js13kGames/gothicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jacktheclown91/Gothicorn",
+        "url": "https://github.com/jacktheclown91/Gothicorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Frontier",
+    "url": "https://js13kgames.com/2026/games/rainbow-frontier",
+    "slug": "rainbow-frontier",
+    "repo": "js13kGames/rainbow-frontier",
+    "source": "jacktheclown91/RainbowFrontier",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-frontier",
+        "url": "https://github.com/js13kGames/rainbow-frontier/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jacktheclown91/RainbowFrontier",
+        "url": "https://github.com/jacktheclown91/RainbowFrontier/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Spectrum Stampede",
+    "url": "https://js13kgames.com/2026/games/spectrum-stampede",
+    "slug": "spectrum-stampede",
+    "repo": "js13kGames/spectrum-stampede",
+    "source": "jacktheclown91/SpectrumStampede",
+    "checks": [
+      {
+        "repo": "js13kGames/spectrum-stampede",
+        "url": "https://github.com/js13kGames/spectrum-stampede/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jacktheclown91/SpectrumStampede",
+        "url": "https://github.com/jacktheclown91/SpectrumStampede/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Prism Bound",
+    "url": "https://js13kgames.com/2026/games/prism-bound",
+    "slug": "prism-bound",
+    "repo": "js13kGames/prism-bound",
+    "source": "jacktheclown91/PrismBound",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-bound",
+        "url": "https://github.com/js13kGames/prism-bound/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jacktheclown91/PrismBound",
+        "url": "https://github.com/jacktheclown91/PrismBound/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Prismatic Prey",
+    "url": "https://js13kgames.com/2026/games/prismatic-prey",
+    "slug": "prismatic-prey",
+    "repo": "js13kGames/prismatic-prey",
+    "source": "lazarv/prismatic-prey",
+    "checks": [
+      {
+        "repo": "js13kGames/prismatic-prey",
+        "url": "https://github.com/js13kGames/prismatic-prey/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "lazarv/prismatic-prey",
+        "url": "https://github.com/lazarv/prismatic-prey/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Prism Paddock",
+    "url": "https://js13kgames.com/2026/games/prism-paddock",
+    "slug": "prism-paddock",
+    "repo": "js13kGames/prism-paddock",
+    "source": "adrien-gueret/prism-paddock",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-paddock",
+        "url": "https://github.com/js13kGames/prism-paddock/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "adrien-gueret/prism-paddock",
+        "url": "https://github.com/adrien-gueret/prism-paddock/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn NOIR",
+    "url": "https://js13kgames.com/2026/games/unicorn-noir",
+    "slug": "unicorn-noir",
+    "repo": "js13kGames/unicorn-noir",
+    "source": "uavn/unicorn-noir",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-noir",
+        "url": "https://github.com/js13kGames/unicorn-noir/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "uavn/unicorn-noir",
+        "url": "https://github.com/uavn/unicorn-noir/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Just Below the Surface",
+    "url": "https://js13kgames.com/2026/games/just-below-the-surface",
+    "slug": "just-below-the-surface",
+    "repo": "js13kGames/just-below-the-surface",
+    "source": "aksommerville/justbelow",
+    "checks": [
+      {
+        "repo": "js13kGames/just-below-the-surface",
+        "url": "https://github.com/js13kGames/just-below-the-surface/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "aksommerville/justbelow",
+        "url": "https://github.com/aksommerville/justbelow/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "AFTERGLOW",
+    "url": "https://js13kgames.com/2026/games/afterglow",
+    "slug": "afterglow",
+    "repo": "js13kGames/afterglow",
+    "source": "Taehun/afterglow-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/afterglow",
+        "url": "https://github.com/js13kGames/afterglow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Taehun/afterglow-js13k",
+        "url": "https://github.com/Taehun/afterglow-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Prism Stand",
+    "url": "https://js13kgames.com/2026/games/prism-stand",
+    "slug": "prism-stand",
+    "repo": "js13kGames/prism-stand",
+    "source": "LeslieCorrea/js13k-2026-prism-stand",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-stand",
+        "url": "https://github.com/js13kGames/prism-stand/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "LeslieCorrea/js13k-2026-prism-stand",
+        "url": "https://github.com/LeslieCorrea/js13k-2026-prism-stand/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "BLADE:13 - PRISM BREAK",
+    "url": "https://js13kgames.com/2026/games/blade-13-prism-break",
+    "slug": "blade-13-prism-break",
+    "repo": "js13kGames/blade-13-prism-break",
+    "source": "vionzoro/blade13",
+    "checks": [
+      {
+        "repo": "js13kGames/blade-13-prism-break",
+        "url": "https://github.com/js13kGames/blade-13-prism-break/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "vionzoro/blade13",
+        "url": "https://github.com/vionzoro/blade13/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Rumble",
+    "url": "https://js13kgames.com/2026/games/rainbow-rumble",
+    "slug": "rainbow-rumble",
+    "repo": "js13kGames/rainbow-rumble",
+    "source": "ShubhamTaple/rainbow-rumble",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-rumble",
+        "url": "https://github.com/js13kGames/rainbow-rumble/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "ShubhamTaple/rainbow-rumble",
+        "url": "https://github.com/ShubhamTaple/rainbow-rumble/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Vespera The Somber",
+    "url": "https://js13kgames.com/2026/games/vespera-the-somber",
+    "slug": "vespera-the-somber",
+    "repo": "js13kGames/vespera-the-somber",
+    "source": "sandgraal/vespera-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/vespera-the-somber",
+        "url": "https://github.com/js13kGames/vespera-the-somber/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "sandgraal/vespera-js13k",
+        "url": "https://github.com/sandgraal/vespera-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Wonderfulness is Mandatory",
+    "url": "https://js13kgames.com/2026/games/wonderfulness-is-mandatory",
+    "slug": "wonderfulness-is-mandatory",
+    "repo": "js13kGames/wonderfulness-is-mandatory",
+    "source": "Mvnshi/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/wonderfulness-is-mandatory",
+        "url": "https://github.com/js13kGames/wonderfulness-is-mandatory/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Mvnshi/js13k-2026",
+        "url": "https://github.com/Mvnshi/js13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Spectrum Sprites",
+    "url": "https://js13kgames.com/2026/games/spectrum-sprites",
+    "slug": "spectrum-sprites",
+    "repo": "js13kGames/spectrum-sprites",
+    "source": "jacktheclown91/spectrum-sprites",
+    "checks": [
+      {
+        "repo": "js13kGames/spectrum-sprites",
+        "url": "https://github.com/js13kGames/spectrum-sprites/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jacktheclown91/spectrum-sprites",
+        "url": "https://github.com/jacktheclown91/spectrum-sprites/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Depths",
+    "url": "https://js13kgames.com/2026/games/rainbow-depths",
+    "slug": "rainbow-depths",
+    "repo": "js13kGames/rainbow-depths",
+    "source": "NickBranstein/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-depths",
+        "url": "https://github.com/js13kGames/rainbow-depths/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "NickBranstein/js13k-2026",
+        "url": "https://github.com/NickBranstein/js13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "RVNBOW N THE DVRK",
+    "url": "https://js13kgames.com/2026/games/rvnbow-n-the-dvrk",
+    "slug": "rvnbow-n-the-dvrk",
+    "repo": "js13kGames/rvnbow-n-the-dvrk",
+    "source": "fatal-exit/rvnbow-n-the-dvrk",
+    "checks": [
+      {
+        "repo": "js13kGames/rvnbow-n-the-dvrk",
+        "url": "https://github.com/js13kGames/rvnbow-n-the-dvrk/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "fatal-exit/rvnbow-n-the-dvrk",
+        "url": "https://github.com/fatal-exit/rvnbow-n-the-dvrk/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISMHORN",
+    "url": "https://js13kgames.com/2026/games/prismhorn",
+    "slug": "prismhorn",
+    "repo": "js13kGames/prismhorn",
+    "source": "onefreeman1337/prismhorn-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/prismhorn",
+        "url": "https://github.com/js13kGames/prismhorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "onefreeman1337/prismhorn-js13k",
+        "url": "https://github.com/onefreeman1337/prismhorn-js13k/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Tribute Unicorn Attack",
+    "url": "https://js13kgames.com/2026/games/tribute-unicorn-attack",
+    "slug": "tribute-unicorn-attack",
+    "repo": "js13kGames/tribute-unicorn-attack",
+    "source": "MarcinDudekDev/js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/tribute-unicorn-attack",
+        "url": "https://github.com/js13kGames/tribute-unicorn-attack/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "MarcinDudekDev/js13k",
+        "url": "https://github.com/MarcinDudekDev/js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Seventh Color",
+    "url": "https://js13kgames.com/2026/games/the-seventh-color",
+    "slug": "the-seventh-color",
+    "repo": "js13kGames/the-seventh-color",
+    "source": "gamedevpl/seventh-color-js13-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/the-seventh-color",
+        "url": "https://github.com/js13kGames/the-seventh-color/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "gamedevpl/seventh-color-js13-2026",
+        "url": "https://github.com/gamedevpl/seventh-color-js13-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Rainbow is Right There",
+    "url": "https://js13kgames.com/2026/games/the-rainbow-is-right-there",
+    "slug": "the-rainbow-is-right-there",
+    "repo": "js13kGames/the-rainbow-is-right-there",
+    "source": "imkieransmith/the-rainbow-is-right-there",
+    "checks": [
+      {
+        "repo": "js13kGames/the-rainbow-is-right-there",
+        "url": "https://github.com/js13kGames/the-rainbow-is-right-there/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "imkieransmith/the-rainbow-is-right-there",
+        "url": "https://github.com/imkieransmith/the-rainbow-is-right-there/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "7 Huenicorns",
+    "url": "https://js13kgames.com/2026/games/7-huenicorns",
+    "slug": "7-huenicorns",
+    "repo": "js13kGames/7-huenicorns",
+    "source": "adrien-gueret/7-huenicorns",
+    "checks": [
+      {
+        "repo": "js13kGames/7-huenicorns",
+        "url": "https://github.com/js13kGames/7-huenicorns/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "adrien-gueret/7-huenicorns",
+        "url": "https://github.com/adrien-gueret/7-huenicorns/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Storm",
+    "url": "https://js13kgames.com/2026/games/unicorn-storm",
+    "slug": "unicorn-storm",
+    "repo": "js13kGames/unicorn-storm",
+    "source": "mtmckenna/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-storm",
+        "url": "https://github.com/js13kGames/unicorn-storm/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "mtmckenna/js13k2026",
+        "url": "https://github.com/mtmckenna/js13k2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainblast Unicorn",
+    "url": "https://js13kgames.com/2026/games/rainblast-unicorn",
+    "slug": "rainblast-unicorn",
+    "repo": "js13kGames/rainblast-unicorn",
+    "source": "jacktheclown91/Rainblast-Unicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/rainblast-unicorn",
+        "url": "https://github.com/js13kGames/rainblast-unicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jacktheclown91/Rainblast-Unicorn",
+        "url": "https://github.com/jacktheclown91/Rainblast-Unicorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Uniwax",
+    "url": "https://js13kgames.com/2026/games/uniwax",
+    "slug": "uniwax",
+    "repo": "js13kGames/uniwax",
+    "source": "QuRuiKondouKen/UNIWAX",
+    "checks": [
+      {
+        "repo": "js13kGames/uniwax",
+        "url": "https://github.com/js13kGames/uniwax/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "QuRuiKondouKen/UNIWAX",
+        "url": "https://github.com/QuRuiKondouKen/UNIWAX/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Match3",
+    "url": "https://js13kgames.com/2026/games/match3",
+    "slug": "match3",
+    "repo": "js13kGames/match3",
+    "source": "remarkablegames/match3",
+    "checks": [
+      {
+        "repo": "js13kGames/match3",
+        "url": "https://github.com/js13kGames/match3/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "remarkablegames/match3",
+        "url": "https://github.com/remarkablegames/match3/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Surfer",
+    "url": "https://js13kgames.com/2026/games/rainbow-surfer",
+    "slug": "rainbow-surfer",
+    "repo": "js13kGames/rainbow-surfer",
+    "source": "gamedevpl/seventh-color-js13-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-surfer",
+        "url": "https://github.com/js13kGames/rainbow-surfer/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "gamedevpl/seventh-color-js13-2026",
+        "url": "https://github.com/gamedevpl/seventh-color-js13-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "My Little Armageddon",
+    "url": "https://js13kgames.com/2026/games/my-little-armageddon",
+    "slug": "my-little-armageddon",
+    "repo": "js13kGames/my-little-armageddon",
+    "source": "fed135/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/my-little-armageddon",
+        "url": "https://github.com/js13kGames/my-little-armageddon/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "fed135/js13k-2026",
+        "url": "https://github.com/fed135/js13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Runner!",
+    "url": "https://js13kgames.com/2026/games/rainbow-runner",
+    "slug": "rainbow-runner",
+    "repo": "js13kGames/rainbow-runner",
+    "source": "eguneys/rainbowrunner",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-runner",
+        "url": "https://github.com/js13kGames/rainbow-runner/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "eguneys/rainbowrunner",
+        "url": "https://github.com/eguneys/rainbowrunner/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Speed",
+    "url": "https://js13kgames.com/2026/games/rainbow-speed",
+    "slug": "rainbow-speed",
+    "repo": "js13kGames/rainbow-speed",
+    "source": "flyableheart/rainbowspeed",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-speed",
+        "url": "https://github.com/js13kGames/rainbow-speed/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "flyableheart/rainbowspeed",
+        "url": "https://github.com/flyableheart/rainbowspeed/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rune-icorn Duels",
+    "url": "https://js13kgames.com/2026/games/rune-icorn-duels",
+    "slug": "rune-icorn-duels",
+    "repo": "js13kGames/rune-icorn-duels",
+    "source": "konstantinsteinmiller/runeicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/rune-icorn-duels",
+        "url": "https://github.com/js13kGames/rune-icorn-duels/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "konstantinsteinmiller/runeicorn",
+        "url": "https://github.com/konstantinsteinmiller/runeicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Arre's Climb",
+    "url": "https://js13kgames.com/2026/games/arres-climb",
+    "slug": "arres-climb",
+    "repo": "js13kGames/arres-climb",
+    "source": "hakan-einarsson/arres-climb",
+    "checks": [
+      {
+        "repo": "js13kGames/arres-climb",
+        "url": "https://github.com/js13kGames/arres-climb/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "hakan-einarsson/arres-climb",
+        "url": "https://github.com/hakan-einarsson/arres-climb/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Endless Rainbow Qix",
+    "url": "https://js13kgames.com/2026/games/endless-rainbow-qix",
+    "slug": "endless-rainbow-qix",
+    "repo": "js13kGames/endless-rainbow-qix",
+    "source": "michelediegoli/js13kgames-2026-unicornsandrainbows",
+    "checks": [
+      {
+        "repo": "js13kGames/endless-rainbow-qix",
+        "url": "https://github.com/js13kGames/endless-rainbow-qix/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "michelediegoli/js13kgames-2026-unicornsandrainbows",
+        "url": "https://github.com/michelediegoli/js13kgames-2026-unicornsandrainbows/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Phantasmaku",
+    "url": "https://js13kgames.com/2026/games/phantasmaku",
+    "slug": "phantasmaku",
+    "repo": "js13kGames/phantasmaku",
+    "source": "TimAlt/Phantasmaku",
+    "checks": [
+      {
+        "repo": "js13kGames/phantasmaku",
+        "url": "https://github.com/js13kGames/phantasmaku/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "TimAlt/Phantasmaku",
+        "url": "https://github.com/TimAlt/Phantasmaku/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Dash",
+    "url": "https://js13kgames.com/2026/games/rainbow-dash",
+    "slug": "rainbow-dash",
+    "repo": "js13kGames/rainbow-dash",
+    "source": "DininduPeiris/Rainbow-Dash-",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-dash",
+        "url": "https://github.com/js13kGames/rainbow-dash/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "DininduPeiris/Rainbow-Dash-",
+        "url": "https://github.com/DininduPeiris/Rainbow-Dash-/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "UNICORNS, RAINBOWS 'N BACKFLIPS",
+    "url": "https://js13kgames.com/2026/games/unicorns-rainbows-n-backflips",
+    "slug": "unicorns-rainbows-n-backflips",
+    "repo": "js13kGames/unicorns-rainbows-n-backflips",
+    "source": "remvst/unicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorns-rainbows-n-backflips",
+        "url": "https://github.com/js13kGames/unicorns-rainbows-n-backflips/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "remvst/unicorn",
+        "url": "https://github.com/remvst/unicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Uni-Ark",
+    "url": "https://js13kgames.com/2026/games/uni-ark",
+    "slug": "uni-ark",
+    "repo": "js13kGames/uni-ark",
+    "source": "jamesfdickinson/uni-ark",
+    "checks": [
+      {
+        "repo": "js13kGames/uni-ark",
+        "url": "https://github.com/js13kGames/uni-ark/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jamesfdickinson/uni-ark",
+        "url": "https://github.com/jamesfdickinson/uni-ark/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Trotters",
+    "url": "https://js13kgames.com/2026/games/rainbow-trotters",
+    "slug": "rainbow-trotters",
+    "repo": "js13kGames/rainbow-trotters",
+    "source": "dosaki/rainbow-trotters",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-trotters",
+        "url": "https://github.com/js13kGames/rainbow-trotters/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "dosaki/rainbow-trotters",
+        "url": "https://github.com/dosaki/rainbow-trotters/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Rush",
+    "url": "https://js13kgames.com/2026/games/rainbow-rush",
+    "slug": "rainbow-rush",
+    "repo": "js13kGames/rainbow-rush",
+    "source": "rnike/rainbow-rush-js13kgames",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-rush",
+        "url": "https://github.com/js13kGames/rainbow-rush/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "rnike/rainbow-rush-js13kgames",
+        "url": "https://github.com/rnike/rainbow-rush-js13kgames/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Comet and the Last Unicorn",
+    "url": "https://js13kgames.com/2026/games/rainbow-comet-and-the-last-unicorn",
+    "slug": "rainbow-comet-and-the-last-unicorn",
+    "repo": "js13kGames/rainbow-comet-and-the-last-unicorn",
+    "source": "mooookar/rainbow_unicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-comet-and-the-last-unicorn",
+        "url": "https://github.com/js13kGames/rainbow-comet-and-the-last-unicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "mooookar/rainbow_unicorn",
+        "url": "https://github.com/mooookar/rainbow_unicorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Neon Hoofline",
+    "url": "https://js13kgames.com/2026/games/neon-hoofline",
+    "slug": "neon-hoofline",
+    "repo": "js13kGames/neon-hoofline",
+    "source": "MowangM/rainbow-unicorn-run",
+    "checks": [
+      {
+        "repo": "js13kGames/neon-hoofline",
+        "url": "https://github.com/js13kGames/neon-hoofline/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "MowangM/rainbow-unicorn-run",
+        "url": "https://github.com/MowangM/rainbow-unicorn-run/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Mean Unicorns Sing In Chiptune",
+    "url": "https://js13kgames.com/2026/games/mean-unicorns-sing-in-chiptune",
+    "slug": "mean-unicorns-sing-in-chiptune",
+    "repo": "js13kGames/mean-unicorns-sing-in-chiptune",
+    "source": "Lenicon/mean-unicorns-sing-in-chiptune",
+    "checks": [
+      {
+        "repo": "js13kGames/mean-unicorns-sing-in-chiptune",
+        "url": "https://github.com/js13kGames/mean-unicorns-sing-in-chiptune/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Lenicon/mean-unicorns-sing-in-chiptune",
+        "url": "https://github.com/Lenicon/mean-unicorns-sing-in-chiptune/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Oh Unicorn!",
+    "url": "https://js13kgames.com/2026/games/oh-unicorn",
+    "slug": "oh-unicorn",
+    "repo": "js13kGames/oh-unicorn",
+    "source": "botijonline-netizen/oh-unicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/oh-unicorn",
+        "url": "https://github.com/js13kGames/oh-unicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "botijonline-netizen/oh-unicorn",
+        "url": "https://github.com/botijonline-netizen/oh-unicorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Leaps of Legend",
+    "url": "https://js13kgames.com/2026/games/leaps-of-legend",
+    "slug": "leaps-of-legend",
+    "repo": "js13kGames/leaps-of-legend",
+    "source": "Efury1/Leaps-of-Legend",
+    "checks": [
+      {
+        "repo": "js13kGames/leaps-of-legend",
+        "url": "https://github.com/js13kGames/leaps-of-legend/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Efury1/Leaps-of-Legend",
+        "url": "https://github.com/Efury1/Leaps-of-Legend/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Run For Your Life",
+    "url": "https://js13kgames.com/2026/games/run-for-your-life",
+    "slug": "run-for-your-life",
+    "repo": "js13kGames/run-for-your-life",
+    "source": "Hambo3/unicorns",
+    "checks": [
+      {
+        "repo": "js13kGames/run-for-your-life",
+        "url": "https://github.com/js13kGames/run-for-your-life/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Hambo3/unicorns",
+        "url": "https://github.com/Hambo3/unicorns/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Snap",
+    "url": "https://js13kgames.com/2026/games/unicorn-snap",
+    "slug": "unicorn-snap",
+    "repo": "js13kGames/unicorn-snap",
+    "source": "gamedevpl/seventh-color-js13-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-snap",
+        "url": "https://github.com/js13kGames/unicorn-snap/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "gamedevpl/seventh-color-js13-2026",
+        "url": "https://github.com/gamedevpl/seventh-color-js13-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Technicolor Tilt",
+    "url": "https://js13kgames.com/2026/games/technicolor-tilt",
+    "slug": "technicolor-tilt",
+    "repo": "js13kGames/technicolor-tilt",
+    "source": "rndD/js13k_2026",
+    "checks": [
+      {
+        "repo": "js13kGames/technicolor-tilt",
+        "url": "https://github.com/js13kGames/technicolor-tilt/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "rndD/js13k_2026",
+        "url": "https://github.com/rndD/js13k_2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISM HORN",
+    "url": "https://js13kgames.com/2026/games/prism-horn",
+    "slug": "prism-horn",
+    "repo": "js13kGames/prism-horn",
+    "source": "kangjung/prism_horn",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-horn",
+        "url": "https://github.com/js13kGames/prism-horn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "kangjung/prism_horn",
+        "url": "https://github.com/kangjung/prism_horn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Poopicorn",
+    "url": "https://js13kgames.com/2026/games/poopicorn",
+    "slug": "poopicorn",
+    "repo": "js13kGames/poopicorn",
+    "source": "Rybar/js13k2026-poppicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/poopicorn",
+        "url": "https://github.com/js13kGames/poopicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Rybar/js13k2026-poppicorn",
+        "url": "https://github.com/Rybar/js13k2026-poppicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Road: Safety Car",
+    "url": "https://js13kgames.com/2026/games/rainbow-road-safety-car",
+    "slug": "rainbow-road-safety-car",
+    "repo": "js13kGames/rainbow-road-safety-car",
+    "source": "MartosADEV/RainbowRoad",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-road-safety-car",
+        "url": "https://github.com/js13kGames/rainbow-road-safety-car/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "MartosADEV/RainbowRoad",
+        "url": "https://github.com/MartosADEV/RainbowRoad/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "UniRush",
+    "url": "https://js13kgames.com/2026/games/unirush",
+    "slug": "unirush",
+    "repo": "js13kGames/unirush",
+    "source": "Rubikou/Unirush-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unirush",
+        "url": "https://github.com/js13kGames/unirush/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Rubikou/Unirush-js13k",
+        "url": "https://github.com/Rubikou/Unirush-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "THE LAST RAINBOW",
+    "url": "https://js13kgames.com/2026/games/the-last-rainbow",
+    "slug": "the-last-rainbow",
+    "repo": "js13kGames/the-last-rainbow",
+    "source": "aristogladson526-spec/Game",
+    "checks": [
+      {
+        "repo": "js13kGames/the-last-rainbow",
+        "url": "https://github.com/js13kGames/the-last-rainbow/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "aristogladson526-spec/Game",
+        "url": "https://github.com/aristogladson526-spec/Game/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Assault",
+    "url": "https://js13kgames.com/2026/games/rainbow-assault",
+    "slug": "rainbow-assault",
+    "repo": "js13kGames/rainbow-assault",
+    "source": "DAgustin0002/Rainbow-Assault-a-js13kGames-2026-game-",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-assault",
+        "url": "https://github.com/js13kGames/rainbow-assault/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "DAgustin0002/Rainbow-Assault-a-js13kGames-2026-game-",
+        "url": "https://github.com/DAgustin0002/Rainbow-Assault-a-js13kGames-2026-game-/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "UniDungeCorn",
+    "url": "https://js13kgames.com/2026/games/unidungecorn",
+    "slug": "unidungecorn",
+    "repo": "js13kGames/unidungecorn",
+    "source": "sputlab/unidungecorn",
+    "checks": [
+      {
+        "repo": "js13kGames/unidungecorn",
+        "url": "https://github.com/js13kGames/unidungecorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "sputlab/unidungecorn",
+        "url": "https://github.com/sputlab/unidungecorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Sunshine and Rainbows",
+    "url": "https://js13kgames.com/2026/games/sunshine-and-rainbows",
+    "slug": "sunshine-and-rainbows",
+    "repo": "js13kGames/sunshine-and-rainbows",
+    "source": "shiturstupid/Sunshine-and-Rainbows-Fixed-",
+    "checks": [
+      {
+        "repo": "js13kGames/sunshine-and-rainbows",
+        "url": "https://github.com/js13kGames/sunshine-and-rainbows/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "shiturstupid/Sunshine-and-Rainbows-Fixed-",
+        "url": "https://github.com/shiturstupid/Sunshine-and-Rainbows-Fixed-/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Clawnicorn",
+    "url": "https://js13kgames.com/2026/games/clawnicorn",
+    "slug": "clawnicorn",
+    "repo": "js13kGames/clawnicorn",
+    "source": "chainsawteam-org/js13kgames2026-clawnicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/clawnicorn",
+        "url": "https://github.com/js13kGames/clawnicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "chainsawteam-org/js13kgames2026-clawnicorn",
+        "url": "https://github.com/chainsawteam-org/js13kgames2026-clawnicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PrismFall",
+    "url": "https://js13kgames.com/2026/games/prismfall",
+    "slug": "prismfall",
+    "repo": "js13kGames/prismfall",
+    "source": "Arjun0014/PrismFall",
+    "checks": [
+      {
+        "repo": "js13kGames/prismfall",
+        "url": "https://github.com/js13kGames/prismfall/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Arjun0014/PrismFall",
+        "url": "https://github.com/Arjun0014/PrismFall/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Spectrum Sprites: No Rules Raceway",
+    "url": "https://js13kgames.com/2026/games/spectrum-sprites-no-rules-raceway",
+    "slug": "spectrum-sprites-no-rules-raceway",
+    "repo": "js13kGames/spectrum-sprites-no-rules-raceway",
+    "source": "jacktheclown91/NoRulesRaceway",
+    "checks": [
+      {
+        "repo": "js13kGames/spectrum-sprites-no-rules-raceway",
+        "url": "https://github.com/js13kGames/spectrum-sprites-no-rules-raceway/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jacktheclown91/NoRulesRaceway",
+        "url": "https://github.com/jacktheclown91/NoRulesRaceway/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Lepricons Rush",
+    "url": "https://js13kgames.com/2026/games/lepricons-rush",
+    "slug": "lepricons-rush",
+    "repo": "js13kGames/lepricons-rush",
+    "source": "eguneys/rainliner-unibows",
+    "checks": [
+      {
+        "repo": "js13kGames/lepricons-rush",
+        "url": "https://github.com/js13kGames/lepricons-rush/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "eguneys/rainliner-unibows",
+        "url": "https://github.com/eguneys/rainliner-unibows/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "One Flew Over the Unicorn's Forest",
+    "url": "https://js13kgames.com/2026/games/one-flew-over-the-unicorns-forest",
+    "slug": "one-flew-over-the-unicorns-forest",
+    "repo": "js13kGames/one-flew-over-the-unicorns-forest",
+    "source": "Zurgah/One-Flew-Over-the-Unicorn-s-forest-JS13k-",
+    "checks": [
+      {
+        "repo": "js13kGames/one-flew-over-the-unicorns-forest",
+        "url": "https://github.com/js13kGames/one-flew-over-the-unicorns-forest/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Zurgah/One-Flew-Over-the-Unicorn-s-forest-JS13k-",
+        "url": "https://github.com/Zurgah/One-Flew-Over-the-Unicorn-s-forest-JS13k-/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorny and the Mystery of the Amazing Rainbow Crayons ...",
+    "url": "https://js13kgames.com/2026/games/unicorny-and-the-mystery-of-the-amazing-rainbow-crayons",
+    "slug": "unicorny-and-the-mystery-of-the-amazing-rainbow-crayons",
+    "repo": "js13kGames/unicorny-and-the-mystery-of-the-amazing-rainbow-crayons",
+    "source": "xem/js13k26-rainbows",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorny-and-the-mystery-of-the-amazing-rainbow-crayons",
+        "url": "https://github.com/js13kGames/unicorny-and-the-mystery-of-the-amazing-rainbow-crayons/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xem/js13k26-rainbows",
+        "url": "https://github.com/xem/js13k26-rainbows/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "One Long Night",
+    "url": "https://js13kgames.com/2026/games/one-long-night",
+    "slug": "one-long-night",
+    "repo": "js13kGames/one-long-night",
+    "source": "talaldoingstuff/one_long_night",
+    "checks": [
+      {
+        "repo": "js13kGames/one-long-night",
+        "url": "https://github.com/js13kGames/one-long-night/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "talaldoingstuff/one_long_night",
+        "url": "https://github.com/talaldoingstuff/one_long_night/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Hockey",
+    "url": "https://js13kgames.com/2026/games/unicorn-hockey",
+    "slug": "unicorn-hockey",
+    "repo": "js13kGames/unicorn-hockey",
+    "source": "peter2c/Unicorn-Hockey",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-hockey",
+        "url": "https://github.com/js13kGames/unicorn-hockey/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "peter2c/Unicorn-Hockey",
+        "url": "https://github.com/peter2c/Unicorn-Hockey/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sugarworld: Rainbow Tiles",
+    "url": "https://js13kgames.com/2026/games/unicorn-sugarworld-rainbow-tiles",
+    "slug": "unicorn-sugarworld-rainbow-tiles",
+    "repo": "js13kGames/unicorn-sugarworld-rainbow-tiles",
+    "source": "RogersMath/rainbow-tiles",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sugarworld-rainbow-tiles",
+        "url": "https://github.com/js13kGames/unicorn-sugarworld-rainbow-tiles/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "RogersMath/rainbow-tiles",
+        "url": "https://github.com/RogersMath/rainbow-tiles/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Racers",
+    "url": "https://js13kgames.com/2026/games/rainbow-racers",
+    "slug": "rainbow-racers",
+    "repo": "js13kGames/rainbow-racers",
+    "source": "Antix-Development/rainbow-racers",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-racers",
+        "url": "https://github.com/js13kGames/rainbow-racers/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Antix-Development/rainbow-racers",
+        "url": "https://github.com/Antix-Development/rainbow-racers/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbowhoof",
+    "url": "https://js13kgames.com/2026/games/rainbowhoof",
+    "slug": "rainbowhoof",
+    "repo": "js13kGames/rainbowhoof",
+    "source": "huozhehao/rainbowhoof",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbowhoof",
+        "url": "https://github.com/js13kGames/rainbowhoof/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "huozhehao/rainbowhoof",
+        "url": "https://github.com/huozhehao/rainbowhoof/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISMEMBER",
+    "url": "https://js13kgames.com/2026/games/prismember",
+    "slug": "prismember",
+    "repo": "js13kGames/prismember",
+    "source": "xuyunjie1990/my-js13kgame-2",
+    "checks": [
+      {
+        "repo": "js13kGames/prismember",
+        "url": "https://github.com/js13kGames/prismember/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xuyunjie1990/my-js13kgame-2",
+        "url": "https://github.com/xuyunjie1990/my-js13kgame-2/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Fallen Rainbow",
+    "url": "https://js13kgames.com/2026/games/fallen-rainbow",
+    "slug": "fallen-rainbow",
+    "repo": "js13kGames/fallen-rainbow",
+    "source": "MFXWW/JS13kGames2026_Mfxww",
+    "checks": [
+      {
+        "repo": "js13kGames/fallen-rainbow",
+        "url": "https://github.com/js13kGames/fallen-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "MFXWW/JS13kGames2026_Mfxww",
+        "url": "https://github.com/MFXWW/JS13kGames2026_Mfxww/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Upcorn",
+    "url": "https://js13kgames.com/2026/games/upcorn",
+    "slug": "upcorn",
+    "repo": "js13kGames/upcorn",
+    "source": "TechDuckie/Upcorn",
+    "checks": [
+      {
+        "repo": "js13kGames/upcorn",
+        "url": "https://github.com/js13kGames/upcorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "TechDuckie/Upcorn",
+        "url": "https://github.com/TechDuckie/Upcorn/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "PRANCE",
+    "url": "https://js13kgames.com/2026/games/prance",
+    "slug": "prance",
+    "repo": "js13kGames/prance",
+    "source": "TechDuckie/PRANCE",
+    "checks": [
+      {
+        "repo": "js13kGames/prance",
+        "url": "https://github.com/js13kGames/prance/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "TechDuckie/PRANCE",
+        "url": "https://github.com/TechDuckie/PRANCE/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Spectral Horn",
+    "url": "https://js13kgames.com/2026/games/spectral-horn",
+    "slug": "spectral-horn",
+    "repo": "js13kGames/spectral-horn",
+    "source": "ingSlonik/spectral-horn",
+    "checks": [
+      {
+        "repo": "js13kGames/spectral-horn",
+        "url": "https://github.com/js13kGames/spectral-horn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "ingSlonik/spectral-horn",
+        "url": "https://github.com/ingSlonik/spectral-horn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Cream",
+    "url": "https://js13kgames.com/2026/games/rainbow-cream",
+    "slug": "rainbow-cream",
+    "repo": "js13kGames/rainbow-cream",
+    "source": "IgorFIE/rainbow-cream",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-cream",
+        "url": "https://github.com/js13kGames/rainbow-cream/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "IgorFIE/rainbow-cream",
+        "url": "https://github.com/IgorFIE/rainbow-cream/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Run",
+    "url": "https://js13kgames.com/2026/games/rainbow-run",
+    "slug": "rainbow-run",
+    "repo": "js13kGames/rainbow-run",
+    "source": "BenjaminWFox/rainbow-run-js13kgames-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-run",
+        "url": "https://github.com/js13kGames/rainbow-run/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "BenjaminWFox/rainbow-run-js13kgames-2026",
+        "url": "https://github.com/BenjaminWFox/rainbow-run-js13kgames-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Sunshine Golf Classic",
+    "url": "https://js13kgames.com/2026/games/sunshine-golf-classic",
+    "slug": "sunshine-golf-classic",
+    "repo": "js13kGames/sunshine-golf-classic",
+    "source": "KilledByAPixel/Golf13K",
+    "checks": [
+      {
+        "repo": "js13kGames/sunshine-golf-classic",
+        "url": "https://github.com/js13kGames/sunshine-golf-classic/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "KilledByAPixel/Golf13K",
+        "url": "https://github.com/KilledByAPixel/Golf13K/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "STEAL THE RAINBOW",
+    "url": "https://js13kgames.com/2026/games/steal-the-rainbow",
+    "slug": "steal-the-rainbow",
+    "repo": "js13kGames/steal-the-rainbow",
+    "source": "jjyo040102-cmyk/js13",
+    "checks": [
+      {
+        "repo": "js13kGames/steal-the-rainbow",
+        "url": "https://github.com/js13kGames/steal-the-rainbow/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jjyo040102-cmyk/js13",
+        "url": "https://github.com/jjyo040102-cmyk/js13/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Claw",
+    "url": "https://js13kgames.com/2026/games/rainbow-claw",
+    "slug": "rainbow-claw",
+    "repo": "js13kGames/rainbow-claw",
+    "source": "fatal-exit/RainbowClawJS13K",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-claw",
+        "url": "https://github.com/js13kGames/rainbow-claw/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "fatal-exit/RainbowClawJS13K",
+        "url": "https://github.com/fatal-exit/RainbowClawJS13K/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Bernard the Unicorn Slime (Saves the Rainbows)",
+    "url": "https://js13kgames.com/2026/games/bernard-the-unicorn-slime-saves-the-rainbows",
+    "slug": "bernard-the-unicorn-slime-saves-the-rainbows",
+    "repo": "js13kGames/bernard-the-unicorn-slime-saves-the-rainbows",
+    "source": "jani-nykanen/bernard-the-unicorn-slime",
+    "checks": [
+      {
+        "repo": "js13kGames/bernard-the-unicorn-slime-saves-the-rainbows",
+        "url": "https://github.com/js13kGames/bernard-the-unicorn-slime-saves-the-rainbows/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "jani-nykanen/bernard-the-unicorn-slime",
+        "url": "https://github.com/jani-nykanen/bernard-the-unicorn-slime/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Cornelius & Uni",
+    "url": "https://js13kgames.com/2026/games/cornelius-uni",
+    "slug": "cornelius-uni",
+    "repo": "js13kGames/cornelius-uni",
+    "source": "anttihaavikko/cornelius-and-uni",
+    "checks": [
+      {
+        "repo": "js13kGames/cornelius-uni",
+        "url": "https://github.com/js13kGames/cornelius-uni/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "anttihaavikko/cornelius-and-uni",
+        "url": "https://github.com/anttihaavikko/cornelius-and-uni/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Up, Up, Unicorn!",
+    "url": "https://js13kgames.com/2026/games/up-up-unicorn",
+    "slug": "up-up-unicorn",
+    "repo": "js13kGames/up-up-unicorn",
+    "source": "Schnark/js13kgames-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/up-up-unicorn",
+        "url": "https://github.com/js13kGames/up-up-unicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Schnark/js13kgames-2026",
+        "url": "https://github.com/Schnark/js13kgames-2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Ranch",
+    "url": "https://js13kgames.com/2026/games/rainbow-ranch",
+    "slug": "rainbow-ranch",
+    "repo": "js13kGames/rainbow-ranch",
+    "source": "lynchbyte/js13k_Rainbow_Ranch",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-ranch",
+        "url": "https://github.com/js13kGames/rainbow-ranch/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "lynchbyte/js13k_Rainbow_Ranch",
+        "url": "https://github.com/lynchbyte/js13k_Rainbow_Ranch/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Froopyland Rick and Beth",
+    "url": "https://js13kgames.com/2026/games/froopyland-rick-and-beth",
+    "slug": "froopyland-rick-and-beth",
+    "repo": "js13kGames/froopyland-rick-and-beth",
+    "source": "Ded0kL/js13k-2026-froopyland",
+    "checks": [
+      {
+        "repo": "js13kGames/froopyland-rick-and-beth",
+        "url": "https://github.com/js13kGames/froopyland-rick-and-beth/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Ded0kL/js13k-2026-froopyland",
+        "url": "https://github.com/Ded0kL/js13k-2026-froopyland/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn vs Nightmares",
+    "url": "https://js13kgames.com/2026/games/unicorn-vs-nightmares",
+    "slug": "unicorn-vs-nightmares",
+    "repo": "js13kGames/unicorn-vs-nightmares",
+    "source": "Radrael/UnicornNight-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-vs-nightmares",
+        "url": "https://github.com/js13kGames/unicorn-vs-nightmares/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Radrael/UnicornNight-js13k",
+        "url": "https://github.com/Radrael/UnicornNight-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Errands of Iris",
+    "url": "https://js13kgames.com/2026/games/errands-of-iris",
+    "slug": "errands-of-iris",
+    "repo": "js13kGames/errands-of-iris",
+    "source": "herebefrogs/errands-of-iris",
+    "checks": [
+      {
+        "repo": "js13kGames/errands-of-iris",
+        "url": "https://github.com/js13kGames/errands-of-iris/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "herebefrogs/errands-of-iris",
+        "url": "https://github.com/herebefrogs/errands-of-iris/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Poop n' Scoop",
+    "url": "https://js13kgames.com/2026/games/poop-n-scoop",
+    "slug": "poop-n-scoop",
+    "repo": "js13kGames/poop-n-scoop",
+    "source": "analoguerls/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/poop-n-scoop",
+        "url": "https://github.com/js13kGames/poop-n-scoop/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "analoguerls/js13k2026",
+        "url": "https://github.com/analoguerls/js13k2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "PIANO JUMPER",
+    "url": "https://js13kgames.com/2026/games/piano-jumper",
+    "slug": "piano-jumper",
+    "repo": "js13kGames/piano-jumper",
+    "source": "wakkin7777/piano-jumper",
+    "checks": [
+      {
+        "repo": "js13kGames/piano-jumper",
+        "url": "https://github.com/js13kGames/piano-jumper/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "wakkin7777/piano-jumper",
+        "url": "https://github.com/wakkin7777/piano-jumper/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "At Both Ends",
+    "url": "https://js13kgames.com/2026/games/at-both-ends",
+    "slug": "at-both-ends",
+    "repo": "js13kGames/at-both-ends",
+    "source": "Abdallah-Alwarawreh/at-both-ends",
+    "checks": [
+      {
+        "repo": "js13kGames/at-both-ends",
+        "url": "https://github.com/js13kGames/at-both-ends/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Abdallah-Alwarawreh/at-both-ends",
+        "url": "https://github.com/Abdallah-Alwarawreh/at-both-ends/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Prism Rush",
+    "url": "https://js13kgames.com/2026/games/prism-rush",
+    "slug": "prism-rush",
+    "repo": "js13kGames/prism-rush",
+    "source": "flyableheart/prism-rush",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-rush",
+        "url": "https://github.com/js13kGames/prism-rush/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "flyableheart/prism-rush",
+        "url": "https://github.com/flyableheart/prism-rush/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISM",
+    "url": "https://js13kgames.com/2026/games/prism",
+    "slug": "prism",
+    "repo": "js13kGames/prism",
+    "source": "Arjun0014/PRISM",
+    "checks": [
+      {
+        "repo": "js13kGames/prism",
+        "url": "https://github.com/js13kGames/prism/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Arjun0014/PRISM",
+        "url": "https://github.com/Arjun0014/PRISM/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Release the Rainbow",
+    "url": "https://js13kgames.com/2026/games/release-the-rainbow",
+    "slug": "release-the-rainbow",
+    "repo": "js13kGames/release-the-rainbow",
+    "source": "eprouver/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/release-the-rainbow",
+        "url": "https://github.com/js13kGames/release-the-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "eprouver/js13k2026",
+        "url": "https://github.com/eprouver/js13k2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Reduce Speed Now",
+    "url": "https://js13kgames.com/2026/games/reduce-speed-now",
+    "slug": "reduce-speed-now",
+    "repo": "js13kGames/reduce-speed-now",
+    "source": "skanejohan/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/reduce-speed-now",
+        "url": "https://github.com/js13kGames/reduce-speed-now/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "skanejohan/js13k2026",
+        "url": "https://github.com/skanejohan/js13k2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Emoji High School",
+    "url": "https://js13kgames.com/2026/games/emoji-high-school",
+    "slug": "emoji-high-school",
+    "repo": "js13kGames/emoji-high-school",
+    "source": "KilledByAPixel/EmojiHighSchool",
+    "checks": [
+      {
+        "repo": "js13kGames/emoji-high-school",
+        "url": "https://github.com/js13kGames/emoji-high-school/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "KilledByAPixel/EmojiHighSchool",
+        "url": "https://github.com/KilledByAPixel/EmojiHighSchool/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Spectrum Sprites: PRISMSEED",
+    "url": "https://js13kgames.com/2026/games/spectrum-sprites-prismseed",
+    "slug": "spectrum-sprites-prismseed",
+    "repo": "js13kGames/spectrum-sprites-prismseed",
+    "source": "jacktheclown91/SPECTRUM-SPRITES-PRISMSEED",
+    "checks": [
+      {
+        "repo": "js13kGames/spectrum-sprites-prismseed",
+        "url": "https://github.com/js13kGames/spectrum-sprites-prismseed/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jacktheclown91/SPECTRUM-SPRITES-PRISMSEED",
+        "url": "https://github.com/jacktheclown91/SPECTRUM-SPRITES-PRISMSEED/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbowball 2",
+    "url": "https://js13kgames.com/2026/games/rainbowball-2",
+    "slug": "rainbowball-2",
+    "repo": "js13kGames/rainbowball-2",
+    "source": "rrafols/rainbowball_js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbowball-2",
+        "url": "https://github.com/js13kGames/rainbowball-2/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "rrafols/rainbowball_js13k",
+        "url": "https://github.com/rrafols/rainbowball_js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Runicorn Zombie Apocalypse",
+    "url": "https://js13kgames.com/2026/games/runicorn-zombie-apocalypse",
+    "slug": "runicorn-zombie-apocalypse",
+    "repo": "js13kGames/runicorn-zombie-apocalypse",
+    "source": null,
+    "checks": [
+      {
+        "repo": "js13kGames/runicorn-zombie-apocalypse",
+        "url": "https://github.com/js13kGames/runicorn-zombie-apocalypse/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Reins",
+    "url": "https://js13kgames.com/2026/games/rainbow-reins",
+    "slug": "rainbow-reins",
+    "repo": "js13kGames/rainbow-reins",
+    "source": "gns3526/rainbow-reins",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-reins",
+        "url": "https://github.com/js13kGames/rainbow-reins/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "gns3526/rainbow-reins",
+        "url": "https://github.com/gns3526/rainbow-reins/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sticker Lab",
+    "url": "https://js13kgames.com/2026/games/unicorn-sticker-lab",
+    "slug": "unicorn-sticker-lab",
+    "repo": "js13kGames/unicorn-sticker-lab",
+    "source": "jordanjwatkins/unicorn-sticker-lab",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sticker-lab",
+        "url": "https://github.com/js13kGames/unicorn-sticker-lab/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jordanjwatkins/unicorn-sticker-lab",
+        "url": "https://github.com/jordanjwatkins/unicorn-sticker-lab/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "SevenFold",
+    "url": "https://js13kgames.com/2026/games/sevenfold",
+    "slug": "sevenfold",
+    "repo": "js13kGames/sevenfold",
+    "source": "Arjun0014/SevenFold",
+    "checks": [
+      {
+        "repo": "js13kGames/sevenfold",
+        "url": "https://github.com/js13kGames/sevenfold/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Arjun0014/SevenFold",
+        "url": "https://github.com/Arjun0014/SevenFold/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Castle Defense",
+    "url": "https://js13kgames.com/2026/games/unicorn-castle-defense",
+    "slug": "unicorn-castle-defense",
+    "repo": "js13kGames/unicorn-castle-defense",
+    "source": "HiroshiITO-personal/towerdefence",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-castle-defense",
+        "url": "https://github.com/js13kGames/unicorn-castle-defense/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "HiroshiITO-personal/towerdefence",
+        "url": "https://github.com/HiroshiITO-personal/towerdefence/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "30s Shooter",
+    "url": "https://js13kgames.com/2026/games/30s-shooter",
+    "slug": "30s-shooter",
+    "repo": "js13kGames/30s-shooter",
+    "source": "kavalierkaban/30s_shooter",
+    "checks": [
+      {
+        "repo": "js13kGames/30s-shooter",
+        "url": "https://github.com/js13kGames/30s-shooter/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "kavalierkaban/30s_shooter",
+        "url": "https://github.com/kavalierkaban/30s_shooter/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Knight",
+    "url": "https://js13kgames.com/2026/games/rainbow-knight",
+    "slug": "rainbow-knight",
+    "repo": "js13kGames/rainbow-knight",
+    "source": "xuyunjie1990/my-js13kgame-4",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-knight",
+        "url": "https://github.com/js13kGames/rainbow-knight/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xuyunjie1990/my-js13kgame-4",
+        "url": "https://github.com/xuyunjie1990/my-js13kgame-4/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "The Unicorn's Trial",
+    "url": "https://js13kgames.com/2026/games/the-unicorns-trial",
+    "slug": "the-unicorns-trial",
+    "repo": "js13kGames/the-unicorns-trial",
+    "source": "loprabbit-tech/The-Unicorn-s-Trial",
+    "checks": [
+      {
+        "repo": "js13kGames/the-unicorns-trial",
+        "url": "https://github.com/js13kGames/the-unicorns-trial/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "loprabbit-tech/The-Unicorn-s-Trial",
+        "url": "https://github.com/loprabbit-tech/The-Unicorn-s-Trial/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "PRISMHOOF",
+    "url": "https://js13kgames.com/2026/games/prismhoof",
+    "slug": "prismhoof",
+    "repo": "js13kGames/prismhoof",
+    "source": "belubruh123/prismhoof",
+    "checks": [
+      {
+        "repo": "js13kGames/prismhoof",
+        "url": "https://github.com/js13kGames/prismhoof/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "belubruh123/prismhoof",
+        "url": "https://github.com/belubruh123/prismhoof/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sugarworld: Sugarwind",
+    "url": "https://js13kgames.com/2026/games/unicorn-sugarworld-sugarwind",
+    "slug": "unicorn-sugarworld-sugarwind",
+    "repo": "js13kGames/unicorn-sugarworld-sugarwind",
+    "source": "RogersMath/sugarwind",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sugarworld-sugarwind",
+        "url": "https://github.com/js13kGames/unicorn-sugarworld-sugarwind/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "RogersMath/sugarwind",
+        "url": "https://github.com/RogersMath/sugarwind/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sugarworld: Looking Up",
+    "url": "https://js13kgames.com/2026/games/unicorn-sugarworld-looking-up",
+    "slug": "unicorn-sugarworld-looking-up",
+    "repo": "js13kGames/unicorn-sugarworld-looking-up",
+    "source": "RogersMath/looking-up",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sugarworld-looking-up",
+        "url": "https://github.com/js13kGames/unicorn-sugarworld-looking-up/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "RogersMath/looking-up",
+        "url": "https://github.com/RogersMath/looking-up/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sugarworld: Deathball",
+    "url": "https://js13kgames.com/2026/games/unicorn-sugarworld-deathball",
+    "slug": "unicorn-sugarworld-deathball",
+    "repo": "js13kGames/unicorn-sugarworld-deathball",
+    "source": "RogersMath/deathball",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sugarworld-deathball",
+        "url": "https://github.com/js13kGames/unicorn-sugarworld-deathball/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "RogersMath/deathball",
+        "url": "https://github.com/RogersMath/deathball/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Fireball",
+    "url": "https://js13kgames.com/2026/games/unicorn-fireball",
+    "slug": "unicorn-fireball",
+    "repo": "js13kGames/unicorn-fireball",
+    "source": "gamedevpl/seventh-color-js13-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-fireball",
+        "url": "https://github.com/js13kGames/unicorn-fireball/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "gamedevpl/seventh-color-js13-2026",
+        "url": "https://github.com/gamedevpl/seventh-color-js13-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Reveal",
+    "url": "https://js13kgames.com/2026/games/rainbow-reveal",
+    "slug": "rainbow-reveal",
+    "repo": "js13kGames/rainbow-reveal",
+    "source": "sumukhj1219/rainbow-reveal",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-reveal",
+        "url": "https://github.com/js13kGames/rainbow-reveal/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "sumukhj1219/rainbow-reveal",
+        "url": "https://github.com/sumukhj1219/rainbow-reveal/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "HueCorn",
+    "url": "https://js13kgames.com/2026/games/huecorn",
+    "slug": "huecorn",
+    "repo": "js13kGames/huecorn",
+    "source": "tyler6699/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/huecorn",
+        "url": "https://github.com/js13kGames/huecorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "tyler6699/js13k2026",
+        "url": "https://github.com/tyler6699/js13k2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Nimbo",
+    "url": "https://js13kgames.com/2026/games/nimbo",
+    "slug": "nimbo",
+    "repo": "js13kGames/nimbo",
+    "source": "chainsawteam-org/js13kgames2026-nimbus",
+    "checks": [
+      {
+        "repo": "js13kGames/nimbo",
+        "url": "https://github.com/js13kGames/nimbo/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "chainsawteam-org/js13kgames2026-nimbus",
+        "url": "https://github.com/chainsawteam-org/js13kgames2026-nimbus/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Chromatic Crawl",
+    "url": "https://js13kgames.com/2026/games/chromatic-crawl",
+    "slug": "chromatic-crawl",
+    "repo": "js13kGames/chromatic-crawl",
+    "source": "sdeseille/chromatic-crawl",
+    "checks": [
+      {
+        "repo": "js13kGames/chromatic-crawl",
+        "url": "https://github.com/js13kGames/chromatic-crawl/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "sdeseille/chromatic-crawl",
+        "url": "https://github.com/sdeseille/chromatic-crawl/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Color Alchemy",
+    "url": "https://js13kgames.com/2026/games/color-alchemy",
+    "slug": "color-alchemy",
+    "repo": "js13kGames/color-alchemy",
+    "source": "joseprio/color-alchemy",
+    "checks": [
+      {
+        "repo": "js13kGames/color-alchemy",
+        "url": "https://github.com/js13kGames/color-alchemy/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "joseprio/color-alchemy",
+        "url": "https://github.com/joseprio/color-alchemy/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Tower",
+    "url": "https://js13kgames.com/2026/games/rainbow-tower",
+    "slug": "rainbow-tower",
+    "repo": "js13kGames/rainbow-tower",
+    "source": "nicolasbonnici/js13k-rainbow-tower",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-tower",
+        "url": "https://github.com/js13kGames/rainbow-tower/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "nicolasbonnici/js13k-rainbow-tower",
+        "url": "https://github.com/nicolasbonnici/js13k-rainbow-tower/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Hurdles",
+    "url": "https://js13kgames.com/2026/games/rainbow-hurdles",
+    "slug": "rainbow-hurdles",
+    "repo": "js13kGames/rainbow-hurdles",
+    "source": "Chiko4Samples/rainbowHurdles",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-hurdles",
+        "url": "https://github.com/js13kGames/rainbow-hurdles/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Chiko4Samples/rainbowHurdles",
+        "url": "https://github.com/Chiko4Samples/rainbowHurdles/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Sugarworld: Apocalypse",
+    "url": "https://js13kgames.com/2026/games/unicorn-sugarworld-apocalypse",
+    "slug": "unicorn-sugarworld-apocalypse",
+    "repo": "js13kGames/unicorn-sugarworld-apocalypse",
+    "source": "RogersMath/unicorn-apocalypse",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-sugarworld-apocalypse",
+        "url": "https://github.com/js13kGames/unicorn-sugarworld-apocalypse/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "RogersMath/unicorn-apocalypse",
+        "url": "https://github.com/RogersMath/unicorn-apocalypse/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Paint the World",
+    "url": "https://js13kgames.com/2026/games/paint-the-world",
+    "slug": "paint-the-world",
+    "repo": "js13kGames/paint-the-world",
+    "source": "WBhlietue/Paint-the-World",
+    "checks": [
+      {
+        "repo": "js13kGames/paint-the-world",
+        "url": "https://github.com/js13kGames/paint-the-world/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "WBhlietue/Paint-the-World",
+        "url": "https://github.com/WBhlietue/Paint-the-World/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Factory",
+    "url": "https://js13kgames.com/2026/games/unicorn-factory",
+    "slug": "unicorn-factory",
+    "repo": "js13kGames/unicorn-factory",
+    "source": "infernet89/JS13K_UnicornFactory",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-factory",
+        "url": "https://github.com/js13kGames/unicorn-factory/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "infernet89/JS13K_UnicornFactory",
+        "url": "https://github.com/infernet89/JS13K_UnicornFactory/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "A Tale of Two Unicorns",
+    "url": "https://js13kgames.com/2026/games/a-tale-of-two-unicorns",
+    "slug": "a-tale-of-two-unicorns",
+    "repo": "js13kGames/a-tale-of-two-unicorns",
+    "source": "fbedussi/shot-the-rainbow",
+    "checks": [
+      {
+        "repo": "js13kGames/a-tale-of-two-unicorns",
+        "url": "https://github.com/js13kGames/a-tale-of-two-unicorns/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "fbedussi/shot-the-rainbow",
+        "url": "https://github.com/fbedussi/shot-the-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Sleepy on Rainbow Road",
+    "url": "https://js13kgames.com/2026/games/sleepy-on-rainbow-road",
+    "slug": "sleepy-on-rainbow-road",
+    "repo": "js13kGames/sleepy-on-rainbow-road",
+    "source": "tricsi/rainbow",
+    "checks": [
+      {
+        "repo": "js13kGames/sleepy-on-rainbow-road",
+        "url": "https://github.com/js13kGames/sleepy-on-rainbow-road/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "tricsi/rainbow",
+        "url": "https://github.com/tricsi/rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Unicorn  Color Chain",
+    "url": "https://js13kgames.com/2026/games/rainbow-unicorn-color-chain",
+    "slug": "rainbow-unicorn-color-chain",
+    "repo": "js13kGames/rainbow-unicorn-color-chain",
+    "source": "xuyunjie1990/my-js13kgame-5",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-unicorn-color-chain",
+        "url": "https://github.com/js13kGames/rainbow-unicorn-color-chain/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xuyunjie1990/my-js13kgame-5",
+        "url": "https://github.com/xuyunjie1990/my-js13kgame-5/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "UNICORN RAINBOW STRIKER - 5V5 ARCADE",
+    "url": "https://js13kgames.com/2026/games/unicorn-rainbow-striker-5v5-arcade",
+    "slug": "unicorn-rainbow-striker-5v5-arcade",
+    "repo": "js13kGames/unicorn-rainbow-striker-5v5-arcade",
+    "source": "minhquocdk/js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-rainbow-striker-5v5-arcade",
+        "url": "https://github.com/js13kGames/unicorn-rainbow-striker-5v5-arcade/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "minhquocdk/js13k",
+        "url": "https://github.com/minhquocdk/js13k/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Space Game 5: Revenge Of Unicorn",
+    "url": "https://js13kgames.com/2026/games/space-game-5-revenge-of-unicorn",
+    "slug": "space-game-5-revenge-of-unicorn",
+    "repo": "js13kGames/space-game-5-revenge-of-unicorn",
+    "source": "fabiosantoscode/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/space-game-5-revenge-of-unicorn",
+        "url": "https://github.com/js13kGames/space-game-5-revenge-of-unicorn/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "fabiosantoscode/js13k-2026",
+        "url": "https://github.com/fabiosantoscode/js13k-2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicalypse",
+    "url": "https://js13kgames.com/2026/games/unicalypse",
+    "slug": "unicalypse",
+    "repo": "js13kGames/unicalypse",
+    "source": "KamilZu/Unicalypse",
+    "checks": [
+      {
+        "repo": "js13kGames/unicalypse",
+        "url": "https://github.com/js13kGames/unicalypse/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "KamilZu/Unicalypse",
+        "url": "https://github.com/KamilZu/Unicalypse/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Bloomfront",
+    "url": "https://js13kgames.com/2026/games/bloomfront",
+    "slug": "bloomfront",
+    "repo": "js13kGames/bloomfront",
+    "source": "TheAxeC/bloomfront",
+    "checks": [
+      {
+        "repo": "js13kGames/bloomfront",
+        "url": "https://github.com/js13kGames/bloomfront/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "TheAxeC/bloomfront",
+        "url": "https://github.com/TheAxeC/bloomfront/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Panzercorn",
+    "url": "https://js13kgames.com/2026/games/panzercorn",
+    "slug": "panzercorn",
+    "repo": "js13kGames/panzercorn",
+    "source": "csubagio/js13k-panzercorn",
+    "checks": [
+      {
+        "repo": "js13kGames/panzercorn",
+        "url": "https://github.com/js13kGames/panzercorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "csubagio/js13k-panzercorn",
+        "url": "https://github.com/csubagio/js13k-panzercorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISM REBOUND",
+    "url": "https://js13kgames.com/2026/games/prism-rebound",
+    "slug": "prism-rebound",
+    "repo": "js13kGames/prism-rebound",
+    "source": "lg-dev-jp/prism-rebound-js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-rebound",
+        "url": "https://github.com/js13kGames/prism-rebound/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "lg-dev-jp/prism-rebound-js13k-2026",
+        "url": "https://github.com/lg-dev-jp/prism-rebound-js13k-2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Prism Stampede",
+    "url": "https://js13kgames.com/2026/games/prism-stampede",
+    "slug": "prism-stampede",
+    "repo": "js13kGames/prism-stampede",
+    "source": "msellers77/js13k2026-prism-stampede",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-stampede",
+        "url": "https://github.com/js13kGames/prism-stampede/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "msellers77/js13k2026-prism-stampede",
+        "url": "https://github.com/msellers77/js13k2026-prism-stampede/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Arcobaleno - Learn Italian",
+    "url": "https://js13kgames.com/2026/games/arcobaleno-learn-italian",
+    "slug": "arcobaleno-learn-italian",
+    "repo": "js13kGames/arcobaleno-learn-italian",
+    "source": "KilledByAPixel/Arcobaleno",
+    "checks": [
+      {
+        "repo": "js13kGames/arcobaleno-learn-italian",
+        "url": "https://github.com/js13kGames/arcobaleno-learn-italian/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "KilledByAPixel/Arcobaleno",
+        "url": "https://github.com/KilledByAPixel/Arcobaleno/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Mins & Max Vs. Unicorp",
+    "url": "https://js13kgames.com/2026/games/mins-max-vs-unicorp",
+    "slug": "mins-max-vs-unicorp",
+    "repo": "js13kGames/mins-max-vs-unicorp",
+    "source": "Beanminchild/Mins_and_Max",
+    "checks": [
+      {
+        "repo": "js13kGames/mins-max-vs-unicorp",
+        "url": "https://github.com/js13kGames/mins-max-vs-unicorp/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Beanminchild/Mins_and_Max",
+        "url": "https://github.com/Beanminchild/Mins_and_Max/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Last Unicorn",
+    "url": "https://js13kgames.com/2026/games/the-last-unicorn",
+    "slug": "the-last-unicorn",
+    "repo": "js13kGames/the-last-unicorn",
+    "source": "dqsmith/the-last-unicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/the-last-unicorn",
+        "url": "https://github.com/js13kGames/the-last-unicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "dqsmith/the-last-unicorn",
+        "url": "https://github.com/dqsmith/the-last-unicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Rockets",
+    "url": "https://js13kgames.com/2026/games/rainbow-rockets",
+    "slug": "rainbow-rockets",
+    "repo": "js13kGames/rainbow-rockets",
+    "source": "morph-games/rainbow-rockets-13kb",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-rockets",
+        "url": "https://github.com/js13kGames/rainbow-rockets/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "morph-games/rainbow-rockets-13kb",
+        "url": "https://github.com/morph-games/rainbow-rockets-13kb/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Dash Runner",
+    "url": "https://js13kgames.com/2026/games/rainbow-dash-runner",
+    "slug": "rainbow-dash-runner",
+    "repo": "js13kGames/rainbow-dash-runner",
+    "source": "romualdk/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-dash-runner",
+        "url": "https://github.com/js13kGames/rainbow-dash-runner/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "romualdk/js13k-2026",
+        "url": "https://github.com/romualdk/js13k-2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Tycoon",
+    "url": "https://js13kgames.com/2026/games/unicorn-tycoon",
+    "slug": "unicorn-tycoon",
+    "repo": "js13kGames/unicorn-tycoon",
+    "source": "Naeliah/Unicorn-Tycoon-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-tycoon",
+        "url": "https://github.com/js13kGames/unicorn-tycoon/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Naeliah/Unicorn-Tycoon-js13k",
+        "url": "https://github.com/Naeliah/Unicorn-Tycoon-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rhythm Rainbow",
+    "url": "https://js13kgames.com/2026/games/rhythm-rainbow",
+    "slug": "rhythm-rainbow",
+    "repo": "js13kGames/rhythm-rainbow",
+    "source": "alexwolfe/rhythm-rainbow-js-13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rhythm-rainbow",
+        "url": "https://github.com/js13kGames/rhythm-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {
+          "devDependencies": "^0.19.0"
+        },
+        "mentions": true
+      },
+      {
+        "repo": "alexwolfe/rhythm-rainbow-js-13k-2026",
+        "url": "https://github.com/alexwolfe/rhythm-rainbow-js-13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {
+          "devDependencies": "^0.19.0"
+        },
+        "mentions": true
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Stampede",
+    "url": "https://js13kgames.com/2026/games/rainbow-stampede",
+    "slug": "rainbow-stampede",
+    "repo": "js13kGames/rainbow-stampede",
+    "source": "mrefishant/Rainbow-Rush",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-stampede",
+        "url": "https://github.com/js13kGames/rainbow-stampede/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "mrefishant/Rainbow-Rush",
+        "url": "https://github.com/mrefishant/Rainbow-Rush/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Gallop of Color",
+    "url": "https://js13kgames.com/2026/games/gallop-of-color",
+    "slug": "gallop-of-color",
+    "repo": "js13kGames/gallop-of-color",
+    "source": "roblouie/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/gallop-of-color",
+        "url": "https://github.com/js13kGames/gallop-of-color/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "roblouie/js13k-2026",
+        "url": "https://github.com/roblouie/js13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Rescue",
+    "url": "https://js13kgames.com/2026/games/unicorn-rescue",
+    "slug": "unicorn-rescue",
+    "repo": "js13kGames/unicorn-rescue",
+    "source": "LazyLuigi/unicorn-rescue-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-rescue",
+        "url": "https://github.com/js13kGames/unicorn-rescue/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/unicorn-rescue-js13k",
+        "url": "https://github.com/LazyLuigi/unicorn-rescue-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "UnicX",
+    "url": "https://js13kgames.com/2026/games/unicx",
+    "slug": "unicx",
+    "repo": "js13kGames/unicx",
+    "source": "Cotterzz/uar",
+    "checks": [
+      {
+        "repo": "js13kGames/unicx",
+        "url": "https://github.com/js13kGames/unicx/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Cotterzz/uar",
+        "url": "https://github.com/Cotterzz/uar/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "WORD5",
+    "url": "https://js13kgames.com/2026/games/word5",
+    "slug": "word5",
+    "repo": "js13kGames/word5",
+    "source": "xem/js13k26-words",
+    "checks": [
+      {
+        "repo": "js13kGames/word5",
+        "url": "https://github.com/js13kGames/word5/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xem/js13k26-words",
+        "url": "https://github.com/xem/js13k26-words/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Slide",
+    "url": "https://js13kgames.com/2026/games/unicorn-slide",
+    "slug": "unicorn-slide",
+    "repo": "js13kGames/unicorn-slide",
+    "source": "Jorger/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-slide",
+        "url": "https://github.com/js13kGames/unicorn-slide/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Jorger/js13k-2026",
+        "url": "https://github.com/Jorger/js13k-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "UNICORN FLIP",
+    "url": "https://js13kgames.com/2026/games/unicorn-flip",
+    "slug": "unicorn-flip",
+    "repo": "js13kGames/unicorn-flip",
+    "source": "syu-san/unicorn-flip",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-flip",
+        "url": "https://github.com/js13kGames/unicorn-flip/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "syu-san/unicorn-flip",
+        "url": "https://github.com/syu-san/unicorn-flip/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorns and Rainbows",
+    "url": "https://js13kgames.com/2026/games/unicorns-and-rainbows",
+    "slug": "unicorns-and-rainbows",
+    "repo": "js13kGames/unicorns-and-rainbows",
+    "source": "lcapps-luke/js13k-unicorns-and-rainbows",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorns-and-rainbows",
+        "url": "https://github.com/js13kGames/unicorns-and-rainbows/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "lcapps-luke/js13k-unicorns-and-rainbows",
+        "url": "https://github.com/lcapps-luke/js13k-unicorns-and-rainbows/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "DYE HARD",
+    "url": "https://js13kgames.com/2026/games/dye-hard",
+    "slug": "dye-hard",
+    "repo": "js13kGames/dye-hard",
+    "source": "codyebberson/js13k-starter",
+    "checks": [
+      {
+        "repo": "js13kGames/dye-hard",
+        "url": "https://github.com/js13kGames/dye-hard/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "codyebberson/js13k-starter",
+        "url": "https://github.com/codyebberson/js13k-starter/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "RollerBow",
+    "url": "https://js13kgames.com/2026/games/rollerbow",
+    "slug": "rollerbow",
+    "repo": "js13kGames/rollerbow",
+    "source": "LazyLuigi/rollerbow-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/rollerbow",
+        "url": "https://github.com/js13kGames/rollerbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/rollerbow-js13k",
+        "url": "https://github.com/LazyLuigi/rollerbow-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "UniFind",
+    "url": "https://js13kgames.com/2026/games/unifind",
+    "slug": "unifind",
+    "repo": "js13kGames/unifind",
+    "source": "LazyLuigi/unifind-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/unifind",
+        "url": "https://github.com/js13kGames/unifind/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/unifind-js13k",
+        "url": "https://github.com/LazyLuigi/unifind-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Roygbiv",
+    "url": "https://js13kgames.com/2026/games/roygbiv",
+    "slug": "roygbiv",
+    "repo": "js13kGames/roygbiv",
+    "source": "LazyLuigi/roygbiv-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/roygbiv",
+        "url": "https://github.com/js13kGames/roygbiv/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/roygbiv-js13k",
+        "url": "https://github.com/LazyLuigi/roygbiv-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Fight",
+    "url": "https://js13kgames.com/2026/games/rainbow-fight",
+    "slug": "rainbow-fight",
+    "repo": "js13kGames/rainbow-fight",
+    "source": "LazyLuigi/rainbows-fight-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-fight",
+        "url": "https://github.com/js13kGames/rainbow-fight/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/rainbows-fight-js13k",
+        "url": "https://github.com/LazyLuigi/rainbows-fight-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rush to the Rainbow",
+    "url": "https://js13kgames.com/2026/games/rush-to-the-rainbow",
+    "slug": "rush-to-the-rainbow",
+    "repo": "js13kGames/rush-to-the-rainbow",
+    "source": "picosonic/js13k-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rush-to-the-rainbow",
+        "url": "https://github.com/js13kGames/rush-to-the-rainbow/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "picosonic/js13k-2026",
+        "url": "https://github.com/picosonic/js13k-2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Jetout",
+    "url": "https://js13kgames.com/2026/games/jetout",
+    "slug": "jetout",
+    "repo": "js13kGames/jetout",
+    "source": "GregPeck/jetout",
+    "checks": [
+      {
+        "repo": "js13kGames/jetout",
+        "url": "https://github.com/js13kGames/jetout/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "GregPeck/jetout",
+        "url": "https://github.com/GregPeck/jetout/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Horns of War",
+    "url": "https://js13kgames.com/2026/games/horns-of-war",
+    "slug": "horns-of-war",
+    "repo": "js13kGames/horns-of-war",
+    "source": "orangeshortstuff/rainbow-game",
+    "checks": [
+      {
+        "repo": "js13kGames/horns-of-war",
+        "url": "https://github.com/js13kGames/horns-of-war/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "orangeshortstuff/rainbow-game",
+        "url": "https://github.com/orangeshortstuff/rainbow-game/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn & Rainbow Space Dodger",
+    "url": "https://js13kgames.com/2026/games/unicorn-rainbow-space-dodger",
+    "slug": "unicorn-rainbow-space-dodger",
+    "repo": "js13kGames/unicorn-rainbow-space-dodger",
+    "source": "mp9802182-code/unicorn-space-dodger",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-rainbow-space-dodger",
+        "url": "https://github.com/js13kGames/unicorn-rainbow-space-dodger/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "mp9802182-code/unicorn-space-dodger",
+        "url": "https://github.com/mp9802182-code/unicorn-space-dodger/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rune Mage Tower Defense",
+    "url": "https://js13kgames.com/2026/games/rune-mage-tower-defense",
+    "slug": "rune-mage-tower-defense",
+    "repo": "js13kGames/rune-mage-tower-defense",
+    "source": "jcubed111/rune-mage-tower-defense",
+    "checks": [
+      {
+        "repo": "js13kGames/rune-mage-tower-defense",
+        "url": "https://github.com/js13kGames/rune-mage-tower-defense/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "jcubed111/rune-mage-tower-defense",
+        "url": "https://github.com/jcubed111/rune-mage-tower-defense/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Fast and the Furious: Unicorn Drift",
+    "url": "https://js13kgames.com/2026/games/the-fast-and-the-furious-unicorn-drift",
+    "slug": "the-fast-and-the-furious-unicorn-drift",
+    "repo": "js13kGames/the-fast-and-the-furious-unicorn-drift",
+    "source": "BenjaminWFox/unicorn-drift-js13kgames-2026",
+    "checks": [
+      {
+        "repo": "js13kGames/the-fast-and-the-furious-unicorn-drift",
+        "url": "https://github.com/js13kGames/the-fast-and-the-furious-unicorn-drift/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "BenjaminWFox/unicorn-drift-js13kgames-2026",
+        "url": "https://github.com/BenjaminWFox/unicorn-drift-js13kgames-2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Flock, Stock and Two Sparkling Horns",
+    "url": "https://js13kgames.com/2026/games/flock-stock-and-two-sparkling-horns",
+    "slug": "flock-stock-and-two-sparkling-horns",
+    "repo": "js13kGames/flock-stock-and-two-sparkling-horns",
+    "source": "Zurgah/Flock-Stock-and-Two-Sparkling-Horns-JS13k-",
+    "checks": [
+      {
+        "repo": "js13kGames/flock-stock-and-two-sparkling-horns",
+        "url": "https://github.com/js13kGames/flock-stock-and-two-sparkling-horns/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "Zurgah/Flock-Stock-and-Two-Sparkling-Horns-JS13k-",
+        "url": "https://github.com/Zurgah/Flock-Stock-and-Two-Sparkling-Horns-JS13k-/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn VS. DR.MAD",
+    "url": "https://js13kgames.com/2026/games/unicorn-vs-drmad",
+    "slug": "unicorn-vs-drmad",
+    "repo": "js13kGames/unicorn-vs-drmad",
+    "source": "tobytime1/Games",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-vs-drmad",
+        "url": "https://github.com/js13kGames/unicorn-vs-drmad/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "tobytime1/Games",
+        "url": "https://github.com/tobytime1/Games/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Chroma Echo",
+    "url": "https://js13kgames.com/2026/games/chroma-echo",
+    "slug": "chroma-echo",
+    "repo": "js13kGames/chroma-echo",
+    "source": "victorhez/chroma-echo-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/chroma-echo",
+        "url": "https://github.com/js13kGames/chroma-echo/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "victorhez/chroma-echo-js13k",
+        "url": "https://github.com/victorhez/chroma-echo-js13k/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Get My Horn Back",
+    "url": "https://js13kgames.com/2026/games/get-my-horn-back",
+    "slug": "get-my-horn-back",
+    "repo": "js13kGames/get-my-horn-back",
+    "source": "AdjWang/GetMyHornBack",
+    "checks": [
+      {
+        "repo": "js13kGames/get-my-horn-back",
+        "url": "https://github.com/js13kGames/get-my-horn-back/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "AdjWang/GetMyHornBack",
+        "url": "https://github.com/AdjWang/GetMyHornBack/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Hue Nicorn",
+    "url": "https://js13kgames.com/2026/games/hue-nicorn",
+    "slug": "hue-nicorn",
+    "repo": "js13kGames/hue-nicorn",
+    "source": "lopis/hue-nicorn",
+    "checks": [
+      {
+        "repo": "js13kGames/hue-nicorn",
+        "url": "https://github.com/js13kGames/hue-nicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "lopis/hue-nicorn",
+        "url": "https://github.com/lopis/hue-nicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "PRISM RUN",
+    "url": "https://js13kgames.com/2026/games/prism-run",
+    "slug": "prism-run",
+    "repo": "js13kGames/prism-run",
+    "source": "gp01002-code/miss01",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-run",
+        "url": "https://github.com/js13kGames/prism-run/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "gp01002-code/miss01",
+        "url": "https://github.com/gp01002-code/miss01/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn VR Missions",
+    "url": "https://js13kgames.com/2026/games/unicorn-vr-missions",
+    "slug": "unicorn-vr-missions",
+    "repo": "js13kGames/unicorn-vr-missions",
+    "source": "PaulRichez/unicorn-vr-missions",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-vr-missions",
+        "url": "https://github.com/js13kGames/unicorn-vr-missions/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "PaulRichez/unicorn-vr-missions",
+        "url": "https://github.com/PaulRichez/unicorn-vr-missions/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Hornbound",
+    "url": "https://js13kgames.com/2026/games/hornbound",
+    "slug": "hornbound",
+    "repo": "js13kGames/hornbound",
+    "source": "goldenratio/hornbound",
+    "checks": [
+      {
+        "repo": "js13kGames/hornbound",
+        "url": "https://github.com/js13kGames/hornbound/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "goldenratio/hornbound",
+        "url": "https://github.com/goldenratio/hornbound/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Maze",
+    "url": "https://js13kgames.com/2026/games/rainbow-maze",
+    "slug": "rainbow-maze",
+    "repo": "js13kGames/rainbow-maze",
+    "source": "xuyunjie1990/my-js13kgame-6",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-maze",
+        "url": "https://github.com/js13kGames/rainbow-maze/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "xuyunjie1990/my-js13kgame-6",
+        "url": "https://github.com/xuyunjie1990/my-js13kgame-6/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Unicorn Rainbow Race",
+    "url": "https://js13kgames.com/2026/games/unicorn-rainbow-race",
+    "slug": "unicorn-rainbow-race",
+    "repo": "js13kGames/unicorn-rainbow-race",
+    "source": "daivan/Unicorn-Rainbow-Race",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorn-rainbow-race",
+        "url": "https://github.com/js13kGames/unicorn-rainbow-race/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "daivan/Unicorn-Rainbow-Race",
+        "url": "https://github.com/daivan/Unicorn-Rainbow-Race/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Glowbugs",
+    "url": "https://js13kgames.com/2026/games/glowbugs",
+    "slug": "glowbugs",
+    "repo": "js13kGames/glowbugs",
+    "source": "eoinmcg/glowbugs",
+    "checks": [
+      {
+        "repo": "js13kGames/glowbugs",
+        "url": "https://github.com/js13kGames/glowbugs/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "eoinmcg/glowbugs",
+        "url": "https://github.com/eoinmcg/glowbugs/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Unicorpse",
+    "url": "https://js13kgames.com/2026/games/unicorpse",
+    "slug": "unicorpse",
+    "repo": "js13kGames/unicorpse",
+    "source": "WMAR-9/2026",
+    "checks": [
+      {
+        "repo": "js13kGames/unicorpse",
+        "url": "https://github.com/js13kGames/unicorpse/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "WMAR-9/2026",
+        "url": "https://github.com/WMAR-9/2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "SEVEN CUSHIONS",
+    "url": "https://js13kgames.com/2026/games/seven-cushions",
+    "slug": "seven-cushions",
+    "repo": "js13kGames/seven-cushions",
+    "source": "sonjebeen/seven-cushions",
+    "checks": [
+      {
+        "repo": "js13kGames/seven-cushions",
+        "url": "https://github.com/js13kGames/seven-cushions/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "sonjebeen/seven-cushions",
+        "url": "https://github.com/sonjebeen/seven-cushions/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Princess and the Kirin",
+    "url": "https://js13kgames.com/2026/games/princess-and-the-kirin",
+    "slug": "princess-and-the-kirin",
+    "repo": "js13kGames/princess-and-the-kirin",
+    "source": "TimAlt/Princess-and-the-Kirin",
+    "checks": [
+      {
+        "repo": "js13kGames/princess-and-the-kirin",
+        "url": "https://github.com/js13kGames/princess-and-the-kirin/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "TimAlt/Princess-and-the-Kirin",
+        "url": "https://github.com/TimAlt/Princess-and-the-Kirin/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "F1NAL L3VEL",
+    "url": "https://js13kgames.com/2026/games/f1nal-l3vel",
+    "slug": "f1nal-l3vel",
+    "repo": "js13kGames/f1nal-l3vel",
+    "source": "leereilly/F1NAL-L3VEL",
+    "checks": [
+      {
+        "repo": "js13kGames/f1nal-l3vel",
+        "url": "https://github.com/js13kGames/f1nal-l3vel/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "leereilly/F1NAL-L3VEL",
+        "url": "https://github.com/leereilly/F1NAL-L3VEL/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "DR1LL3R",
+    "url": "https://js13kgames.com/2026/games/dr1ll3r",
+    "slug": "dr1ll3r",
+    "repo": "js13kGames/dr1ll3r",
+    "source": "leereilly/DR1LL3R",
+    "checks": [
+      {
+        "repo": "js13kGames/dr1ll3r",
+        "url": "https://github.com/js13kGames/dr1ll3r/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "leereilly/DR1LL3R",
+        "url": "https://github.com/leereilly/DR1LL3R/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Six 7",
+    "url": "https://js13kgames.com/2026/games/rainbow-six-7",
+    "slug": "rainbow-six-7",
+    "repo": "js13kGames/rainbow-six-7",
+    "source": "leereilly/rainbow-six-7",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-six-7",
+        "url": "https://github.com/js13kGames/rainbow-six-7/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "leereilly/rainbow-six-7",
+        "url": "https://github.com/leereilly/rainbow-six-7/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Unicorn Bridge",
+    "url": "https://js13kgames.com/2026/games/the-unicorn-bridge",
+    "slug": "the-unicorn-bridge",
+    "repo": "js13kGames/the-unicorn-bridge",
+    "source": "Indakwa/the_unicorn_bridge",
+    "checks": [
+      {
+        "repo": "js13kGames/the-unicorn-bridge",
+        "url": "https://github.com/js13kGames/the-unicorn-bridge/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Indakwa/the_unicorn_bridge",
+        "url": "https://github.com/Indakwa/the_unicorn_bridge/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Horns of Dominion",
+    "url": "https://js13kgames.com/2026/games/horns-of-dominion",
+    "slug": "horns-of-dominion",
+    "repo": "js13kGames/horns-of-dominion",
+    "source": "slashman/horns-of-dominion",
+    "checks": [
+      {
+        "repo": "js13kGames/horns-of-dominion",
+        "url": "https://github.com/js13kGames/horns-of-dominion/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "slashman/horns-of-dominion",
+        "url": "https://github.com/slashman/horns-of-dominion/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Pony Pinball Tower",
+    "url": "https://js13kgames.com/2026/games/pony-pinball-tower",
+    "slug": "pony-pinball-tower",
+    "repo": "js13kGames/pony-pinball-tower",
+    "source": "benjamin-t-brown/pony-pinball",
+    "checks": [
+      {
+        "repo": "js13kGames/pony-pinball-tower",
+        "url": "https://github.com/js13kGames/pony-pinball-tower/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "benjamin-t-brown/pony-pinball",
+        "url": "https://github.com/benjamin-t-brown/pony-pinball/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Orange Ember",
+    "url": "https://js13kgames.com/2026/games/orange-ember",
+    "slug": "orange-ember",
+    "repo": "js13kGames/orange-ember",
+    "source": "goalTosin/orange-ember",
+    "checks": [
+      {
+        "repo": "js13kGames/orange-ember",
+        "url": "https://github.com/js13kGames/orange-ember/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "goalTosin/orange-ember",
+        "url": "https://github.com/goalTosin/orange-ember/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Lemmicorns",
+    "url": "https://js13kgames.com/2026/games/lemmicorns",
+    "slug": "lemmicorns",
+    "repo": "js13kGames/lemmicorns",
+    "source": "DerBenniBanni/lemmicorns_js13k_2026",
+    "checks": [
+      {
+        "repo": "js13kGames/lemmicorns",
+        "url": "https://github.com/js13kGames/lemmicorns/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "DerBenniBanni/lemmicorns_js13k_2026",
+        "url": "https://github.com/DerBenniBanni/lemmicorns_js13k_2026/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Prism Break",
+    "url": "https://js13kgames.com/2026/games/prism-break",
+    "slug": "prism-break",
+    "repo": "js13kGames/prism-break",
+    "source": "dbrad/js13k2026",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-break",
+        "url": "https://github.com/js13kGames/prism-break/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "dbrad/js13k2026",
+        "url": "https://github.com/dbrad/js13k2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Rainbow in the Dark",
+    "url": "https://js13kgames.com/2026/games/rainbow-in-the-dark",
+    "slug": "rainbow-in-the-dark",
+    "repo": "js13kGames/rainbow-in-the-dark",
+    "source": "sebadorn/js13k-2026-unicorns-and-rainbows",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-in-the-dark",
+        "url": "https://github.com/js13kGames/rainbow-in-the-dark/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "sebadorn/js13k-2026-unicorns-and-rainbows",
+        "url": "https://github.com/sebadorn/js13k-2026-unicorns-and-rainbows/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "HoofBeat",
+    "url": "https://js13kgames.com/2026/games/hoofbeat",
+    "slug": "hoofbeat",
+    "repo": "js13kGames/hoofbeat",
+    "source": "LazyLuigi/hoofbeat-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/hoofbeat",
+        "url": "https://github.com/js13kGames/hoofbeat/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/hoofbeat-js13k",
+        "url": "https://github.com/LazyLuigi/hoofbeat-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Glyphicorn",
+    "url": "https://js13kgames.com/2026/games/glyphicorn",
+    "slug": "glyphicorn",
+    "repo": "js13kGames/glyphicorn",
+    "source": "ElementalSystems/Texticorn",
+    "checks": [
+      {
+        "repo": "js13kGames/glyphicorn",
+        "url": "https://github.com/js13kGames/glyphicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "ElementalSystems/Texticorn",
+        "url": "https://github.com/ElementalSystems/Texticorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "RainbowTail",
+    "url": "https://js13kgames.com/2026/games/rainbowtail",
+    "slug": "rainbowtail",
+    "repo": "js13kGames/rainbowtail",
+    "source": "Mik39sch/js13kgames2026",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbowtail",
+        "url": "https://github.com/js13kGames/rainbowtail/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "Mik39sch/js13kgames2026",
+        "url": "https://github.com/Mik39sch/js13kgames2026/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Unicorn Mines : Rainbow",
+    "url": "https://js13kgames.com/2026/games/the-unicorn-mines-rainbow",
+    "slug": "the-unicorn-mines-rainbow",
+    "repo": "js13kGames/the-unicorn-mines-rainbow",
+    "source": "illiazvinskyi-jpg/theunicornminesrainbow",
+    "checks": [
+      {
+        "repo": "js13kGames/the-unicorn-mines-rainbow",
+        "url": "https://github.com/js13kGames/the-unicorn-mines-rainbow/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "illiazvinskyi-jpg/theunicornminesrainbow",
+        "url": "https://github.com/illiazvinskyi-jpg/theunicornminesrainbow/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Gallop",
+    "url": "https://js13kgames.com/2026/games/rainbow-gallop",
+    "slug": "rainbow-gallop",
+    "repo": "js13kGames/rainbow-gallop",
+    "source": "LazyLuigi/rainbow-gallop-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-gallop",
+        "url": "https://github.com/js13kGames/rainbow-gallop/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/rainbow-gallop-js13k",
+        "url": "https://github.com/LazyLuigi/rainbow-gallop-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Slop Cannon Fodder",
+    "url": "https://js13kgames.com/2026/games/slop-cannon-fodder",
+    "slug": "slop-cannon-fodder",
+    "repo": "js13kGames/slop-cannon-fodder",
+    "source": "leereilly/slop-cannon-fodder",
+    "checks": [
+      {
+        "repo": "js13kGames/slop-cannon-fodder",
+        "url": "https://github.com/js13kGames/slop-cannon-fodder/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "leereilly/slop-cannon-fodder",
+        "url": "https://github.com/leereilly/slop-cannon-fodder/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Color Thief",
+    "url": "https://js13kgames.com/2026/games/color-thief",
+    "slug": "color-thief",
+    "repo": "js13kGames/color-thief",
+    "source": "L-Greco/color-thief",
+    "checks": [
+      {
+        "repo": "js13kGames/color-thief",
+        "url": "https://github.com/js13kGames/color-thief/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "L-Greco/color-thief",
+        "url": "https://github.com/L-Greco/color-thief/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Donut Tree",
+    "url": "https://js13kgames.com/2026/games/donut-tree",
+    "slug": "donut-tree",
+    "repo": "js13kGames/donut-tree",
+    "source": "herobank110/vigilant-potato",
+    "checks": [
+      {
+        "repo": "js13kGames/donut-tree",
+        "url": "https://github.com/js13kGames/donut-tree/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "herobank110/vigilant-potato",
+        "url": "https://github.com/herobank110/vigilant-potato/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "Rainbow Vale",
+    "url": "https://js13kgames.com/2026/games/rainbow-vale",
+    "slug": "rainbow-vale",
+    "repo": "js13kGames/rainbow-vale",
+    "source": "corpille/rainbow-vale",
+    "checks": [
+      {
+        "repo": "js13kGames/rainbow-vale",
+        "url": "https://github.com/js13kGames/rainbow-vale/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "corpille/rainbow-vale",
+        "url": "https://github.com/corpille/rainbow-vale/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Last Unicorn",
+    "url": "https://js13kgames.com/2026/games/last-unicorn",
+    "slug": "last-unicorn",
+    "repo": "js13kGames/last-unicorn",
+    "source": "LazyLuigi/the-last-unicorn-js13k",
+    "checks": [
+      {
+        "repo": "js13kGames/last-unicorn",
+        "url": "https://github.com/js13kGames/last-unicorn/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "LazyLuigi/the-last-unicorn-js13k",
+        "url": "https://github.com/LazyLuigi/the-last-unicorn-js13k/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Prism Drift",
+    "url": "https://js13kgames.com/2026/games/prism-drift",
+    "slug": "prism-drift",
+    "repo": "js13kGames/prism-drift",
+    "source": "leereilly/prism-drift",
+    "checks": [
+      {
+        "repo": "js13kGames/prism-drift",
+        "url": "https://github.com/js13kGames/prism-drift/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "leereilly/prism-drift",
+        "url": "https://github.com/leereilly/prism-drift/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "UniDrop",
+    "url": "https://js13kgames.com/2026/games/unidrop",
+    "slug": "unidrop",
+    "repo": "js13kGames/unidrop",
+    "source": "MillzTyler/JS13k-2016",
+    "checks": [
+      {
+        "repo": "js13kGames/unidrop",
+        "url": "https://github.com/js13kGames/unidrop/blob/HEAD/package.json",
+        "status": 404
+      },
+      {
+        "repo": "MillzTyler/JS13k-2016",
+        "url": "https://github.com/MillzTyler/JS13k-2016/blob/HEAD/package.json",
+        "status": 404
+      }
+    ]
+  },
+  {
+    "title": "The Stolen Rainbow",
+    "url": "https://js13kgames.com/2026/games/the-stolen-rainbow",
+    "slug": "the-stolen-rainbow",
+    "repo": "js13kGames/the-stolen-rainbow",
+    "source": "kjh6036/stolenrainbow",
+    "checks": [
+      {
+        "repo": "js13kGames/the-stolen-rainbow",
+        "url": "https://github.com/js13kGames/the-stolen-rainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "kjh6036/stolenrainbow",
+        "url": "https://github.com/kjh6036/stolenrainbow/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "Mane Quest",
+    "url": "https://js13kgames.com/2026/games/mane-quest",
+    "slug": "mane-quest",
+    "repo": "js13kGames/mane-quest",
+    "source": "my-kiwi/mane-quest",
+    "checks": [
+      {
+        "repo": "js13kGames/mane-quest",
+        "url": "https://github.com/js13kGames/mane-quest/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "my-kiwi/mane-quest",
+        "url": "https://github.com/my-kiwi/mane-quest/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  },
+  {
+    "title": "The Sunshine Policy",
+    "url": "https://js13kgames.com/2026/games/the-sunshine-policy",
+    "slug": "the-sunshine-policy",
+    "repo": "js13kGames/the-sunshine-policy",
+    "source": "markusfisch/TheSunshinePolicy",
+    "checks": [
+      {
+        "repo": "js13kGames/the-sunshine-policy",
+        "url": "https://github.com/js13kGames/the-sunshine-policy/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      },
+      {
+        "repo": "markusfisch/TheSunshinePolicy",
+        "url": "https://github.com/markusfisch/TheSunshinePolicy/blob/HEAD/package.json",
+        "status": 200,
+        "brometal": {},
+        "mentions": false
+      }
+    ]
+  }
+]

@@ -2117,7 +2117,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     step[10] = PICK_BASE;
     step[5] = TRACK_WIDTH;
     step[6] = PATTERN;
-    step[7] = TIME - selectOrbit * (SCREEN === SELECT_STATE);
+    step[7] = TIME;
     // The orbiting camera is up for everything before the race; it is also what
     // switches off the road's shadow, since there is no unicorn to cast one.
     step[8] = SCREEN <= SELECT_STATE;
@@ -2137,7 +2137,7 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
     bmDispatch(sim, 1);
 
     // Start the selection turntable clock at zero on every entry.
-    u[0] = step[7] - 5 * (SCREEN === SELECT_STATE);
+    u[0] = TIME - (selectOrbit + 5) * (SCREEN === SELECT_STATE);
 
     // **Per frame, though they only change between races.** These were written
     // once at start-up, when there was one circuit and it could not change; a
@@ -2178,23 +2178,23 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
 
     bmPassTo();
     const age = TIME - titleSince;
-    const impact = Math.max(0, SCREEN === TITLE_STATE ? age - 1.125 : TIME - boostImpact);
+    const impact = Math.max(0, TIME - boostImpact);
     const shake = Math.max(0, 0.2 - impact) * Math.sin(impact * 100) * -6;
     canvas.style.transform = `translateY(${shake}%)`;
-    su.set([TIME, 0, SCREEN === TITLE_STATE]);
+    su.set([TIME, 0, 0]);
     bmUniforms(sky, su);
     bmDraw(sky);
     if (shown) {
       bmUniforms(prog, u);
       bmDraw(prog, shown);
+    }
     // The same array, and the same sixteen bytes: the track reads uTime out of
     // the front of it and never looks at the gait behind. Each program owns its
     // uniform buffer, so one write does not reach the other — the camera they
     // share travels the other way, through the state buffer, and never touches
     // the CPU at all.
-      bmUniforms(track, tu);
-      bmDraw(track);
-    }
+    bmUniforms(track, tu);
+    bmDraw(track);
 
     if (TIME < warpUntil) {
       su[1] = 1;
@@ -2251,10 +2251,8 @@ bmInit(canvas, [0.02, 0.02, 0.05, 0]).then(() => {
       say(17 + starsHeld, 0, FONT_M, -3);
     }
     if (SCREEN === TITLE_STATE) {
-      const slide = 1 + 2.6 * (1 - Math.max(0, Math.min(1, (age - 0.75) / 0.375)));
-
-      say(0, 0.36, FONT_L, slide);
-      say(29, -0.02, FONT_XXL, slide);
+      say(0, 0.36, FONT_L);
+      say(29, -0.02, FONT_XXL);
       say(1, -0.42, FONT_S, Math.max(0, Math.min(1, (age - 2) / 0.3)));
     } else if (SCREEN === SELECT_STATE) {
       // The heading on the top line, the roster's name hung under it, and the
